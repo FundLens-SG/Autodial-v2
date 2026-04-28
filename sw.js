@@ -1,5 +1,6 @@
-const CACHE_NAME = 'autodial-v2';
-const ASSETS = ['./', './index.html', './icon-192.png', './icon-512.png'];
+const APP_VERSION = '2026.04.28.0001';
+const CACHE_NAME = `autodial-${APP_VERSION}`;
+const ASSETS = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE_NAME).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
@@ -12,6 +13,7 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
+  if (e.request.method !== 'GET') return;
   // Network-first for API calls, cache-first for assets
   if (e.request.url.includes('googleapis.com') || e.request.url.includes('supabase') || 
       e.request.url.includes('workers.dev') || e.request.url.includes('anthropic.com') ||

@@ -6,17 +6,17 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="AutoDial">
-<meta name="theme-color" content="#07080d">
-<title>AutoDial</title>
+<meta name="apple-mobile-web-app-title" content="AutoDial Pro">
+<meta name="theme-color" content="#6366f1">
+<title>AutoDial Pro</title>
 <script>window.onerror=function(m){if(!m||m==='Script error.'||m==='Script error')return true;console.error('[AutoDial Error]',m);return true};window.onunhandledrejection=function(e){console.warn('[AutoDial] Unhandled promise:',e.reason);e.preventDefault()};/* ═══ Global DBG fallback — the JSX block (now wrapped in IIFE for pre-compile) defines its own local DBG, but auth code and other early scripts run BEFORE the IIFE boots and need a global fallback. Both definitions check window.AUTODIAL_DEBUG, so behavior is identical. ═══ */window.DBG=function(){if(window.AUTODIAL_DEBUG)console.log.apply(console,arguments)};</script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%236366f1'/%3E%3Cstop offset='100%25' stop-color='%238b5cf6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='108' fill='url(%23g)'/%3E%3Cpath d='M352 311v48a16 16 0 01-17 16 158 158 0 01-69-25 156 156 0 01-48-48 158 158 0 01-25-69A16 16 0 01209 216h24a16 16 0 0116 14c1 8 3 15 6 22a16 16 0 01-4 17l-10 10a128 128 0 0048 48l10-10a16 16 0 0117-4c7 3 15 5 22 6A16 16 0 01352 336z' fill='none' stroke='white' stroke-width='18' stroke-linecap='round'/%3E%3C/svg%3E">
-<link rel="manifest" href="data:application/json,%7B%22name%22%3A%22AutoDial%22%2C%22short_name%22%3A%22AutoDial%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22orientation%22%3A%22portrait%22%2C%22background_color%22%3A%22%2307080d%22%2C%22theme_color%22%3A%22%236366f1%22%7D">
+<link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <!-- ═══ PERF: preconnect to CDNs so TLS handshakes happen in parallel with HTML parse ═══ -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-<link rel="preconnect" href="https://mgbxxwoasrwlraffcvab.supabase.co" crossorigin>
+<link rel="preconnect" href="https://urwfmmgsfunbvwngejey.supabase.co" crossorigin>
 <!-- ═══ ALL CDN scripts now load via defer in parallel during HTML parse.
      Supabase used to be synchronous which blocked the auth-gate from painting until it
      downloaded (~400-2000ms on mobile). Inline body scripts now wait for window.supabase
@@ -266,7 +266,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.10.2230';
+window.APP_VERSION='2026.04.28.0001';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -693,7 +693,7 @@ var GC_ID='649883090396-mrhmtjaum8u4ec12ciq0p4m31npabbut.apps.googleusercontent.
 var GSCOPES='https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
 // ↓↓↓ SET THIS to your Cloudflare Worker URL for permanent Google auth ↓↓↓
 var WORKER_URL='https://autodial-google-auth.chungakwanc.workers.dev';
-window.claudeKey=function(){return localStorage.getItem('autodial_claude_key')||window._sharedClaudeKey||''}; // e.g. 'https://autodial-google-auth.yourname.workers.dev'
+window.claudeKey=function(){return localStorage.getItem('autodial_claude_key')||''}; // e.g. 'https://autodial-google-auth.yourname.workers.dev'
 
 // ═══ SAVE TOKEN — shared helper ═══
 function _saveGToken(token){
@@ -1603,6 +1603,128 @@ function _sanitizeAdminCfgs(raw) {
     }
   });
   return cleaned;
+}
+function _escapeHtml(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, function (ch) {
+    return ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;'
+    })[ch];
+  });
+}
+function _sanitizeRichHtml(html) {
+  if (typeof html !== 'string' || !html) return '';
+  var template = document.createElement('template');
+  template.innerHTML = html;
+  var allowedTags = {
+    b: true,
+    strong: true,
+    i: true,
+    em: true,
+    u: true,
+    s: true,
+    strike: true,
+    br: true,
+    div: true,
+    p: true,
+    span: true,
+    ul: true,
+    ol: true,
+    li: true,
+    font: true
+  };
+  var blockedTags = {
+    script: true,
+    style: true,
+    iframe: true,
+    object: true,
+    embed: true,
+    link: true,
+    meta: true,
+    svg: true,
+    math: true
+  };
+  var allowedStyles = {
+    color: true,
+    background: true,
+    'background-color': true,
+    'font-weight': true,
+    'font-style': true,
+    'font-size': true,
+    'text-decoration': true,
+    'text-decoration-line': true,
+    'text-underline-offset': true,
+    'border-radius': true,
+    padding: true,
+    'margin-left': true
+  };
+  var isSafeValue = function (value) {
+    return value && !/url\s*\(|expression\s*\(|javascript:|behavior:|-moz-binding|[<>]/i.test(value);
+  };
+  var sanitizeStyle = function (styleText) {
+    return String(styleText || '').split(';').map(function (part) {
+      var idx = part.indexOf(':');
+      if (idx === -1) return '';
+      var prop = part.slice(0, idx).trim().toLowerCase();
+      var value = part.slice(idx + 1).trim();
+      if (!allowedStyles[prop] || !isSafeValue(value)) return '';
+      return prop + ':' + value;
+    }).filter(Boolean).join(';');
+  };
+  var walk = function (root) {
+    Array.from(root.childNodes).forEach(function (node) {
+      if (node.nodeType === Node.COMMENT_NODE) {
+        node.remove();
+        return;
+      }
+      if (node.nodeType === Node.TEXT_NODE) return;
+      if (node.nodeType !== Node.ELEMENT_NODE) {
+        node.remove();
+        return;
+      }
+      var tag = node.tagName.toLowerCase();
+      if (blockedTags[tag]) {
+        node.remove();
+        return;
+      }
+      if (!allowedTags[tag]) {
+        walk(node);
+        while (node.firstChild) node.parentNode.insertBefore(node.firstChild, node);
+        node.remove();
+        return;
+      }
+      Array.from(node.attributes).forEach(function (attr) {
+        var name = attr.name.toLowerCase();
+        if (name.indexOf('on') === 0 || name === 'href' || name === 'src') {
+          node.removeAttribute(attr.name);
+          return;
+        }
+        if (name === 'style') {
+          var cleanStyle = sanitizeStyle(attr.value);
+          if (cleanStyle) node.setAttribute('style', cleanStyle);else node.removeAttribute('style');
+          return;
+        }
+        if (tag === 'font' && (name === 'color' || name === 'size')) return;
+        node.removeAttribute(attr.name);
+      });
+      walk(node);
+    });
+  };
+  walk(template.content);
+  return template.innerHTML;
+}
+function _sanitizeCfgRichText(cfg) {
+  if (!cfg || typeof cfg !== 'object') return cfg;
+  var next = {
+    ...cfg
+  };
+  delete next.sharedClaudeKey;
+  if (typeof next.callingScript === 'string') next.callingScript = _sanitizeRichHtml(next.callingScript);
+  if (typeof next.refNotes === 'string') next.refNotes = _sanitizeRichHtml(next.refNotes);
+  return next;
 }
 var _cloudDebounceTimers = {};
 var _cloudDebounce = {};
@@ -3396,7 +3518,7 @@ function App() {
     if (emptyNotes > fixed.length * 0.7 && stored.cfg?.sheetId) appStateRef.current._needsRefetch = true;
     return fixed;
   });
-  var [cfg, setCfg] = useState(stored.cfg || {
+  var [cfg, setCfg] = useState(() => _sanitizeCfgRichText(stored.cfg || {
     delay: 10,
     sheetId: '',
     sheetTab: '',
@@ -3411,7 +3533,7 @@ function App() {
     npMax: 5,
     cpl: 0,
     adminCanDelete: false
-  });
+  }));
   var [adminConfigs, setAdminConfigs] = useState(() => _sanitizeAdminCfgs(load('acfg')));
   var [isOffline, setIsOffline] = useState(!navigator.onLine);
   useEffect(() => {
@@ -4091,12 +4213,7 @@ function App() {
   var [payConfigOpen, setPayConfigOpen] = useState(false);
   var [showSlotPicker, setShowSlotPicker] = useState(false);
   var [geminiKeyVal, setGeminiKeyVal] = useState(localStorage.getItem('autodial_gemini') || (role === 'admin' && cfg.sharedGeminiKey ? cfg.sharedGeminiKey : ''));
-  var [claudeKeyVal, setClaudeKeyVal] = useState(localStorage.getItem('autodial_claude_key') || (role === 'admin' && cfg.sharedClaudeKey ? cfg.sharedClaudeKey : ''));
-  useEffect(() => {
-    if (role === 'admin' && cfg.sharedClaudeKey && !localStorage.getItem('autodial_claude_key')) {
-      window._sharedClaudeKey = cfg.sharedClaudeKey;
-    }
-  }, [cfg.sharedClaudeKey, role]);
+  var [claudeKeyVal, setClaudeKeyVal] = useState(localStorage.getItem('autodial_claude_key') || '');
   useEffect(() => {
     if (role !== 'admin' || !_SB || !_user) return;
     var _t = setTimeout(async () => {
@@ -4329,24 +4446,16 @@ function App() {
   useEffect(() => {
     if (claudeKeyVal) {
       localStorage.setItem('autodial_claude_key', claudeKeyVal);
-      if (role === 'main' && mainMode === 'manage' && _SB && window._cloudReady) {
-        setCfg(s => {
-          if (s.sharedClaudeKey === claudeKeyVal) return s;
-          var next = {
-            ...s,
-            sharedClaudeKey: claudeKeyVal
-          };
-          try {
-            _SB.from('autodial_admin_config').upsert({
-              admin_email: 'shared_globalcfg',
-              biz_name: JSON.stringify(next)
-            }, {
-              onConflict: 'admin_email'
-            }).then(() => {}, () => {});
-          } catch (e) {}
-          return next;
-        });
-      }
+      if (_SB && _user && window._cloudReady) _SB.from('autodial_admin_config').upsert({
+        admin_email: 'claude_' + _user.email.toLowerCase(),
+        biz_name: JSON.stringify({
+          key: claudeKeyVal,
+          ts: Date.now(),
+          devId: window._devId
+        })
+      }, {
+        onConflict: 'admin_email'
+      }).catch(function () {});
     }
   }, [claudeKeyVal]);
   useEffect(() => {
@@ -4370,16 +4479,18 @@ function App() {
     };
   }, [role]);
   var [scriptOpen, setScriptOpen] = useState(load('scriptOpen') ?? true);
-  var [scriptContent, setScriptContent] = useState(cfg.callingScript || '');
+  var [scriptContent, setScriptContent] = useState(_sanitizeRichHtml(cfg.callingScript || ''));
   var [scriptEditing, setScriptEditing] = useState(false);
-  var [refNotes, setRefNotes] = useState(cfg.refNotes || '');
+  var [refNotes, setRefNotes] = useState(_sanitizeRichHtml(cfg.refNotes || ''));
   var [refEditing, setRefEditing] = useState(false);
   useEffect(() => {
     save('scriptOpen', scriptOpen);
   }, [scriptOpen]);
   var fillScript = (text, lead) => {
-    if (!text || !lead) return text || '';
-    return text.replace(/\{\{name\}\}/gi, lead.name || '').replace(/\{\{phone\}\}/gi, lead.phone || '').replace(/\{\{age\}\}/gi, lead.age || '?').replace(/\{\{race\}\}/gi, lead.race || '').replace(/\{\{gender\}\}/gi, lead.gender || '').replace(/\{\{email\}\}/gi, lead.email || '').replace(/\{\{income\}\}/gi, lead.income || '').replace(/\{\{notes\}\}/gi, lead.notes || '').replace(/\{\{status\}\}/gi, (lead.status || 'pending').toUpperCase()).replace(/\{\{npcount\}\}/gi, String(lead.npCount || 0)).replace(/\{\{admin\}\}/gi, userName).replace(/\{\{company\}\}/gi, 'PolicyLens');
+    if (!text || !lead) return _sanitizeRichHtml(text || '');
+    var clean = _sanitizeRichHtml(text);
+    var val = v => _escapeHtml(v == null ? '' : v);
+    return clean.replace(/\{\{name\}\}/gi, val(lead.name)).replace(/\{\{phone\}\}/gi, val(lead.phone)).replace(/\{\{age\}\}/gi, val(lead.age || '?')).replace(/\{\{race\}\}/gi, val(lead.race)).replace(/\{\{gender\}\}/gi, val(lead.gender)).replace(/\{\{email\}\}/gi, val(lead.email)).replace(/\{\{income\}\}/gi, val(lead.income)).replace(/\{\{notes\}\}/gi, val(lead.notes)).replace(/\{\{status\}\}/gi, val((lead.status || 'pending').toUpperCase())).replace(/\{\{npcount\}\}/gi, val(String(lead.npCount || 0))).replace(/\{\{admin\}\}/gi, val(userName)).replace(/\{\{company\}\}/gi, 'PolicyLens');
   };
   var [learnedPatterns, setLearnedPatterns] = useState(load('learned') || {});
   var learnStatus = (remark, status) => {
@@ -4564,22 +4675,23 @@ function App() {
     }
   };
   useEffect(() => {
+    var cleanCfg = _sanitizeCfgRichText(cfg);
     var _cfgTs = Date.now();
     save('data', {
       leads,
-      cfg,
+      cfg: cleanCfg,
       _cfgTs
     });
     cloudSave('data', {
       leads,
-      cfg,
+      cfg: cleanCfg,
       _cfgTs
     });
     if (_SB && _user && window._cloudReady) {
       _SB.from('autodial_admin_config').upsert({
         admin_email: 'usercfg_' + _user.email.toLowerCase(),
         biz_name: JSON.stringify({
-          ...cfg,
+          ...cleanCfg,
           _leadsCount: leads.length,
           _lastSync: Date.now()
         })
@@ -4592,8 +4704,8 @@ function App() {
     if (role !== 'main' || !_SB || !window._cloudReady) return;
     if (!cfg.callingScript && !cfg.refNotes) return;
     var payload = {
-      html: cfg.callingScript || '',
-      notes: cfg.refNotes || '',
+      html: _sanitizeRichHtml(cfg.callingScript || ''),
+      notes: _sanitizeRichHtml(cfg.refNotes || ''),
       ts: Date.now()
     };
     _SB.from('autodial_admin_config').upsert({
@@ -5081,8 +5193,8 @@ function App() {
               var gr = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'shared_globalcfg').maybeSingle();
               if (gr.data && gr.data.biz_name) {
                 try {
-                  var globalCfg = JSON.parse(gr.data.biz_name);
-                  var GLOBAL_OVERWRITE = ['sharedGeminiKey', 'sharedClaudeKey', 'payRates', 'tierMins', 'sessionDur', 'mThresh', 'nThresh', 'bonusMult', 'metIncentive', 'starThresholds', 'npMax', 'cpl', 'delay', 'callingScript', 'refNotes'];
+                  var globalCfg = _sanitizeCfgRichText(JSON.parse(gr.data.biz_name));
+                  var GLOBAL_OVERWRITE = ['sharedGeminiKey', 'payRates', 'tierMins', 'sessionDur', 'mThresh', 'nThresh', 'bonusMult', 'metIncentive', 'starThresholds', 'npMax', 'cpl', 'delay', 'callingScript', 'refNotes'];
                   setCfg(p => {
                     var merged = {
                       ...p
@@ -5093,9 +5205,8 @@ function App() {
                     GLOBAL_OVERWRITE.forEach(k => {
                       if (globalCfg[k] !== undefined) merged[k] = globalCfg[k];
                     });
-                    return merged;
+                    return _sanitizeCfgRichText(merged);
                   });
-                  if (globalCfg.sharedClaudeKey && !localStorage.getItem('autodial_claude_key')) window._sharedClaudeKey = globalCfg.sharedClaudeKey;
                   DBG('[AutoDial] Loaded global config');
                 } catch (pe) {}
               }
@@ -5110,8 +5221,8 @@ function App() {
                 if (s.html) {
                   setCfg(p => ({
                     ...p,
-                    callingScript: s.html,
-                    refNotes: s.notes || p.refNotes || ''
+                    callingScript: _sanitizeRichHtml(s.html),
+                    refNotes: _sanitizeRichHtml(s.notes || p.refNotes || '')
                   }));
                   DBG('[AutoDial] Loaded shared script from Main');
                 }
@@ -5277,7 +5388,7 @@ function App() {
             setLeads(validated);
             var _cloudTs = cloud.leads._cfgTs || 0,
               _localTs2 = stored._cfgTs || 0;
-            if (cloud.leads.cfg && (_cloudTs > _localTs2 || !stored.cfg)) setCfg(prev => ({
+            if (cloud.leads.cfg && (_cloudTs > _localTs2 || !stored.cfg)) setCfg(prev => _sanitizeCfgRichText({
               ...prev,
               ...cloud.leads.cfg
             }));
@@ -5285,7 +5396,7 @@ function App() {
           } else if (cloud.leads?.cfg && !cfg.sheetId) {
             var _cloudTs2 = cloud.leads._cfgTs || 0,
               _localTs3 = stored._cfgTs || 0;
-            if (_cloudTs2 > _localTs3 || !stored.cfg) setCfg(prev => ({
+            if (_cloudTs2 > _localTs3 || !stored.cfg) setCfg(prev => _sanitizeCfgRichText({
               ...prev,
               ...cloud.leads.cfg
             }));
@@ -6204,16 +6315,6 @@ function App() {
           }
         } catch (e) {}
       }
-      if (typeof remote.claudeApiKey === 'string' && remote.claudeApiKey) {
-        try {
-          var _cur2 = localStorage.getItem('autodial_claude_key') || '';
-          if (remote.claudeApiKey !== _cur2) {
-            setClaudeKeyVal(remote.claudeApiKey);
-            localStorage.setItem('autodial_claude_key', remote.claudeApiKey);
-            DBG('[LiveSync] applied remote Claude API key');
-          }
-        } catch (e) {}
-      }
       if (remote.gamify && typeof remote.gamify === 'object') {
         if (typeof remote.gamify.bs === 'number' && remote.gamify.bs > 0) {
           setBestStreak(prev => remote.gamify.bs > prev ? remote.gamify.bs : prev);
@@ -6673,7 +6774,6 @@ function App() {
           dailySets: dailySetsState,
           dailySetsDate: getTodaySGT(),
           totalSets: totalSets,
-          claudeApiKey: role !== 'admin' ? localStorage.getItem('autodial_claude_key') || '' : '',
           gamify: {
             bs: bestStreak || 0,
             ach: Array.isArray(achievements) ? achievements : []
@@ -18630,7 +18730,7 @@ function App() {
       fontWeight: 400,
       color: 'var(--text3)'
     }
-  }, role === 'admin' ? '(auto-applied by manager)' : '(smarter sheet analysis)')), role === 'admin' ? React.createElement(React.Fragment, null, React.createElement("input", {
+  }, "(per-user sync)")), false ? React.createElement(React.Fragment, null, React.createElement("input", {
     value: cfg.sharedClaudeKey || localStorage.getItem('autodial_claude_key') ? '••••••••••••••••••••••••••••••••••••••••••' : '',
     disabled: true,
     placeholder: "Waiting for manager to share key\u2026",
@@ -18677,7 +18777,7 @@ function App() {
       fontSize: 10,
       color: claudeKeyVal ? 'var(--green)' : 'var(--text3)'
     }
-  }, claudeKeyVal ? '✓ Key saved — synced to your account · Claude will analyze your leads' : 'No key — using Gemini only'), isManageMode && React.createElement("button", {
+  }, claudeKeyVal ? '✓ Key saved — synced to your account · Claude will analyze your leads' : 'No key — using Gemini only'), false && React.createElement("button", {
     onClick: () => {
       if (!claudeKeyVal) return toast('Enter key first', 'err');
       setCfg(s => ({
@@ -18695,7 +18795,7 @@ function App() {
       fontWeight: 600,
       marginTop: 6
     }
-  }, "Share key with admins"), role === 'admin' && cfg.sharedClaudeKey && !claudeKeyVal && React.createElement("p", {
+  }, "Share key with admins"), false && role === 'admin' && cfg.sharedClaudeKey && !claudeKeyVal && React.createElement("p", {
     style: {
       fontSize: 10,
       color: 'var(--green)',
@@ -24510,10 +24610,14 @@ WHERE p.id IS NULL;`;
     }
   }, scriptEditing ? React.createElement("button", {
     onClick: () => {
+      var cleanScript = _sanitizeRichHtml(scriptContent);
+      var cleanNotes = _sanitizeRichHtml(refNotes);
+      setScriptContent(cleanScript);
+      setRefNotes(cleanNotes);
       setCfg(s => ({
         ...s,
-        callingScript: scriptContent,
-        refNotes
+        callingScript: cleanScript,
+        refNotes: cleanNotes
       }));
       setScriptEditing(false);
       setRefEditing(false);
@@ -24826,11 +24930,15 @@ WHERE p.id IS NULL;`;
     suppressContentEditableWarning: true,
     ref: el => {
       if (el && !el._init && (cfg.callingScript || scriptContent)) {
-        el.innerHTML = cfg.callingScript || scriptContent;
+        el.innerHTML = _sanitizeRichHtml(cfg.callingScript || scriptContent);
         el._init = true;
       }
     },
-    onInput: e => setScriptContent(e.currentTarget.innerHTML),
+    onInput: e => {
+      var clean = _sanitizeRichHtml(e.currentTarget.innerHTML);
+      if (clean !== e.currentTarget.innerHTML) e.currentTarget.innerHTML = clean;
+      setScriptContent(clean);
+    },
     style: {
       background: 'var(--bg)',
       border: '1px solid var(--border2)',
@@ -24847,10 +24955,10 @@ WHERE p.id IS NULL;`;
     },
     dangerouslySetInnerHTML: {
       __html: fillScript(cfg.callingScript || scriptContent, cur || {
-        name: '<span style="color:#818cf8;font-weight:700">[Lead Name]</span>',
+        name: '[Lead Name]',
         phone: '[Phone]',
-        age: '<span style="color:#818cf8">[Age]</span>',
-        race: '<span style="color:#818cf8">[Race]</span>',
+        age: '[Age]',
+        race: '[Race]',
         gender: '[Gender]'
       })
     }
@@ -24909,9 +25017,11 @@ WHERE p.id IS NULL;`;
     }
   }, "\uD83D\uDCD2 REFERENCE NOTES"), refEditing ? React.createElement("span", {
     onClick: () => {
+      var cleanNotes = _sanitizeRichHtml(refNotes);
+      setRefNotes(cleanNotes);
       setCfg(s => ({
         ...s,
-        refNotes
+        refNotes: cleanNotes
       }));
       setRefEditing(false);
       toast('Notes saved ✓');
@@ -24926,11 +25036,15 @@ WHERE p.id IS NULL;`;
     suppressContentEditableWarning: true,
     ref: el => {
       if (el && !el._init && (cfg.refNotes || refNotes)) {
-        el.innerHTML = cfg.refNotes || refNotes;
+        el.innerHTML = _sanitizeRichHtml(cfg.refNotes || refNotes);
         el._init = true;
       }
     },
-    onInput: e => setRefNotes(e.currentTarget.innerHTML),
+    onInput: e => {
+      var clean = _sanitizeRichHtml(e.currentTarget.innerHTML);
+      if (clean !== e.currentTarget.innerHTML) e.currentTarget.innerHTML = clean;
+      setRefNotes(clean);
+    },
     style: {
       background: 'var(--bg2)',
       border: '1px solid var(--border2)',
@@ -24946,7 +25060,7 @@ WHERE p.id IS NULL;`;
       fontFamily: 'inherit'
     },
     dangerouslySetInnerHTML: {
-      __html: cfg.refNotes || refNotes
+      __html: _sanitizeRichHtml(cfg.refNotes || refNotes)
     }
   }) : React.createElement("div", {
     style: {

@@ -1,6 +1,6 @@
-# 📞 AutoDial — User Guide
+# 📞 AutoDial Pro — User Guide
 
-**The cold-calling power tool
+**The cold-calling power tool**
 
 ### For Mains (Callers)
 
@@ -159,7 +159,9 @@ Claude analyzes your Google Sheet with 6 layers of intelligence:
 2. Add $5 credit and create an API key
 3. Open AutoDial → **Settings** → **🧠 Claude AI** section
 4. Paste your `sk-ant-...` key
-5. It's saved in your browser only — never shared
+5. It's saved to your signed-in AutoDial account and synced across your own devices
+
+**Key privacy:** Claude keys are user-specific. The app stores each key in that user's own Supabase row (`claude_<email>`) so it can follow the same user across devices. Apply the RLS policy in [`supabase/rls-autodial-admin-config.sql`](supabase/rls-autodial-admin-config.sql) so authenticated users can read or update only their own Claude-key row.
 
 **Cost:** ~$0.04 per fetch. With 1-2 fetches/day = **~$2-4/month per user**.
 
@@ -168,6 +170,10 @@ No Claude key? Falls back to Gemini (free) or manual parsing.
 ### Gemini AI (Free Fallback)
 
 If no Claude key is set, AutoDial uses Google Gemini. Add your Gemini key in **Settings → 🤖 Gemini AI**.
+
+### Rich Text Script Safety
+
+Calling scripts and reference notes support basic formatting such as bold, italic, underline, colors, highlights, lists, and spacing. AutoDial sanitizes saved HTML before syncing or rendering so unsafe tags, event handlers, links, images, scripts, and unapproved styles are stripped.
 
 ### 🔧 Manual Column Override
 
@@ -250,6 +256,7 @@ AutoDial uses a Cloudflare Worker for permanent Google auth:
 Everything syncs across devices via Supabase:
 
 - Leads, settings, appointments, sessions, stars, achievements
+- Each user's own Claude API key, scoped to that signed-in user
 - Start a session on desktop → continue on phone
 - End a session on one device → other device detects it automatically
 - Deleted appointments sync across devices (can't come back)
@@ -323,7 +330,12 @@ AutoDial auto-detects these from your sheet remarks:
 | "OFFLINE" showing | Check internet. Changes will sync when back |
 | Dial loops to same lead | Update to latest version (pre-computed navigation) |
 | Claude AI not working | Check your API key in Settings → 🧠 Claude AI |
+| Claude key not syncing | Confirm Supabase RLS policies from `supabase/rls-autodial-admin-config.sql` were applied |
 
 ---
+
+## 🛠 Development Notes
+
+AutoDial currently ships as a pre-compiled single-file React app in `index.html`. Keep production fixes surgical there, but future feature work should move toward the source/build plan in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) so changes happen in readable components before compiling to the deployed file.
 
 *AutoDial Pro — Dial Smarter. Rank Higher. Close Faster.* 🚀
