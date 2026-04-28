@@ -10,13 +10,13 @@
 - Filtered live activity, callback priority cards, duplicate merge tools, and stronger management analytics.
 - V2-isolated PWA cache so this version can be tested separately from the original AutoDial app.
 
-### For Mains (Callers)
+### For Mains
 
 1. Log in → select **Main** role
 2. Wait for Owner approval (one-time)
-3. Your admin will assign you a leads sheet
-4. Go to **Leads** tab → **Fetch Leads** → start dialing!
-5. Earn ⭐ stars with every dial and rank up monthly
+3. Use **Management** mode to assign sheets, calendars, rules, and payroll for admins
+4. Switch to **Call** mode when you personally want to dial
+5. Main self-calls earn rank/stars and appointments, but **do not create payroll**
 
 ### For Admins
 
@@ -24,7 +24,7 @@
 2. Wait for Owner approval (one-time)
 3. Your leads sheet will be linked by the Main/Owner
 4. Go to **Leads** tab → **Fetch Leads** to load contacts
-5. Track your Main's appointments and session stats
+5. Admin sessions are the paid external-caller sessions tracked in Timesheet/Pay
 
 ---
 
@@ -70,7 +70,7 @@ You'll see the lead's name, phone, age, gender, email, and any remarks from the 
 
 ### ↩️ 10-Second Undo
 
-After NI or NP auto-advance, a gold **↩️ Undo** bar appears for 10 seconds. Tap it to reverse the status and jump back to that lead. Disappears automatically after 10 seconds.
+After NI or NP auto-advance, a gold **↩️ Undo** bar appears for 10 seconds. Tap it to reverse the status and jump back to that lead. Set undo stays visible after appointment capture and shows a cleanup trail for lead status, Calendar, Supabase, lead sheet, and appointment sheet cleanup.
 
 ---
 
@@ -200,6 +200,8 @@ AutoDial works without internet:
 - Leads are cached in your browser — keep calling even if WiFi drops
 - Status changes (NI/NP/CB/Set) queue locally
 - Sheet write-backs batch in a queue and flush when online
+- Queued sheet writes are preserved if Google is disconnected, instead of being dropped
+- Set undo reverts the lead write-back and marks the appointment-sheet row as undone when the appended row is known
 - When connection returns: **"📶 Back online — syncing…"**
 - **OFFLINE** badge appears in the header when disconnected
 
@@ -268,12 +270,15 @@ Everything syncs across devices via Supabase:
 - Start a session on desktop → continue on phone
 - End a session on one device → other device detects it automatically
 - Deleted appointments sync across devices (can't come back)
+- Live activity labels distinguish external **Admin** calls from **Main self-call** activity
 
 ---
 
 ## 📊 Status Abbreviations
 
 AutoDial auto-detects these from your sheet remarks:
+
+Phone detection is Singapore-mobile first: 8-digit numbers starting with 8/9, or +65/65 followed by 8/9. Transaction IDs, order IDs, dates, money, postal codes, NRIC-like values, and row numbers are rejected unless surrounding lead context makes them clearly a phone column.
 
 | Remark | Status | Meaning |
 |--------|--------|---------|

@@ -288,7 +288,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.28.0003';
+window.APP_VERSION='2026.04.28.0004';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -920,14 +920,14 @@ window.gSheets={
   },
   async writeBack(id,tab,row,col,val){
     // Write a value back to a specific cell
-    try{var colLetter='';var c=col;while(c>=0){colLetter=String.fromCharCode(65+(c%26))+colLetter;c=Math.floor(c/26)-1}
+    try{var colLetter=a1Col(col);
       await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab)+'!'+colLetter+row+'?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[[val]]})});return true}catch(e){return false}
   },
   async addColumn(id,tab,headerName){
     // Add a new column at the end with the given header
     try{var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab)+'!1:1')).json();
       var headers=vals.values?vals.values[0]:[];var newCol=headers.length;
-      var colLetter=String.fromCharCode(65+newCol);
+      var colLetter=a1Col(newCol);
       await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab)+'!'+colLetter+'1?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[[headerName]]})});
       return newCol}catch(e){return-1}
   },
@@ -937,8 +937,20 @@ window.gSheets={
       adminName,appt.name||'',appt.phone||'',appt.apptDate||'',appt.apptTime||'',
       appt.location||'',appt.duration||60,'Set','Pending',appt.tip||appt.efyc||0,appt.remarks||''
     ];
-    await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent('Appointments Set')+'!A:L:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
-      {method:'POST',body:JSON.stringify({values:[row]})});return true}catch(e){return false}
+    var res=await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent('Appointments Set')+'!A:L:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
+      {method:'POST',body:JSON.stringify({values:[row]})});
+    try{return await res.json()}catch(_e){return{ok:true}}}catch(e){return false}
+  },
+  async markApptUndo(id,appendRange,actor){
+    try{
+      var m=String(appendRange||'').match(/!A(\d+):/);
+      if(!m)return false;
+      var row=m[1];
+      await this.put(id,'Appointments Set!I'+row,'Undone');
+      await this.put(id,'Appointments Set!J'+row,'Undo');
+      await this.put(id,'Appointments Set!L'+row,'Undone by '+(actor||'AutoDial')+' '+new Date().toLocaleString());
+      return true
+    }catch(e){return false}
   },
   async appendPay(id,payment){
     try{var row=[
@@ -969,7 +981,7 @@ const PROMPTS={
     '{\n  "columns": {\n    "phone": <0-based index or -1>,\n    "first_name": <index or -1>,\n    "last_name": <index or -1>,\n    "full_name": <index or -1>,\n    "email": <index or -1>,\n    "age": <index or -1>,\n    "nric": <index or -1>,\n    "birthday": <index or -1>,\n    "race": <index or -1>,\n    "income": <index or -1>,\n    "savings": <index or -1>,\n    "company": <index or -1>,\n    "gender": <index or -1>,\n    "status": <index or -1>,\n    "remarks": <index or -1>\n  },\n'+
     '  "statuses": [\n    {"row":1, "status":"pending|np|cb|ni|set", "np_count":0, "notes":"original remarks text", "cb_date":"YYYY-MM-DD", "cb_time":"HH:MM", "computed_age": <number or null>}\n  ]\n}\n\n'+
     'RULES:\n'+
-    '- "Transaction ID" or 8-digit number columns = phone\n'+
+    '- Phone columns must look like Singapore mobile numbers: 8 digits starting 8/9, or +65/65 followed by 8/9. Do NOT treat Transaction ID, order ID, postal code, money, date, NRIC, or row-number columns as phone unless the same rows also contain lead names/status/remarks and no better phone column exists.\n'+
     '- "Residential Status" = race\n'+
     '- NRIC DETECTION: Singapore NRIC can be [STFGM]\\d{7}[A-Z] (full) OR just \\d{7}[A-Z] (partial, no prefix) (e.g. S9012345A, T0512345B). If a column has NRIC values:\n'+
     '  * Map it as "nric" column\n'+
@@ -1010,7 +1022,7 @@ const PROMPTS={
     'Return JSON:\n{\n  "columns": {\n    "phone": <0-based col index or -1>,\n    "first_name": <index or -1>,\n    "last_name": <index or -1>,\n    "full_name": <index or -1>,\n    "email": <index or -1>,\n    "age": <index or -1>,\n    "nric": <index or -1>,\n    "birthday": <index or -1>,\n    "race": <index or -1>,\n    "gender": <index or -1>,\n    "status": <index or -1>,\n    "remarks": <index or -1>\n  },\n'+
     '  "statuses": [\n    {"row":1, "status":"pending|np|cb|ni|set", "np_count":0, "notes":"original remarks text", "computed_age":<number or null>}\n  ]\n}\n\n'+
     'RULES:\n'+
-    '- Singapore phones: 8 digits starting with 8 or 9. With +65 prefix = same. "Transaction ID" that looks like 8-digit number starting with 8/9 = phone\n'+
+    '- Singapore phones: 8 digits starting with 8 or 9. With +65/65 prefix = same. Do NOT map Transaction ID, order ID, postal code, money, date, NRIC, or row-number columns as phone unless context strongly proves they are lead contact numbers and there is no better phone column\n'+
     '- Dates like DD-MM-YYYY or DD/MM/YYYY = birthday, NOT phone. Calculate age from birthday\n'+
     '- "Residential Status" = race column\n'+
     '- NRIC: Full format [STFGM]\\d{7}[A-Z] OR partial format \\d{7}[A-Z] (without prefix). If a column has these values, map it as nric column. Calculate age from NRIC, NEVER put raw NRIC in notes or remarks\n'+
@@ -1099,7 +1111,7 @@ window.claudePostProcess=async function(leads,headers,rawRows,colMap){
       var ri=(l.sheetRow||0)-2;var rowData=ri>=0&&ri<rawRows.length?rawRows[ri]:[];
       nameless.push({idx:i,phone:l.phone,row:rowData.map(function(v){return String(v||'').slice(0,40)}).slice(0,10)})}
   });
-  if(!unrec.length&&!nameless.length&&colMap)return leads; // Nothing to fix
+  if(!unrec.length&&!nameless.length&&!colMap)return leads; // Nothing to fix
   var prompt=PROMPTS.claudePostProcess(colMap,headers,rawRows,unrec,nameless);
   try{
     var r=await fetch(WORKER_URL+'/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
@@ -1122,6 +1134,9 @@ window.claudePostProcess=async function(leads,headers,rawRows,colMap){
     if(result.low_confidence_columns?.length){
       window._claudeConfidence=result.confidence||{};window._lowConfCols=result.low_confidence_columns;
       console.warn('[Claude] Low confidence columns:',result.low_confidence_columns)}
+    if(result.column_fixes&&colMap){
+      window._claudeColumnFixes=result.column_fixes;
+      console.info('[Claude] Suggested column fixes:',result.column_fixes)}
     if(result.warnings?.length)result.warnings.forEach(function(w){console.warn('[Claude]',w)});
     if(fixes)DBG('[Claude] Post-process fixed',fixes,'leads');
     return updated}
@@ -1371,9 +1386,17 @@ window.DB={
   async getCallLog(sessionId){if(!_SB)return[];try{var r=await _SB.from('autodial_call_log').select('*').eq('session_id',sessionId).order('ts',{ascending:true});return r.data||[]}catch(e){return[]}},
 
   // Appointments
-  async saveAppt(a,uid){if(!_SB)return;try{await _SB.from('autodial_appointments').insert({
+  async saveAppt(a,uid){if(!_SB)return null;try{var payload={
     admin_id:uid,admin_email:a.admin||'',lead_name:a.name,lead_phone:a.phone,appt_date:a.apptDate,appt_time:a.apptTime,
-    duration_mins:a.duration||60,calendar_event_id:a.calEventId||'',invite_emails:a.inviteEmails||'',shaky:!!a.shaky})}catch(e){console.warn('[saveAppt] If this is a schema error, run: alter table autodial_appointments add column shaky boolean default false;',e?.message||e)}},
+    duration_mins:a.duration||60,calendar_event_id:a.calEventId||'',invite_emails:a.inviteEmails||'',shaky:!!a.shaky};
+    var ins=await _SB.from('autodial_appointments').insert(payload);if(ins.error)throw ins.error;
+    if(a.calEventId){var r=await _SB.from('autodial_appointments').select('*').eq('calendar_event_id',a.calEventId).maybeSingle();return r?.data||null}
+    return null}catch(e){console.warn('[saveAppt] If this is a schema error, run: alter table autodial_appointments add column shaky boolean default false;',e?.message||e);return null}},
+  async deleteApptUndo(a){if(!_SB)return{ok:false,skipped:true,errors:['Supabase not connected']};var ok=false;var errors=[];try{
+    if(a.rowId){var r1=await _SB.from('autodial_appointments').delete().eq('id',a.rowId);if(r1.error)errors.push(r1.error.message);else ok=true}
+    if(a.calEventId){var r2=await _SB.from('autodial_appointments').delete().eq('calendar_event_id',a.calEventId);if(r2.error)errors.push(r2.error.message);else ok=true}
+    if(a.phone){var q=_SB.from('autodial_appointments').delete().eq('lead_phone',a.phone);if(a.admin)q=q.eq('admin_email',a.admin);var r3=await q.eq('follow_up','pending');if(r3.error)errors.push(r3.error.message);else ok=true}
+  }catch(e){errors.push(e?.message||String(e))}return{ok,errors}},
   // Update shaky flag on existing appointment — matched by admin+phone+date (no id required)
   async updateApptShaky(adminEmail,phone,apptDate,shaky){if(!_SB)return false;try{
     const q=_SB.from('autodial_appointments').update({shaky:!!shaky}).eq('lead_phone',phone||'').eq('appt_date',apptDate||'');
@@ -2512,17 +2535,43 @@ function fuzzyStatusMatch(text) {
   return bestMatch;
 }
 window.fuzzyStatusMatch = fuzzyStatusMatch;
-function isPhoneLike(v) {
-  if (!v) return false;
+function a1Col(idx) {
+  var col = '';
+  var n = Number(idx);
+  if (!isFinite(n) || n < 0) return '';
+  while (n >= 0) {
+    col = String.fromCharCode(65 + n % 26) + col;
+    n = Math.floor(n / 26) - 1;
+  }
+  return col;
+}
+function phoneConfidence(v, header) {
+  if (!v) return 0;
   var s = String(v).trim();
-  if (/^\d{1,2}[-\/\.]\d{1,2}[-\/\.]\d{2,4}$/.test(s)) return false;
-  if (/^\d{4}[-\/\.]\d{1,2}[-\/\.]\d{1,2}$/.test(s)) return false;
-  var clean = s.replace(/[\s\-().+]/g, '');
-  if (!/^\d{7,15}$/.test(clean)) return false;
-  if (clean.length === 8) return /^[89]/.test(clean);
-  if (clean.length === 10 && clean.startsWith('65')) return /^65[89]/.test(clean);
-  if (clean.length === 11 && clean.startsWith('65')) return /^65[89]/.test(clean);
-  return clean.length >= 7;
+  var h = String(header || '').toLowerCase();
+  if (!s) return 0;
+  if (/^[stfgm]?\d{7}[a-z]$/i.test(s.replace(/\s+/g, ''))) return 0;
+  if (/^\d{1,2}[-\/\.]\d{1,2}[-\/\.]\d{2,4}$/.test(s)) return 0;
+  if (/^\d{4}[-\/\.]\d{1,2}[-\/\.]\d{1,2}$/.test(s)) return 0;
+  if (/[$€£]|sgd|usd|salary|income|amount/i.test(s)) return 0;
+  var clean = s.replace(/[^\d]/g, '');
+  if (!/^\d{7,15}$/.test(clean)) return 0;
+  var looksMobile = clean.length === 8 && /^[89]/.test(clean) || (clean.length === 10 || clean.length === 11) && clean.startsWith('65') && /^65[89]/.test(clean);
+  var headerPhone = /phone|mobile|tel|cell|whatsapp|contact|hp\b|handphone/i.test(h);
+  var headerId = /transaction|order|invoice|receipt|ref|reference|id\b|postal|zip|unit|block/i.test(h);
+  if (looksMobile) return headerId && !headerPhone ? 72 : headerPhone ? 98 : 90;
+  if (headerPhone && clean.length >= 7 && clean.length <= 15 && !headerId) return 62;
+  return 0;
+}
+function isPhoneLike(v, header) {
+  return phoneConfidence(v, header) >= 72;
+}
+function normalizePhone(v) {
+  var clean = String(v || '').replace(/[^\d+]/g, '');
+  var digits = clean.replace(/[^\d]/g, '');
+  if (digits.length === 8 && /^[89]/.test(digits)) return digits;
+  if ((digits.length === 10 || digits.length === 11) && digits.startsWith('65') && /^65[89]/.test(digits)) return digits.slice(0, 2) + digits.slice(-8);
+  return clean.replace(/^\+/, '');
 }
 function isEmailLike(v) {
   return v && /@/.test(String(v));
@@ -2541,6 +2590,7 @@ function isNameLike(v) {
   if (/^\d+$/.test(s)) return false;
   if (/^(m|f|male|female|mr|mrs|ms)$/i.test(s)) return false;
   if (/singapore|citizen|pr|chinese|malay|indian/i.test(s)) return false;
+  if (/^(pending|np|ni|cb|set|appt|appointment|status|remarks?|notes?|source|lead|facebook|instagram|tiktok|website|referral|voucher|gift|shopping|company|industry|occupation|income|salary)$/i.test(s)) return false;
   return /^[a-zA-Z\s\-'.,]+$/.test(s) && s.split(/\s+/).length <= 5;
 }
 function isHeaderLike(v) {
@@ -2599,6 +2649,8 @@ function detectBatchColumns(rows, startRow, endRow) {
     age: -1,
     gender: -1,
     race: -1,
+    status: -1,
+    source: -1,
     remarks: -1
   };
   var colScores = [];
@@ -2611,6 +2663,11 @@ function detectBatchColumns(rows, startRow, endRow) {
     var ageHits = vals.filter(isAgeLike).length;
     var nameHits = vals.filter(isNameLike).length;
     var remarkHits = vals.filter(isRemarksLike).length;
+    var statusHits = vals.filter(function (v) {
+      var t = String(v || '').trim().toLowerCase();
+      if (!t || t.length > 80) return false;
+      return /^(ni|n\.i\.?|np|np\s*x?\s*\d+|cb|callback|call back|set|appt set|appointment set|pending|wrong number|wn|dnc|deceased)$/i.test(t) || !!fuzzyStatusMatch(t);
+    }).length;
     var genderHits = vals.filter(function (v) {
       return /^(m|f|male|female|mr|mrs|ms|miss|mdm)$/i.test(v.trim());
     }).length;
@@ -2637,6 +2694,7 @@ function detectBatchColumns(rows, startRow, endRow) {
       name: nameHits,
       gender: genderHits,
       race: raceHits,
+      status: statusHits,
       remarks: remarkHits,
       source: sourceHits,
       dob: dobHits,
@@ -2731,6 +2789,15 @@ function detectBatchColumns(rows, startRow, endRow) {
   map.allRemarks = remarkCandidates.map(function (c) {
     return c.col;
   });
+  var statusBest = colScores.filter(function (c) {
+    return c.status >= 2 && !assigned.has(c.col);
+  }).sort(function (a, b) {
+    return b.status - a.status;
+  })[0];
+  if (statusBest) {
+    map.status = statusBest.col;
+    assigned.add(statusBest.col);
+  }
   var sourceBest = colScores.filter(function (c) {
     return c.source >= 2 && !assigned.has(c.col);
   }).sort(function (a, b) {
@@ -2740,6 +2807,13 @@ function detectBatchColumns(rows, startRow, endRow) {
     map.source = sourceBest.col;
     assigned.add(sourceBest.col);
   }
+  map.confidence = {};
+  colScores.forEach(function (c) {
+    if (map.phone === c.col) map.confidence.phone = Math.min(99, Math.round(c.phone / Math.max(1, c.total) * 100));
+    if (map.name === c.col || map.first === c.col || map.last === c.col) map.confidence.name = Math.max(map.confidence.name || 0, Math.min(99, Math.round(c.name / Math.max(1, c.total) * 100)));
+    if (map.status === c.col) map.confidence.status = Math.min(99, Math.round(c.status / Math.max(1, c.total) * 100));
+    if (map.remarks === c.col) map.confidence.remarks = Math.min(99, Math.round(c.remarks / Math.max(1, c.total) * 100));
+  });
   return map;
 }
 function detectBatches(headers, rows) {
@@ -2752,7 +2826,7 @@ function detectBatches(headers, rows) {
   }];
   var primaryPhoneCol = -1;
   for (var i = 0; i < headers.length; i++) {
-    if (/^(phone|tel|mobile|cell|transaction\s*id|transaction|number|whatsapp)$/i.test(String(headers[i]).trim())) {
+    if (/^(phone|tel|mobile|cell|number|whatsapp|hp|handphone|contact)$/i.test(String(headers[i]).trim())) {
       primaryPhoneCol = i;
       break;
     }
@@ -2868,7 +2942,7 @@ function parseBatch(rows, batchInfo) {
     if (!r) continue;
     var ph = String(r[map.phone] || '').trim();
     if (!ph || !isPhoneLike(ph)) continue;
-    ph = ph.replace(/[\s\-().]/g, '');
+    ph = normalizePhone(ph);
     var fn = '',
       ln = '',
       fullName = '';
@@ -2880,13 +2954,31 @@ function parseBatch(rows, batchInfo) {
     var gender = map.gender !== -1 ? String(r[map.gender] || '').trim() : '';
     var race = map.race !== -1 ? String(r[map.race] || '').trim() : '';
     var email = map.email !== -1 ? String(r[map.email] || '').trim() : '';
+    var source = map.source !== -1 ? String(r[map.source] || '').trim() : '';
     var rmk = map.remarks !== -1 ? String(r[map.remarks] || '').trim() : '';
+    var statusText = map.status !== -1 ? String(r[map.status] || '').trim() : '';
     var status = 'pending',
       npCount = 0,
       cbDate = '',
       cbTime = '',
       needsReview = false;
-    if (rmk) {
+    if (statusText) {
+      var stl = statusText.toLowerCase().trim();
+      var sfz = fuzzyStatusMatch(stl);
+      if (/^ni$|^n\.i\.?$|not interested|wrong number|^wn$|dnc|deceased/i.test(stl)) status = 'ni';else if (/^np\s*x?\s*\d*|no pick|no answer/i.test(stl)) {
+        status = 'np';
+        var sm = stl.match(/np\s*x?\s*(\d+)/i);
+        npCount = sm ? parseInt(sm[1]) : 1;
+      } else if (/^cb$|callback|call back/i.test(stl)) {
+        status = 'cb';
+        var sp = parseCBTime(stl);
+        if (sp) {
+          cbDate = sp.cbDate;
+          cbTime = sp.cbTime;
+        }
+      } else if (/^set$|appt|appointment/i.test(stl)) status = 'set';else if (sfz) status = sfz;
+    }
+    if (rmk && status === 'pending') {
       var rl = rmk.toLowerCase().trim();
       var lp = window._learnedPatterns || {};
       if (lp[rl]) status = lp[rl];else if (/^ni$/i.test(rmk.trim()) || /\bnot interested\b/i.test(rl)) status = 'ni';else if (/np\s*x?\s*\d*/i.test(rl) && /np/i.test(rl) && rl.length < 10) {
@@ -2928,6 +3020,7 @@ function parseBatch(rows, batchInfo) {
       race: race,
       income: '',
       gender: gender,
+      source: source,
       status: status,
       npCount: npCount,
       cbDate: cbDate,
@@ -2937,8 +3030,10 @@ function parseBatch(rows, batchInfo) {
       notes: rmk,
       needsReview: needsReview,
       sheetRow: ri + 2,
-      statusCol: map.remarks,
-      _batchIdx: batchInfo.isShifted ? 1 : 0
+      statusCol: map.status !== -1 ? map.status : map.remarks,
+      sheetValue: map.status !== -1 ? statusText : rmk,
+      _batchIdx: batchInfo.isShifted ? 1 : 0,
+      _confidence: map.confidence || {}
     });
   }
   return {
@@ -2970,7 +3065,8 @@ function parseSheetMultiBatch(headers, rows) {
     leads: allLeads,
     count: allLeads.length,
     batches: batches.length,
-    summary: batchSummary
+    summary: batchSummary,
+    _colMap: batches[0]?.colMap || null
   };
 }
 window.parseSheetMultiBatch = parseSheetMultiBatch;
@@ -3010,7 +3106,7 @@ var RE = {
   first: /^(first[_\s]?name|fname|first)$/i,
   last: /^(last[_\s]?name|lname|last|surname)$/i,
   name: /^(full[_\s]?name|name|contact[_\s]?name|client|customer)$/i,
-  phone: /^(phone|tel|mobile|cell|number|whatsapp|transaction\s*id|transaction)$/i,
+  phone: /^(phone|tel|mobile|cell|number|whatsapp|hp|handphone|contact)$/i,
   email: /^(email|e-?mail)$/i,
   age: /^(age)$/i,
   nric: /^(nric|ic|ic.?no|nric.?no|identification|id.?number)$/i,
@@ -3021,7 +3117,8 @@ var RE = {
   company: /^(company|org|business)$/i,
   gender: /^(gender|sex|salutation)$/i,
   status: /^(status|result)$/i,
-  remarks: /^(remarks?|notes?|comments?)$/i
+  remarks: /^(remarks?|notes?|comments?)$/i,
+  source: /^(source|lead.?source|channel|campaign|provider|vendor)$/i
 };
 function parseSheet(rows, h) {
   window._learnedPatterns = window._learnedPatterns || {};
@@ -3032,9 +3129,13 @@ function parseSheet(rows, h) {
   for (var [k, r] of Object.entries(RE)) {
     _loop(r);
   }
+  var inferred = detectBatchColumns(rows, 0, Math.min(rows.length, 25)) || {};
+  ['phone', 'first', 'last', 'name', 'email', 'age', 'gender', 'race', 'remarks', 'status', 'source'].forEach(function (k) {
+    if ((c[k] == null || c[k] === -1) && inferred[k] != null && inferred[k] !== -1) c[k] = inferred[k];
+  });
   if (c.phone === -1) {
     var _loop2 = function (i) {
-      if (rows.slice(0, 15).filter(r => r[i] && /^\d{7,15}$/.test(String(r[i]).replace(/[\s\-().+]/g, ''))).length >= 3) {
+      if (rows.slice(0, 15).filter(r => r[i] && isPhoneLike(r[i], h[i])).length >= 3) {
         c.phone = i;
         return 1;
       }
@@ -3082,7 +3183,8 @@ function parseSheet(rows, h) {
   for (var ri = 0; ri < rows.length; ri++) {
     var _r2 = rows[ri],
       ph = String(_r2[c.phone] || '').trim();
-    if (!ph || ph.length < 5) continue;
+    if (!ph || !isPhoneLike(ph, h[c.phone])) continue;
+    ph = normalizePhone(ph);
     var fn = c.first !== -1 ? String(_r2[c.first] || '').trim() : '',
       ln = c.last !== -1 ? String(_r2[c.last] || '').trim() : '';
     if (!fn && c.name !== -1) fn = String(_r2[c.name] || '').trim();
@@ -3101,12 +3203,29 @@ function parseSheet(rows, h) {
       if (parsed) age = String(parsed.age);
     }
     var rmk = c.remarks !== -1 ? String(_r2[c.remarks] || '').trim() : '';
+    var statusText = c.status !== -1 ? String(_r2[c.status] || '').trim() : '';
     var status = 'pending',
       npCount = 0,
       cbDate = '',
       cbTime = '',
       needsReview = false;
-    if (rmk) {
+    if (statusText) {
+      var stl = statusText.toLowerCase().trim();
+      var sfz = fuzzyStatusMatch(stl);
+      if (/^ni$|^n\.i\.?$|not interested|wrong number|^wn$|dnc|deceased/i.test(stl)) status = 'ni';else if (/^np\s*x?\s*\d*|no pick|no answer/i.test(stl)) {
+        status = 'np';
+        var sm = stl.match(/np\s*x?\s*(\d+)/i);
+        npCount = sm ? parseInt(sm[1]) : 1;
+      } else if (/^cb$|callback|call back/i.test(stl)) {
+        status = 'cb';
+        var sp = parseCBTime(stl);
+        if (sp) {
+          cbDate = sp.cbDate;
+          cbTime = sp.cbTime;
+        }
+      } else if (/^set$|appt|appointment/i.test(stl)) status = 'set';else if (sfz) status = sfz;
+    }
+    if (rmk && status === 'pending') {
       var rl = rmk.toLowerCase().trim();
       var _lp = window._learnedPatterns || {};
       if (_lp[rl]) {
@@ -3156,6 +3275,7 @@ function parseSheet(rows, h) {
       race: c.race !== -1 ? String(_r2[c.race] || '').trim() : '',
       income: c.income !== -1 ? String(_r2[c.income] || '').trim() : '',
       gender: c.gender !== -1 ? String(_r2[c.gender] || '').trim() : '',
+      source: c.source !== -1 ? String(_r2[c.source] || '').trim() : '',
       status,
       npCount,
       cbDate,
@@ -3165,13 +3285,16 @@ function parseSheet(rows, h) {
       notes: rmk,
       needsReview,
       sheetRow: ri + 2,
-      statusCol: c.remarks !== -1 ? c.remarks : c.status !== -1 ? c.status : -1
+      statusCol: c.status !== -1 ? c.status : c.remarks !== -1 ? c.remarks : -1,
+      sheetValue: c.status !== -1 ? statusText : rmk,
+      _confidence: inferred.confidence || {}
     });
   }
   return {
     leads,
     error: null,
-    count: leads.length
+    count: leads.length,
+    colMap: c
   };
 }
 async function aiParse(rows, h) {
@@ -3198,7 +3321,8 @@ async function aiParse(rows, h) {
   for (var ri = 0; ri < rows.length; ri++) {
     var r = rows[ri],
       ph = String(r[c.phone] || '').trim();
-    if (!ph || ph.length < 5) continue;
+    if (!ph || !isPhoneLike(ph, h?.[c.phone])) continue;
+    ph = normalizePhone(ph);
     var fn = '',
       ln = '';
     if (c.first_name !== -1) fn = String(r[c.first_name] || '').trim();
@@ -3233,6 +3357,7 @@ async function aiParse(rows, h) {
       race: c.race !== -1 ? String(r[c.race] || '').trim() : '',
       income: c.income !== -1 ? String(r[c.income] || '').trim() : '',
       gender: c.gender !== -1 ? String(r[c.gender] || '').trim() : '',
+      source: c.source != null && c.source !== -1 ? String(r[c.source] || '').trim() : '',
       status: a.status || 'pending',
       npCount: a.np_count || 0,
       cbDate: a.cb_date || '',
@@ -3241,7 +3366,8 @@ async function aiParse(rows, h) {
       calledAt: null,
       notes,
       sheetRow: ri + 2,
-      statusCol: c.status != null ? c.status : c.remarks != null ? c.remarks : -1
+      statusCol: c.status != null && c.status !== -1 ? c.status : c.remarks != null ? c.remarks : -1,
+      sheetValue: c.status != null && c.status !== -1 ? String(r[c.status] || '').trim() : remarks
     });
   }
   return {
@@ -3269,7 +3395,7 @@ function validateStatuses(leads, rawRows, remarksIdx) {
         var row = rawRows[ri2];
         for (var ci = 0; ci < (row || []).length; ci++) {
           var cv = String(row[ci] || '').trim().toLowerCase().replace(/[^\x20-\x7E]/g, '');
-          if (!cv || cv.length > 20) continue;
+          if (!cv || cv.length > 80) continue;
           if (cv === 'ni' || cv === 'n.i.' || cv === 'n.i' || cv === 'not interested') {
             if (!rmk) rmk = String(row[ci] || '').trim();
             l = Object.assign({}, l, {
@@ -3315,6 +3441,21 @@ function validateStatuses(leads, rawRows, remarksIdx) {
               status: 'set',
               _validated: true,
               notes: rmk || String(row[ci] || '').trim(),
+              statusCol: ci
+            });
+            break;
+          }
+          var fzCell = fuzzyStatusMatch(cv);
+          if (fzCell) {
+            var _npM = cv.match(/np\s*x?\s*(\d+)/i);
+            var _cbpCell = fzCell === 'cb' ? parseCBTime(cv) : null;
+            l = Object.assign({}, l, {
+              status: fzCell,
+              npCount: fzCell === 'np' ? _npM ? parseInt(_npM[1]) : 1 : l.npCount || 0,
+              _validated: true,
+              notes: rmk || String(row[ci] || '').trim(),
+              cbDate: _cbpCell && _cbpCell.cbDate || l.cbDate || '',
+              cbTime: _cbpCell && _cbpCell.cbTime || l.cbTime || '',
               statusCol: ci
             });
             break;
@@ -3615,22 +3756,30 @@ function App() {
       setSetDone(false);
       var li = curIdx;
       var _pending = appStateRef.current._pendingSetCalEventId || {};
+      var _baseUndo = appStateRef.current._pendingSetUndoBase || {};
       appStateRef.current._lastUndo = {
-        leadIdx: li,
+        leadIdx: _baseUndo.leadIdx ?? li,
         status: 'set',
-        prevStatus: 'pending',
-        prevNpCount: 0,
+        prevStatus: _baseUndo.prevStatus || 'pending',
+        prevNpCount: _baseUndo.prevNpCount || 0,
+        prevSheetValue: _baseUndo.prevSheetValue || '',
+        statusCol: _baseUndo.statusCol,
         ts: Date.now(),
         calEventId: _pending.calEventId || '',
         apptId: _pending.apptId || '',
+        dbApptId: _pending.dbApptId || '',
+        apptSheetId: _pending.apptSheetId || '',
+        apptSheetRange: _pending.apptSheetRange || '',
         calendarId: _pending.calendarId || 'primary'
       };
       appStateRef.current._pendingSetCalEventId = null;
+      appStateRef.current._pendingSetUndoBase = null;
       setUndoInfo({
-        leadIdx: li,
-        name: leads[li]?.name || '',
+        leadIdx: _baseUndo.leadIdx ?? li,
+        name: leads[_baseUndo.leadIdx ?? li]?.name || '',
         status: 'set',
-        ts: Date.now()
+        ts: Date.now(),
+        detail: 'Undo will revert lead status, calendar, Supabase, and sheets where possible.'
       });
       var _advance = () => {
         autoAdvanceTimerRef.current = null;
@@ -4595,16 +4744,36 @@ function App() {
   var [elapsed, setElapsed] = useState(0);
   var [showPostCall, setShowPostCall] = useState(null);
   var [undoInfo, setUndoInfo] = useState(null);
+  var [syncTrail, setSyncTrail] = useState([]);
   useEffect(() => {
     if (!undoInfo) return;
     if (undoInfo.status === 'set') return;
     var t = setTimeout(() => setUndoInfo(null), 10000);
     return () => clearTimeout(t);
   }, [undoInfo]);
-  var doUndo = () => {
+  useEffect(() => {
+    if (!syncTrail.length) return;
+    var t = setTimeout(() => setSyncTrail(p => p.slice(0, 2)), 20000);
+    return () => clearTimeout(t);
+  }, [syncTrail]);
+  var addSyncTrail = useCallback((title, steps) => {
+    setSyncTrail(p => [{
+      id: Date.now() + Math.random(),
+      title,
+      steps: steps || [],
+      ts: Date.now()
+    }, ...p].slice(0, 5));
+  }, []);
+  var doUndo = async () => {
     if (!undoInfo) return;
     var u = appStateRef.current._lastUndo;
     if (!u) return;
+    var steps = [];
+    var step = (label, ok, detail) => steps.push({
+      label,
+      ok: !!ok,
+      detail: detail || ''
+    });
     try {
       _liveSyncRef.current.localApptsGuardUntil = Date.now() + 6000;
     } catch (_e) {}
@@ -4612,11 +4781,32 @@ function App() {
       clearTimeout(autoAdvanceTimerRef.current);
       autoAdvanceTimerRef.current = null;
     }
+    var lead = u.leadIdx >= 0 ? leadsRef.current[u.leadIdx] : null;
+    var restoredLead = lead ? {
+      ...lead,
+      status: u.prevStatus || 'pending',
+      npCount: u.prevNpCount || 0,
+      sheetValue: u.prevSheetValue || lead.sheetValue || lead.notes || ''
+    } : null;
     setLeads(p => p.map((l, i) => i === u.leadIdx ? {
       ...l,
-      status: u.prevStatus,
-      npCount: u.prevNpCount
+      status: u.prevStatus || 'pending',
+      npCount: u.prevNpCount || 0,
+      sheetValue: u.prevSheetValue || l.sheetValue || l.notes || ''
     } : l));
+    step('Lead status reverted locally', true);
+    if (restoredLead) {
+      try {
+        if (u.prevSheetValue !== undefined && u.prevSheetValue !== null && restoredLead.statusCol >= 0) {
+          await queueSheetValue(restoredLead, u.prevSheetValue);
+        } else {
+          await syncSheet(restoredLead, u.prevStatus || 'pending');
+        }
+        step('Lead sheet revert queued', true);
+      } catch (e) {
+        step('Lead sheet revert queued', false, e?.message || 'failed');
+      }
+    }
     if (u.status === 'set') {
       setSession(p => p ? {
         ...p,
@@ -4642,38 +4832,44 @@ function App() {
         }).catch(() => {});
       }
       if (u.calEventId && window.gCal) {
-        gCal.del(u.calEventId, u.calendarId || 'primary').then(ok => {
-          if (ok) DBG('[Undo] gCal event deleted from', u.calendarId || 'primary');else toast('⚠ Could not delete calendar event — check Google Calendar manually', 'err');
-        }).catch(() => {
-          toast('⚠ Calendar delete failed — remove manually', 'err');
-        });
-      }
-      if (u.calEventId) setWeekEvents(prev => prev.filter(ev => ev.id !== u.calEventId));
-      if (u.leadIdx >= 0) {
-        var lead = leadsRef.current[u.leadIdx];
-        if (lead) {
-          try {
-            var _d2 = JSON.parse(localStorage.getItem('_deletedApptIds') || '[]');
-            if (u.calEventId) _d2.push(String(u.calEventId));
-            var _match = (appointments || []).find(a => a.phone === lead.phone && (!a.followUp || a.followUp === 'pending'));
-            if (_match?.id) _d2.push(String(_match.id));
-            if (_match?.phone && _match?.createdAt) _d2.push(_match.phone + '_' + _match.createdAt);
-            localStorage.setItem('_deletedApptIds', JSON.stringify([...new Set(_d2)].slice(-500)));
-          } catch (_e) {}
-          setAppointments(p => p.filter(a => !(a.phone === lead.phone && (!a.followUp || a.followUp === 'pending')) && a.calEventId !== u.calEventId));
-          if (_SB && lead.phone) {
-            try {
-              _SB.from('autodial_appointments').delete().eq('phone', lead.phone).eq('admin', myEmail).is('follow_up', 'pending').then(() => {}, () => {});
-            } catch (e) {}
-            if (u.calEventId) try {
-              _SB.from('autodial_appointments').delete().eq('calendar_event_id', u.calEventId).then(() => {}, () => {});
-            } catch (e) {}
-          }
+        try {
+          var calOk = await gCal.del(u.calEventId, u.calendarId || 'primary');
+          step('Calendar event deleted', calOk, calOk ? '' : 'check Google Calendar');
+        } catch (e) {
+          step('Calendar event deleted', false, e?.message || 'failed');
         }
+      } else step('Calendar event deleted', false, 'no event id saved');
+      if (u.calEventId) setWeekEvents(prev => prev.filter(ev => ev.id !== u.calEventId));
+      if (lead) {
+        try {
+          var _d2 = JSON.parse(localStorage.getItem('_deletedApptIds') || '[]');
+          if (u.calEventId) _d2.push(String(u.calEventId));
+          var _match = (appointments || []).find(a => a.phone === lead.phone && (!a.followUp || a.followUp === 'pending'));
+          if (_match?.id) _d2.push(String(_match.id));
+          if (_match?.phone && _match?.createdAt) _d2.push(_match.phone + '_' + _match.createdAt);
+          localStorage.setItem('_deletedApptIds', JSON.stringify([...new Set(_d2)].slice(-500)));
+        } catch (_e) {}
+        setAppointments(p => p.filter(a => !(a.phone === lead.phone && (!a.followUp || a.followUp === 'pending')) && a.calEventId !== u.calEventId));
+        step('Local appointment removed', true);
+        if (_SB && lead.phone) {
+          var db = await DB.deleteApptUndo({
+            rowId: u.dbApptId,
+            calEventId: u.calEventId,
+            phone: lead.phone,
+            admin: myEmail
+          });
+          step('Supabase appointment removed', db.ok, db.errors?.join('; ') || '');
+        } else step('Supabase appointment removed', false, 'not connected');
       }
-      toast('↩️ Set undone — pick a status for this lead');
+      if (u.apptSheetId && u.apptSheetRange && localStorage.getItem('ad_gt')) {
+        var sheetOk = await gSheets.markApptUndo(u.apptSheetId, u.apptSheetRange, userName);
+        step('Appointment sheet marked undone', sheetOk, sheetOk ? '' : 'row range unavailable');
+      } else step('Appointment sheet marked undone', false, 'no append row saved');
+      addSyncTrail('Set undo cleanup for ' + (undoInfo.name || lead?.name || 'lead'), steps);
+      toast('Set undone. Cleanup details added below.');
     } else {
-      toast('↩️ Undone — back to ' + undoInfo.name);
+      addSyncTrail('Undo for ' + (undoInfo.name || lead?.name || 'lead'), steps);
+      toast('Undone - back to ' + undoInfo.name);
     }
     setShowPostCall(null);
     setShowNextPreview(false);
@@ -7479,7 +7675,11 @@ function App() {
     var q = [...sheetQueueRef.current];
     if (!q.length) return;
     sheetQueueRef.current = [];
-    if (!cfg.sheetId || !localStorage.getItem('ad_gt')) return;
+    if (!cfg.sheetId || !localStorage.getItem('ad_gt')) {
+      sheetQueueRef.current = [...q, ...sheetQueueRef.current].slice(-300);
+      save('_sheetQueue', sheetQueueRef.current);
+      return;
+    }
     var byCell = {};
     q.forEach(item => {
       byCell[item.cell] = item.value;
@@ -7490,20 +7690,19 @@ function App() {
         await gSheets.put(cfg.sheetId, cell, value);
       } catch (e) {
         console.warn('[SheetQ]', e.message);
-        if (!navigator.onLine) {
-          sheetQueueRef.current.push({
-            cell,
-            value
-          });
-          save('_sheetQueue', sheetQueueRef.current);
-        }
+        sheetQueueRef.current.push({
+          cell,
+          value
+        });
+        save('_sheetQueue', sheetQueueRef.current);
       }
     }
+    save('_sheetQueue', sheetQueueRef.current.length ? sheetQueueRef.current : null);
   }, [cfg]);
-  var syncSheet = useCallback(async (lead, st) => {
-    if (!cfg.sheetId || !lead.sheetRow) return;
+  var queueSheetValue = useCallback(async (lead, value) => {
+    if (!cfg.sheetId || !lead?.sheetRow) return false;
     var colIdx = lead.statusCol;
-    if (colIdx === -1 || colIdx === undefined) {
+    if (colIdx === -1 || colIdx === undefined || colIdx === null) {
       try {
         var newCol = await gSheets.addColumn(cfg.sheetId, cfg.sheetTab || 'Sheet1', 'Remarks');
         if (newCol >= 0) {
@@ -7513,25 +7712,31 @@ function App() {
             statusCol: newCol
           })));
           toast('Created "Remarks" column', 'info');
-        } else return;
+        } else return false;
       } catch (e) {
-        return;
+        return false;
       }
     }
-    var col = String.fromCharCode(65 + colIdx);
+    var cell = (cfg.sheetTab || 'Sheet1') + '!' + a1Col(colIdx) + lead.sheetRow;
+    sheetQueueRef.current.push({
+      cell,
+      value: value == null ? '' : String(value)
+    });
+    save('_sheetQueue', sheetQueueRef.current);
+    clearTimeout(sheetFlushTimer.current);
+    sheetFlushTimer.current = setTimeout(() => flushSheetQueue(), 500);
+    return true;
+  }, [cfg, flushSheetQueue]);
+  var syncSheet = useCallback(async (lead, st) => {
+    if (!cfg.sheetId || !lead.sheetRow) return;
     var v = st.toUpperCase();
     if (st === 'np') v = 'NP x' + (lead.npCount + 1);
     if (st === 'cb') v = ('CB ' + lead.cbDate + ' ' + lead.cbTime).trim();
     if (st === 'set') v = 'appt set';
     if (st === 'ni') v = 'NI';
-    var cell = (cfg.sheetTab || 'Sheet1') + '!' + col + lead.sheetRow;
-    sheetQueueRef.current.push({
-      cell,
-      value: v
-    });
-    clearTimeout(sheetFlushTimer.current);
-    sheetFlushTimer.current = setTimeout(() => flushSheetQueue(), 500);
-  }, [cfg, flushSheetQueue]);
+    if (st === 'pending') v = '';
+    return queueSheetValue(lead, v);
+  }, [cfg, queueSheetValue]);
   useEffect(() => {
     var saved = load('_sheetQueue');
     if (saved?.length) {
@@ -7831,12 +8036,20 @@ function App() {
     if (cur) DB.logAction(session?.id || null, _user?.id, status, cur.name, cur.phone, {
       npCount: cur.npCount,
       cbDate: extra.cbDate,
-      cbTime: extra.cbTime
+      cbTime: extra.cbTime,
+      actorEmail: myEmail,
+      actorName: userName,
+      actorRole: role,
+      actorMode: role === 'main' ? mainMode : 'call',
+      isMainSelfCall: role === 'main' && mainMode === 'call'
     });
     setCallLog(p => [...p, {
       action: status,
       lead_name: cur?.name,
       lead_phone: cur?.phone,
+      actor_email: myEmail,
+      actor_role: role,
+      actor_mode: role === 'main' ? mainMode : 'call',
       ts: new Date().toISOString()
     }]);
     if (status === 'cb' && cur && extra.cbDate) DB.addCB({
@@ -7914,7 +8127,7 @@ function App() {
       }
       return s;
     });
-  }, [curIdx, session, totalSets, myCfg, syncSheet, monthlyAppts]);
+  }, [curIdx, session, totalSets, myCfg, syncSheet, monthlyAppts, role, mainMode, myEmail, userName]);
   var moveNext = useCallback(() => {
     setLeads(p => {
       var n = getNextDialable(p, curIdx, filters);
@@ -8061,6 +8274,13 @@ function App() {
       var lead = leadIdx >= 0 && leadIdx < leads.length ? {
         ...leads[leadIdx]
       } : null;
+      appStateRef.current._pendingSetUndoBase = {
+        leadIdx,
+        prevStatus: lead?.status || 'pending',
+        prevNpCount: lead?.npCount || 0,
+        prevSheetValue: lead?.sheetValue || lead?.notes || '',
+        statusCol: lead?.statusCol
+      };
       applyOutcome(status, extra);
       setApptLead(lead);
       setApptShaky(false);
@@ -8113,6 +8333,8 @@ function App() {
         status,
         prevStatus: leads[leadIdx]?.status || 'pending',
         prevNpCount: leads[leadIdx]?.npCount || 0,
+        prevSheetValue: leads[leadIdx]?.sheetValue || leads[leadIdx]?.notes || '',
+        statusCol: leads[leadIdx]?.statusCol,
         ts: Date.now()
       };
       setUndoInfo({
@@ -8150,7 +8372,7 @@ function App() {
       } : l));
       if (cfg.sheetId && leads[idx]?.statusCol >= 0 && leads[idx]?.sheetRow) {
         var lead = leads[idx];
-        var col = String.fromCharCode(65 + lead.statusCol);
+        var col = a1Col(lead.statusCol);
         var val = (lead.notes ? lead.notes + ' | ' : '') + postCallNote.trim();
         if (localStorage.getItem('ad_gt')) gSheets.put(cfg.sheetId, (cfg.sheetTab || 'Sheet1') + '!' + col + lead.sheetRow, val);
       }
@@ -8410,6 +8632,10 @@ function App() {
       }
       var res = parseSheet(r, h);
       if (res.error) return toast(res.error, 'err');
+      if (res.colMap) setDetectedColMap(res.colMap);
+      var _hri = h.findIndex(x => /^(remarks?|notes?|comments?|result|outcome)$/i.test(x.trim()));
+      if (_hri === -1) _hri = h.findIndex(x => /^status$/i.test(x.trim()));
+      if (_hri === -1) _hri = h.findIndex(x => x.trim().length < 12 && /remarks|notes|comment/i.test(x.trim()));
       setLeads(p => [...p, ...validateStatuses(res.leads, r, _hri)]);
       toast(res.count + ' imported');
     } catch (err) {
@@ -8448,12 +8674,32 @@ function App() {
   var readiness = getReadiness(cur);
   var todayKey = getTodaySGT();
   var priorityCallbacks = (cbQueue || []).filter(cb => cb.status !== 'called' && cb.scheduled_date && cb.scheduled_date <= todayKey).sort((a, b) => String(a.scheduled_date + ' ' + a.scheduled_time).localeCompare(String(b.scheduled_date + ' ' + b.scheduled_time)));
-  var liveAdmins = [...new Set((liveFeed || []).map(f => (f.data?.admin_email || f.data?.email || '').toLowerCase()).filter(Boolean))].slice(0, 30);
+  var getLiveActor = f => {
+    var d = f?.data || {};
+    var details = d.details || {};
+    if (typeof details === 'string') try {
+      details = JSON.parse(details);
+    } catch (_e) {
+      details = {};
+    }
+    var email = (details.actorEmail || details.actor_email || d.admin_email || d.email || '').toLowerCase();
+    var actorRole = details.actorRole || details.actor_role || (adminConfigs[email] ? 'admin' : email && email === myEmail && role === 'main' ? 'main' : '');
+    var actorMode = details.actorMode || details.actor_mode || '';
+    var name = details.actorName || details.actor_name || (adminConfigs[email] || {}).bizName || email || '';
+    var label = actorRole === 'main' ? (name || 'Main') + (actorMode === 'call' ? ' (Main self-call)' : ' (Main)') : actorRole === 'admin' ? (name || email || 'Admin') : name || 'Unknown caller';
+    return {
+      email,
+      role: actorRole,
+      mode: actorMode,
+      label
+    };
+  };
+  var liveAdmins = [...new Set((liveFeed || []).map(f => getLiveActor(f).email).filter(Boolean))].slice(0, 30);
   var filteredLiveFeed = (liveFeed || []).filter(f => {
     var action = f.data?.action || f.type;
     if (liveFilter !== 'all' && action !== liveFilter && f.type !== liveFilter) return false;
     if (liveAdminFilter !== 'all') {
-      var em = (f.data?.admin_email || f.data?.email || '').toLowerCase();
+      var em = getLiveActor(f).email;
       if (em !== liveAdminFilter) return false;
     }
     return true;
@@ -8743,11 +8989,11 @@ function App() {
     style: {
       borderColor: isCallMode ? 'rgba(63,185,80,.22)' : 'rgba(88,166,255,.22)'
     }
-  }, React.createElement("div", null, React.createElement("strong", null, isCallMode ? 'Caller workspace' : 'Management workspace'), React.createElement("span", {
+  }, React.createElement("div", null, React.createElement("strong", null, isCallMode ? role === 'main' ? 'Main caller workspace' : 'Admin caller workspace' : 'Management workspace'), React.createElement("span", {
     style: {
       display: 'block'
     }
-  }, isCallMode ? 'Dial flow, callbacks, appointment capture' : 'Live team view, analytics, admin operations')), React.createElement("span", {
+  }, isCallMode ? role === 'main' ? 'Your own calls; payroll stays admin-only' : 'External admin calling flow, callbacks, appointment capture' : 'Live team view, analytics, admin operations')), React.createElement("span", {
     className: "pill",
     style: {
       background: isCallMode ? 'var(--gdim)' : 'var(--bdim)',
@@ -10254,7 +10500,36 @@ function App() {
       flexShrink: 0,
       border: '1px solid rgba(240,180,41,.3)'
     }
-  }, "\u21A9\uFE0F Undo")), showPostCall && !showNextPreview && React.createElement("div", {
+  }, "\u21A9\uFE0F Undo")), syncTrail.length > 0 && React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 6,
+      marginBottom: 8
+    }
+  }, syncTrail.slice(0, 2).map(item => React.createElement("div", {
+    key: item.id,
+    style: {
+      padding: '9px 12px',
+      borderRadius: 12,
+      background: 'rgba(88,166,255,.06)',
+      border: '1px solid rgba(88,166,255,.2)'
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: '0 0 5px',
+      fontSize: 11,
+      fontWeight: 800,
+      color: 'var(--accent2)'
+    }
+  }, item.title), (item.steps || []).map((s, idx) => React.createElement("p", {
+    key: idx,
+    style: {
+      margin: '2px 0',
+      fontSize: 10,
+      color: s.ok ? 'var(--green)' : 'var(--amber)'
+    }
+  }, s.ok ? 'OK ' : 'Check ', s.label, s.detail ? ' - ' + s.detail : ''))))), showPostCall && !showNextPreview && React.createElement("div", {
     className: "card fi",
     style: {
       marginBottom: 12,
@@ -15960,7 +16235,7 @@ function App() {
     }
   }, React.createElement("option", {
     value: "all"
-  }, "All admins"), liveAdmins.map(em => React.createElement("option", {
+  }, "All callers"), liveAdmins.map(em => React.createElement("option", {
     key: em,
     value: em
   }, (adminConfigs[em] || {}).bizName || em)))), filteredLiveFeed.length === 0 && React.createElement("div", {
@@ -15979,15 +16254,31 @@ function App() {
       color: 'var(--text3)',
       fontSize: 13
     }
-  }, "Waiting for admin activity\u2026"), React.createElement("p", {
+  }, "Waiting for caller activity\u2026"), React.createElement("p", {
     style: {
       color: 'var(--text3)',
       fontSize: 10,
       marginTop: 4
     }
-  }, "When admins start calling, their actions appear here in real-time.")), filteredLiveFeed.map((f, i) => {
+  }, "When admins or Main self-calls start, their actions appear here in real-time.")), filteredLiveFeed.map((f, i) => {
     var ago = Math.floor((Date.now() - f.ts) / 1000);
     var agoStr = ago < 60 ? ago + 's' : Math.floor(ago / 60) + 'm';
+    var actor = getLiveActor(f);
+    if (f.type === 'call' || f.type === 'appt') f = {
+      ...f,
+      data: {
+        ...(f.data || {}),
+        admin_email: actor.label
+      }
+    };
+    if (f.type === 'session' && actor.role === 'main') f = {
+      ...f,
+      data: {
+        ...(f.data || {}),
+        email: actor.label,
+        pay: 0
+      }
+    };
     var icons = {
       call: '📲',
       np: '🔸',
@@ -16032,7 +16323,7 @@ function App() {
         fontWeight: 600,
         color: '#f1f5f9'
       }
-    }, f.type === 'call' && `${f.data.admin_email || 'Admin'} → ${f.data.lead_name || 'Lead'} (${f.data.action?.toUpperCase()})`, f.type === 'appt' && `📅 ${f.data.admin_email} set appointment with ${f.data.lead_name}`, f.type === 'session' && `⏱ ${f.data.email} ${f.data.end_time ? 'ended session (' + f.data.sets + ' appts' + (adminConfigs[(f.data.email || '').toLowerCase()] ? ', $' + (f.data.pay || 0) : '') + ')' : 'started session'}`, f.type === 'notif' && f.data.title), f.type === 'appt' && React.createElement("p", {
+    }, f.type === 'call' && `${f.data.admin_email || 'Unknown caller'} -> ${f.data.lead_name || 'Lead'} (${f.data.action?.toUpperCase()})`, f.type === 'appt' && `${f.data.admin_email || 'Unknown caller'} set appointment with ${f.data.lead_name}`, f.type === 'session' && `Session: ${f.data.email} ${f.data.end_time ? 'ended (' + f.data.sets + ' appts' + (adminConfigs[(f.data.email || '').toLowerCase()] ? ', $' + (f.data.pay || 0) : '') + ')' : 'started'}`, f.type === 'notif' && f.data.title), f.type === 'appt' && React.createElement("p", {
       style: {
         margin: 0,
         fontSize: 10,
@@ -22595,7 +22886,7 @@ WHERE p.id IS NULL;`;
             return [...s].slice(0, 20);
           });
         }
-        DB.saveAppt({
+        var savedApptRow = await DB.saveAppt({
           admin: myEmail,
           name: lead?.name,
           phone: lead?.phone,
@@ -22615,6 +22906,7 @@ WHERE p.id IS NULL;`;
         appStateRef.current._pendingSetCalEventId = {
           calEventId: evt?.id || '',
           apptId: lead?.phone || '',
+          dbApptId: savedApptRow?.id || '',
           calendarId: myCfg.targetCalendarId || 'primary'
         };
         if (lead) setAppointments(p => {
@@ -22670,7 +22962,7 @@ WHERE p.id IS NULL;`;
         toast('Event created!');
         var apptSheetId = myCfg.timesheetId || cfg.sheetId;
         if (apptSheetId && localStorage.getItem('ad_gt')) {
-          gSheets.appendAppt(apptSheetId, {
+          var apptSheetRes = await gSheets.appendAppt(apptSheetId, {
             name: lead?.name,
             phone: lead?.phone,
             apptDate,
@@ -22678,7 +22970,12 @@ WHERE p.id IS NULL;`;
             location: apptLocation,
             duration: dur,
             remarks: apptObs
-          }, userName).catch(() => {});
+          }, userName).catch(() => false);
+          appStateRef.current._pendingSetCalEventId = {
+            ...(appStateRef.current._pendingSetCalEventId || {}),
+            apptSheetId,
+            apptSheetRange: apptSheetRes?.updates?.updatedRange || ''
+          };
         }
       } catch (ev) {
         toast(ev.message, 'err');
@@ -23284,7 +23581,7 @@ WHERE p.id IS NULL;`;
         fontWeight: 700,
         color: '#f1f5f9'
       }
-    }, "Col ", String.fromCharCode(65 + col.idx), ": ", col.name), React.createElement("span", {
+    }, "Col ", a1Col(col.idx), ": ", col.name), React.createElement("span", {
       className: "pill",
       style: {
         background: 'var(--adim)',
@@ -23344,6 +23641,7 @@ WHERE p.id IS NULL;`;
     var r = rawSheet.rows;
     var currentMap = detectedColMap || detectBatchColumns(r, 0, Math.min(15, r.length), h) || {};
     var ROLES = [['phone', 'Phone'], ['first', '👤 First Name'], ['last', '👤 Last Name'], ['name', '👤 Full Name'], ['email', '📧 Email'], ['age', '🎂 Age'], ['dob', '📅 DOB/Birthday'], ['gender', '⚧ Gender'], ['race', '🌍 Race'], ['remarks', '📝 Remarks']];
+    ROLES = ROLES.concat([['status', 'Status'], ['source', 'Source']]);
     var roleMap = {};
     ROLES.forEach(([k]) => {
       if (currentMap[k] != null && currentMap[k] !== -1) roleMap[currentMap[k]] = k;
@@ -23357,6 +23655,7 @@ WHERE p.id IS NULL;`;
     }, h.map((header, ci) => {
       var role = roleMap[ci] || '';
       var roleLabel = ROLES.find(([k]) => k === role)?.[1] || '';
+      var conf = role && currentMap.confidence ? currentMap.confidence[role] || (role === 'first' || role === 'last' || role === 'name' ? currentMap.confidence.name : '') : '';
       var samples = r.slice(0, 3).map(row => String(row[ci] || '').trim()).filter(Boolean).slice(0, 2);
       return React.createElement("div", {
         key: ci,
@@ -23377,7 +23676,7 @@ WHERE p.id IS NULL;`;
           fontWeight: 700,
           minWidth: 16
         }
-      }, String.fromCharCode(65 + ci)), React.createElement("div", {
+      }, a1Col(ci)), React.createElement("div", {
         style: {
           flex: 1,
           minWidth: 0
@@ -23398,7 +23697,13 @@ WHERE p.id IS NULL;`;
           textOverflow: 'ellipsis',
           whiteSpace: 'nowrap'
         }
-      }, samples.join(', '))), React.createElement("select", {
+      }, samples.join(', ')), conf && React.createElement("p", {
+        style: {
+          margin: '2px 0 0',
+          fontSize: 10,
+          color: conf < 60 ? 'var(--amber)' : 'var(--green)'
+        }
+      }, "Confidence: ", conf, "%")), React.createElement("select", {
         value: role,
         onChange: e => {
           var newRole = e.target.value;
@@ -23449,7 +23754,8 @@ WHERE p.id IS NULL;`;
         for (var ri = 0; ri < r2.length; ri++) {
           var row = r2[ri];
           var ph = String(row[map.phone] || '').trim();
-          if (!ph || ph.length < 5) continue;
+          if (!ph || !isPhoneLike(ph, h2[map.phone])) continue;
+          ph = normalizePhone(ph);
           var fn = map.first >= 0 ? String(row[map.first] || '').trim() : '';
           var ln = map.last >= 0 ? String(row[map.last] || '').trim() : '';
           if (!fn && map.name >= 0) fn = String(row[map.name] || '').trim();
@@ -23459,12 +23765,29 @@ WHERE p.id IS NULL;`;
             if (bd) age = String(Math.floor((Date.now() - bd.getTime()) / 31557600000));
           }
           var rmk = map.remarks >= 0 ? String(row[map.remarks] || '').trim() : '';
+          var statusText = map.status >= 0 ? String(row[map.status] || '').trim() : '';
           var status = 'pending',
             npCount = 0,
             _cbDate = '',
             _cbTime = '',
             needsReview = false;
-          if (rmk) {
+          if (statusText) {
+            var stl = statusText.toLowerCase();
+            var sfz = fuzzyStatusMatch(stl);
+            if (/^ni$|not interested|wrong number|^wn$|dnc|deceased/i.test(stl)) status = 'ni';else if (/^np\s*x?\s*\d*|no pick|no answer/i.test(stl)) {
+              status = 'np';
+              var sm = stl.match(/np\s*x?\s*(\d+)/i);
+              npCount = sm ? parseInt(sm[1]) : 1;
+            } else if (/^cb$|callback|call back/i.test(stl)) {
+              status = 'cb';
+              var sp = parseCBTime(stl);
+              if (sp) {
+                _cbDate = sp.cbDate;
+                _cbTime = sp.cbTime;
+              }
+            } else if (/^set$|appt|appointment/i.test(stl)) status = 'set';else if (sfz) status = sfz;
+          }
+          if (rmk && status === 'pending') {
             var fz = fuzzyStatusMatch(rmk);
             if (fz) status = fz;else {
               var rl = rmk.toLowerCase();
@@ -23491,6 +23814,7 @@ WHERE p.id IS NULL;`;
             gender: map.gender >= 0 ? String(row[map.gender] || '').trim() : '',
             race: map.race >= 0 ? String(row[map.race] || '').trim() : '',
             income: '',
+            source: map.source >= 0 ? String(row[map.source] || '').trim() : '',
             status,
             npCount,
             cbDate: _cbDate,
@@ -23500,7 +23824,8 @@ WHERE p.id IS NULL;`;
             notes: rmk,
             needsReview,
             sheetRow: ri + 2,
-            statusCol: map.remarks >= 0 ? map.remarks : -1
+            statusCol: map.status >= 0 ? map.status : map.remarks >= 0 ? map.remarks : -1,
+            sheetValue: map.status >= 0 ? statusText : rmk
           });
         }
         setLeads(newLeads);
