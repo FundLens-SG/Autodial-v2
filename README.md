@@ -302,7 +302,6 @@ AutoDial auto-detects these from your sheet remarks:
 | Call Delay | Seconds between auto-dial (adjustable during calls) |
 | NP → NI Threshold | Auto-convert to NI after X no-picks (default: 5) |
 | Queue Priority | Lead selection order (Blank → CB Due → NP Retry) |
-| DNC Hours | Do Not Call window (e.g., 9pm–9am) |
 
 ---
 

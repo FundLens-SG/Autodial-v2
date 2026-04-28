@@ -266,7 +266,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.28.0001';
+window.APP_VERSION='2026.04.28.0002';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -7305,25 +7305,9 @@ function App() {
   }, [achievements]);
   var fmtTime = s => `${Math.floor(s / 3600).toString().padStart(2, '0')}:${Math.floor(s % 3600 / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
   var dncCheck = useCallback(() => {
-    var h = new Date().getHours();
-    var dncStart = n(cfg.dncStart, 21),
-      dncEnd = n(cfg.dncEnd, 9);
-    if (h >= dncStart || h < dncEnd) {
-      toast('⛔ DNC hours (' + dncEnd + 'am–' + dncStart + 'h). Auto-paused.', 'err');
-      setRunning(false);
-      setPhase('idle');
-      return true;
-    }
     return false;
-  }, [cfg.dncStart, cfg.dncEnd]);
+  }, []);
   var dial = useCallback(ph => {
-    var h = new Date().getHours();
-    var dncStart = n(cfg.dncStart, 21),
-      dncEnd = n(cfg.dncEnd, 9);
-    if (h >= dncStart || h < dncEnd) {
-      toast('⛔ DNC hours active (' + dncEnd + 'am–' + dncStart + 'h)', 'err');
-      return;
-    }
     if (isMob) {
       window.location.href = 'tel:' + ph.replace(/[^+\d]/g, '');
     } else {
@@ -7332,7 +7316,7 @@ function App() {
     syncSend('dial', {
       phone: ph
     });
-  }, [cfg.dncStart, cfg.dncEnd]);
+  }, [isMob]);
   var sheetQueueRef = useRef([]);
   var sheetFlushTimer = useRef(null);
   var flushSheetQueue = useCallback(async () => {
@@ -7428,6 +7412,8 @@ function App() {
     };
     s.rank = rank.label;
     s.monthlyAppts = monthlyAppts;
+    s.role = role;
+    var isAdminCallingSession = role === 'admin';
     var actualH = elapsed / 3600;
     var slots = (myCfg.sessionSlots || [{
       hours: n(myCfg.sessionDur, 5),
@@ -7473,16 +7459,16 @@ function App() {
       apptsBar: mThresh,
       bonusBar: nThresh
     };
-    s.pay = creditH * hourlyRate * (bonus ? n(myCfg.bonusMult, 1.5) : 1);
+    s.pay = isAdminCallingSession ? creditH * hourlyRate * (bonus ? n(myCfg.bonusMult, 1.5) : 1) : 0;
     s.creditHours = creditH;
     s.tsNote = tsNote;
     s.fullSession = full;
     s.bonus = bonus;
     s.bonusMult = n(myCfg.bonusMult, 1.5);
-    s.hourlyRate = hourlyRate;
-    s.tier = tier.label;
+    s.hourlyRate = isAdminCallingSession ? hourlyRate : 0;
+    s.tier = isAdminCallingSession ? tier.label : '';
     var _prevSess = sessionLog[0];
-    if (role !== 'main' && _prevSess && _prevSess.tier && _prevSess.tier !== tier.label) {
+    if (isAdminCallingSession && _prevSess && _prevSess.tier && _prevSess.tier !== tier.label) {
       var _tierOrder = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Platinum Ruby', 'Platinum Elite'];
       var _prevIdx = _tierOrder.indexOf(_prevSess.tier);
       var _curIdx = _tierOrder.indexOf(tier.label);
@@ -7524,7 +7510,7 @@ function App() {
       autoAdvanceTimerRef.current = null;
     }
     clearTimeout(cdRef.current);
-    DB.saveSess(s, _user?.id, myEmail);
+    if (isAdminCallingSession) DB.saveSess(s, _user?.id, myEmail);
     DB.notify(null, 'session_end', 'Session ended: ' + myEmail, s.sets + ' appts | ' + rank.label, {
       email: myEmail,
       sets: s.sets,
@@ -7534,7 +7520,7 @@ function App() {
     syncSend('end', {
       session: s
     });
-    syncSend('adminSession', {
+    if (isAdminCallingSession) syncSend('adminSession', {
       session: s,
       email: myEmail
     });
@@ -7547,7 +7533,7 @@ function App() {
     }, {
       onConflict: 'admin_email'
     }).catch(function () {});
-    if (localStorage.getItem('ad_gt')) {
+    if (isAdminCallingSession && localStorage.getItem('ad_gt')) {
       var tsId = myCfg.timesheetId || cfg.sheetId || '';
       if (tsId) {
         gSheets.ensureTabs(tsId, ['Timesheet', 'Appointments Set', 'Pay']);
@@ -15696,7 +15682,7 @@ function App() {
         fontWeight: 600,
         color: '#f1f5f9'
       }
-    }, f.type === 'call' && `${f.data.admin_email || 'Admin'} → ${f.data.lead_name || 'Lead'} (${f.data.action?.toUpperCase()})`, f.type === 'appt' && `📅 ${f.data.admin_email} set appointment with ${f.data.lead_name}`, f.type === 'session' && `⏱ ${f.data.email} ${f.data.end_time ? 'ended session (' + f.data.sets + ' appts, $' + f.data.pay + ')' : 'started session'}`, f.type === 'notif' && f.data.title), f.type === 'appt' && React.createElement("p", {
+    }, f.type === 'call' && `${f.data.admin_email || 'Admin'} → ${f.data.lead_name || 'Lead'} (${f.data.action?.toUpperCase()})`, f.type === 'appt' && `📅 ${f.data.admin_email} set appointment with ${f.data.lead_name}`, f.type === 'session' && `⏱ ${f.data.email} ${f.data.end_time ? 'ended session (' + f.data.sets + ' appts' + (adminConfigs[(f.data.email || '').toLowerCase()] ? ', $' + (f.data.pay || 0) : '') + ')' : 'started session'}`, f.type === 'notif' && f.data.title), f.type === 'appt' && React.createElement("p", {
       style: {
         margin: 0,
         fontSize: 10,
@@ -17480,7 +17466,7 @@ function App() {
     style: {
       opacity: .7
     }
-  }, "\uD83D\uDD01 NP\u2192NI @ ", myCfg.npMax || cfg.npMax || 5), React.createElement("span", null, "\u26D4 DNC ", (cfg.dncEnd || 9) > 12 ? (cfg.dncEnd || 9) - 12 + 'PM' : (cfg.dncEnd || 9) + 'AM', "\u2013", (cfg.dncStart || 21) > 12 ? (cfg.dncStart || 21) - 12 + 'PM' : (cfg.dncStart || 21) + 'AM')), React.createElement("div", {
+  }, "\uD83D\uDD01 NP\u2192NI @ ", myCfg.npMax || cfg.npMax || 5), null), React.createElement("div", {
     style: {
       display: 'flex',
       flexWrap: 'wrap',
@@ -17546,6 +17532,7 @@ function App() {
     }
   }))), isManageMode ? React.createElement("div", {
     style: {
+      display: 'none',
       marginBottom: 12,
       padding: '10px 0',
       borderBottom: '1px solid var(--border)'
@@ -17634,6 +17621,7 @@ function App() {
     }
   }, "Calls auto-pause outside ", (cfg.dncEnd || 9) > 12 ? (cfg.dncEnd || 9) - 12 + 'PM' : (cfg.dncEnd || 9) + 'AM', " \u2013 ", (cfg.dncStart || 21) > 12 ? (cfg.dncStart || 21) - 12 + 'PM' : (cfg.dncStart || 21) + 'AM')) : React.createElement("div", {
     style: {
+      display: 'none',
       marginBottom: 12,
       padding: '8px 10px',
       borderRadius: 8,
@@ -19560,7 +19548,7 @@ function App() {
     style: {
       margin: 0
     }
-  }, "4. ", React.createElement("b", null, "\u2601\uFE0F Sync All"), " in Team Rules to push DNC hours & global settings"))), React.createElement("div", {
+  }, "4. ", React.createElement("b", null, "\u2601\uFE0F Sync All"), " in Team Rules to push global admin settings"))), React.createElement("div", {
     style: {
       marginBottom: 12
     }
