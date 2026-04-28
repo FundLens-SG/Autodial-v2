@@ -1,6 +1,14 @@
-# 📞 AutoDial Pro — User Guide
+# AutoDial v2 - User Guide
 
-**The cold-calling power tool**
+**The v2 workspace for AutoDial caller and management workflows**
+
+## v2 Focus
+
+- Clearer caller vs management workspace states.
+- Pre-call readiness checks before a session starts.
+- Script snapshots, reference-note toggling, and safer rich-text rendering.
+- Filtered live activity, callback priority cards, duplicate merge tools, and stronger management analytics.
+- V2-isolated PWA cache so this version can be tested separately from the original AutoDial app.
 
 ### For Mains (Callers)
 
@@ -26,7 +34,7 @@ AutoDial works as an installable app on your phone — no app store needed!
 
 **iPhone:** Open in Safari → tap Share (↑) → "Add to Home Screen" → AutoDial appears as an app icon
 
-**Android:** Open in Chrome → banner appears "Install AutoDial Pro" → tap Install → appears in your app drawer
+**Android:** Open in Chrome → banner appears "Install AutoDial v2" → tap Install → appears in your app drawer
 
 Once installed, it runs full-screen like a native app with offline support.
 
@@ -337,4 +345,4 @@ AutoDial auto-detects these from your sheet remarks:
 
 AutoDial currently ships as a pre-compiled single-file React app in `index.html`. Keep production fixes surgical there, but future feature work should move toward the source/build plan in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) so changes happen in readable components before compiling to the deployed file.
 
-*AutoDial Pro — Dial Smarter. Rank Higher. Close Faster.* 🚀
+*AutoDial v2 - Dial smarter, manage cleaner, and ship safely.*

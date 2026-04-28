@@ -1,5 +1,5 @@
-const APP_VERSION = '2026.04.28.0002';
-const CACHE_NAME = `autodial-${APP_VERSION}`;
+const APP_VERSION = '2026.04.28.0003';
+const CACHE_NAME = `autodial-v2-${APP_VERSION}`;
 const ASSETS = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', e => {

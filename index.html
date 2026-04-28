@@ -6,9 +6,9 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="AutoDial Pro">
+<meta name="apple-mobile-web-app-title" content="AutoDial v2">
 <meta name="theme-color" content="#6366f1">
-<title>AutoDial Pro</title>
+<title>AutoDial v2</title>
 <script>window.onerror=function(m){if(!m||m==='Script error.'||m==='Script error')return true;console.error('[AutoDial Error]',m);return true};window.onunhandledrejection=function(e){console.warn('[AutoDial] Unhandled promise:',e.reason);e.preventDefault()};/* ═══ Global DBG fallback — the JSX block (now wrapped in IIFE for pre-compile) defines its own local DBG, but auth code and other early scripts run BEFORE the IIFE boots and need a global fallback. Both definitions check window.AUTODIAL_DEBUG, so behavior is identical. ═══ */window.DBG=function(){if(window.AUTODIAL_DEBUG)console.log.apply(console,arguments)};</script>
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%236366f1'/%3E%3Cstop offset='100%25' stop-color='%238b5cf6'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='512' height='512' rx='108' fill='url(%23g)'/%3E%3Cpath d='M352 311v48a16 16 0 01-17 16 158 158 0 01-69-25 156 156 0 01-48-48 158 158 0 01-25-69A16 16 0 01209 216h24a16 16 0 0116 14c1 8 3 15 6 22a16 16 0 01-4 17l-10 10a128 128 0 0048 48l10-10a16 16 0 0117-4c7 3 15 5 22 6A16 16 0 01352 336z' fill='none' stroke='white' stroke-width='18' stroke-linecap='round'/%3E%3C/svg%3E">
 <link rel="manifest" href="manifest.json">
@@ -166,6 +166,28 @@ button:active{transform:scale(.97)}
 .sp-edit b{font-weight:700;color:#f1f5f9}
 .sp-edit i{font-style:italic;color:var(--accent3)}
 .sp-edit u{text-decoration:underline;text-underline-offset:3px}
+.script-read{max-width:68ch;margin:0 auto;font-size:14.5px;color:var(--text);line-height:1.75;font-family:inherit}
+.script-read b{font-weight:800;color:#fff}
+.script-read [style*="font-weight:700"]{display:block;margin:16px 0 6px;padding-top:10px;border-top:1px solid var(--border)}
+.script-token{display:inline-block;padding:0 4px;border-radius:5px;background:rgba(99,102,241,.16);color:var(--accent3);font-weight:800;line-height:1.45}
+.script-panel.ref-collapsed .sp-ref-col{display:none}
+.script-panel.ref-collapsed .sp-col{max-width:760px;margin:0 auto}
+.mode-banner{margin:0 14px 10px;padding:10px 12px;border-radius:12px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg2)}
+.mode-banner strong{font-size:12px;color:#f1f5f9}
+.mode-banner span{font-size:10px;color:var(--text3)}
+.readiness-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:10px}
+.readiness-pill{padding:8px 9px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:10px;font-weight:700;color:var(--text3);display:flex;align-items:center;justify-content:space-between;gap:6px}
+.readiness-pill.ok{color:var(--green);background:var(--gdim);border-color:rgba(63,185,80,.22)}
+.readiness-pill.warn{color:var(--amber);background:var(--amdim);border-color:rgba(210,153,34,.22)}
+.readiness-pill.bad{color:var(--red);background:var(--rdim);border-color:rgba(248,81,73,.22)}
+.live-filter-bar{display:flex;gap:5px;overflow-x:auto;margin:0 0 10px;padding-bottom:2px}
+.live-filter-bar button{padding:7px 10px;border-radius:9px;background:var(--bg3);border:1px solid var(--border);color:var(--text3);font-size:10px;font-weight:800;white-space:nowrap}
+.live-filter-bar button.active{background:var(--adim);border-color:rgba(99,102,241,.35);color:var(--accent2)}
+.timeline-item{position:relative;margin-left:10px}
+.timeline-item:before{content:'';position:absolute;left:-10px;top:0;bottom:-8px;width:1px;background:var(--border2)}
+.timeline-dot{width:9px;height:9px;border-radius:50%;position:absolute;left:-14px;top:16px;background:var(--accent)}
+.analytics-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px}
+.dupe-card{background:linear-gradient(135deg,rgba(248,81,73,.05),transparent)}
 @media(max-width:959px){.script-panel{display:none!important}.script-toggle{display:none!important}}
 .hdr-row1{display:flex;align-items:center;gap:8px;padding:14px 14px 0;flex-wrap:wrap}
 .hdr-row1>button{flex-shrink:0}
@@ -266,7 +288,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.28.0002';
+window.APP_VERSION='2026.04.28.0003';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -4172,6 +4194,8 @@ function App() {
   var [cycleCloseModal, setCycleCloseModal] = useState(null);
   var screenshotRef = useRef(null);
   var [liveFeed, setLiveFeed] = useState([]);
+  var [liveFilter, setLiveFilter] = useState('all');
+  var [liveAdminFilter, setLiveAdminFilter] = useState('all');
   var [cbQueue, setCbQueue] = useState([]);
   var [notifications, setNotifications] = useState([]);
   var [waTemplates, setWaTemplates] = useState([]);
@@ -4483,14 +4507,20 @@ function App() {
   var [scriptEditing, setScriptEditing] = useState(false);
   var [refNotes, setRefNotes] = useState(_sanitizeRichHtml(cfg.refNotes || ''));
   var [refEditing, setRefEditing] = useState(false);
+  var [showRefNotes, setShowRefNotes] = useState(load('showRefNotes') ?? true);
+  var [scriptVersions, setScriptVersions] = useState(() => Array.isArray(cfg.scriptVersions) ? cfg.scriptVersions : []);
   useEffect(() => {
     save('scriptOpen', scriptOpen);
   }, [scriptOpen]);
+  useEffect(() => {
+    save('showRefNotes', showRefNotes);
+  }, [showRefNotes]);
   var fillScript = (text, lead) => {
     if (!text || !lead) return _sanitizeRichHtml(text || '');
     var clean = _sanitizeRichHtml(text);
     var val = v => _escapeHtml(v == null ? '' : v);
-    return clean.replace(/\{\{name\}\}/gi, val(lead.name)).replace(/\{\{phone\}\}/gi, val(lead.phone)).replace(/\{\{age\}\}/gi, val(lead.age || '?')).replace(/\{\{race\}\}/gi, val(lead.race)).replace(/\{\{gender\}\}/gi, val(lead.gender)).replace(/\{\{email\}\}/gi, val(lead.email)).replace(/\{\{income\}\}/gi, val(lead.income)).replace(/\{\{notes\}\}/gi, val(lead.notes)).replace(/\{\{status\}\}/gi, val((lead.status || 'pending').toUpperCase())).replace(/\{\{npcount\}\}/gi, val(String(lead.npCount || 0))).replace(/\{\{admin\}\}/gi, val(userName)).replace(/\{\{company\}\}/gi, 'PolicyLens');
+    var token = v => '<span class="script-token">' + val(v) + '</span>';
+    return clean.replace(/\{\{name\}\}/gi, token(lead.name || '[Lead Name]')).replace(/\{\{phone\}\}/gi, token(lead.phone || '[Phone]')).replace(/\{\{age\}\}/gi, token(lead.age || '?')).replace(/\{\{race\}\}/gi, token(lead.race)).replace(/\{\{gender\}\}/gi, token(lead.gender)).replace(/\{\{email\}\}/gi, token(lead.email)).replace(/\{\{income\}\}/gi, token(lead.income)).replace(/\{\{notes\}\}/gi, token(lead.notes)).replace(/\{\{status\}\}/gi, token((lead.status || 'pending').toUpperCase())).replace(/\{\{npcount\}\}/gi, token(String(lead.npCount || 0))).replace(/\{\{admin\}\}/gi, token(userName)).replace(/\{\{company\}\}/gi, token('PolicyLens'));
   };
   var [learnedPatterns, setLearnedPatterns] = useState(load('learned') || {});
   var learnStatus = (remark, status) => {
@@ -4674,6 +4704,128 @@ function App() {
       return def;
     }
   };
+  var phoneDigits = ph => String(ph || '').replace(/[^\d+]/g, '');
+  var hasCallablePhone = ph => phoneDigits(ph).replace(/[^\d]/g, '').length >= 7;
+  var getReadiness = (candidateLead = null) => {
+    var lead = candidateLead || cur || pending.find(l => hasCallablePhone(l.phone)) || null;
+    var syncOk = !isOffline && syncStatus !== 'offline';
+    var dialerOk = isMob || syncOk;
+    return [{
+      key: 'role',
+      label: role === 'main' && mainMode === 'manage' ? 'Management mode' : 'Role ready',
+      ok: role === 'admin' || role === 'main',
+      warn: false
+    }, {
+      key: 'phone',
+      label: lead && hasCallablePhone(lead.phone) ? 'Phone ready' : 'No valid phone',
+      ok: !!lead && hasCallablePhone(lead.phone),
+      warn: false
+    }, {
+      key: 'sync',
+      label: syncOk ? 'Sync healthy' : 'Sync offline',
+      ok: syncOk,
+      warn: isMob
+    }, {
+      key: 'dialer',
+      label: isMob ? 'Device can dial' : dialerOk ? 'Phone handoff ready' : 'Open on phone',
+      ok: dialerOk,
+      warn: !isMob && syncOk
+    }];
+  };
+  var blockIfNotReady = (candidateLead = null) => {
+    var checks = getReadiness(candidateLead);
+    var hardFail = checks.filter(x => !x.ok && !x.warn);
+    if (hardFail.length) {
+      toast('Pre-call check: ' + hardFail.map(x => x.label).join(', '), 'err');
+      return true;
+    }
+    var soft = checks.filter(x => !x.ok && x.warn);
+    if (soft.length) toast('Pre-call warning: ' + soft.map(x => x.label).join(', '), 'info');
+    return false;
+  };
+  var snapshotScriptVersion = useCallback(() => {
+    var html = _sanitizeRichHtml(scriptContent || cfg.callingScript || '');
+    var notes = _sanitizeRichHtml(refNotes || cfg.refNotes || '');
+    if (!html && !notes) return toast('Nothing to snapshot yet', 'err');
+    var version = {
+      id: 'sv_' + Date.now(),
+      name: 'Script ' + new Date().toLocaleString('en-SG', {
+        day: '2-digit',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit'
+      }),
+      html,
+      notes,
+      author: myEmail,
+      ts: Date.now()
+    };
+    var next = [version, ...scriptVersions.filter(v => v.id !== version.id)].slice(0, 20);
+    setScriptVersions(next);
+    setCfg(s => ({
+      ...s,
+      callingScript: html,
+      refNotes: notes,
+      scriptVersionId: version.id,
+      scriptVersions: next
+    }));
+    toast('Script version saved');
+  }, [scriptContent, refNotes, cfg.callingScript, cfg.refNotes, myEmail, scriptVersions]);
+  var restoreScriptVersion = useCallback(id => {
+    var v = scriptVersions.find(x => x.id === id);
+    if (!v) return;
+    var html = _sanitizeRichHtml(v.html || '');
+    var notes = _sanitizeRichHtml(v.notes || '');
+    setScriptContent(html);
+    setRefNotes(notes);
+    setCfg(s => ({
+      ...s,
+      callingScript: html,
+      refNotes: notes,
+      scriptVersionId: v.id
+    }));
+    document.querySelectorAll('.sp-edit').forEach(el => {
+      el._init = false;
+    });
+    toast('Restored ' + (v.name || 'script version'));
+  }, [scriptVersions]);
+  var mergeDuplicatePhone = useCallback(ph => {
+    setLeads(prev => {
+      var statusRank = {
+        set: 5,
+        cb: 4,
+        pending: 3,
+        np: 2,
+        ni: 1
+      };
+      var group = prev.filter(l => (l.phone || '').replace(/[^\d]/g, '') === ph);
+      if (group.length < 2) return prev;
+      var merged = {
+        ...group[0]
+      };
+      group.slice(1).forEach(l => {
+        ['name', 'phone', 'email', 'age', 'gender', 'race', 'income', 'source', 'sheetRow', 'statusCol'].forEach(k => {
+          if (!merged[k] && l[k]) merged[k] = l[k];
+        });
+        if ((statusRank[l.status] || 0) > (statusRank[merged.status] || 0)) merged.status = l.status;
+        merged.npCount = Math.max(merged.npCount || 0, l.npCount || 0);
+        merged.cbHistory = [...(merged.cbHistory || []), ...(l.cbHistory || [])].slice(-10);
+        var notes = [merged.notes, l.notes].filter(Boolean).join(' | ');
+        merged.notes = [...new Set(notes.split(' | ').filter(Boolean))].join(' | ');
+      });
+      var used = false;
+      return prev.map(l => {
+        var k = (l.phone || '').replace(/[^\d]/g, '');
+        if (k !== ph) return l;
+        if (!used) {
+          used = true;
+          return merged;
+        }
+        return false;
+      }).filter(Boolean);
+    });
+    toast('Merged duplicate lead ' + ph);
+  }, []);
   useEffect(() => {
     var cleanCfg = _sanitizeCfgRichText(cfg);
     var _cfgTs = Date.now();
@@ -4706,6 +4858,7 @@ function App() {
     var payload = {
       html: _sanitizeRichHtml(cfg.callingScript || ''),
       notes: _sanitizeRichHtml(cfg.refNotes || ''),
+      versions: (scriptVersions || []).slice(0, 10),
       ts: Date.now()
     };
     _SB.from('autodial_admin_config').upsert({
@@ -4716,7 +4869,7 @@ function App() {
     }).then(() => DBG('[AutoDial] Published calling script to all admins')).catch(function (e) {
       console.warn('[AutoDial] script publish failed', e?.message || e);
     });
-  }, [cfg.callingScript, cfg.refNotes, role]);
+  }, [cfg.callingScript, cfg.refNotes, scriptVersions, role]);
   useEffect(() => {
     if (role === 'admin' && myCfg.timesheetId && myCfg.sheetTab && gOk && leads.length === 0 && !appStateRef.current._autoFetched) {
       appStateRef.current._autoFetched = true;
@@ -5219,11 +5372,14 @@ function App() {
               if (sr.data && sr.data.biz_name) {
                 var s = JSON.parse(sr.data.biz_name);
                 if (s.html) {
+                  var sv = Array.isArray(s.versions) ? s.versions : [];
                   setCfg(p => ({
                     ...p,
                     callingScript: _sanitizeRichHtml(s.html),
-                    refNotes: _sanitizeRichHtml(s.notes || p.refNotes || '')
+                    refNotes: _sanitizeRichHtml(s.notes || p.refNotes || ''),
+                    scriptVersions: sv
                   }));
+                  setScriptVersions(sv);
                   DBG('[AutoDial] Loaded shared script from Main');
                 }
               }
@@ -7838,6 +7994,7 @@ function App() {
       }
       idx = nextIdx;
     }
+    if (blockIfNotReady(curLeads[idx])) return;
     setCurIdx(idx);
     setRunning(true);
     setPhase('calling');
@@ -7847,7 +8004,7 @@ function App() {
       var l = leadsRef.current[idx];
       if (l) dial(l.phone);
     }, 300);
-  }, [dial, filters, cfg, myCfg, checkClaim, claimLead]);
+  }, [dial, filters, cfg, myCfg, checkClaim, claimLead, blockIfNotReady]);
   var handleOutcome = useCallback((status, extra = {}) => {
     var leadIdx = curIdx;
     if (status === 'pending') {
@@ -8041,6 +8198,13 @@ function App() {
       setRunning(false);
       setPhase('idle');
       save('activeSession', null);
+      return;
+    }
+    if (blockIfNotReady(leads[f])) {
+      if (!session || session.ended) {
+        setSession(null);
+        save('activeSession', null);
+      }
       return;
     }
     setCurIdx(f);
@@ -8281,6 +8445,19 @@ function App() {
   var isCallMode = role === 'admin' || role === 'main' && mainMode === 'call';
   var isManageMode = role === 'main' && mainMode === 'manage';
   var tabs = isCallMode ? callTabs : manageTabs;
+  var readiness = getReadiness(cur);
+  var todayKey = getTodaySGT();
+  var priorityCallbacks = (cbQueue || []).filter(cb => cb.status !== 'called' && cb.scheduled_date && cb.scheduled_date <= todayKey).sort((a, b) => String(a.scheduled_date + ' ' + a.scheduled_time).localeCompare(String(b.scheduled_date + ' ' + b.scheduled_time)));
+  var liveAdmins = [...new Set((liveFeed || []).map(f => (f.data?.admin_email || f.data?.email || '').toLowerCase()).filter(Boolean))].slice(0, 30);
+  var filteredLiveFeed = (liveFeed || []).filter(f => {
+    var action = f.data?.action || f.type;
+    if (liveFilter !== 'all' && action !== liveFilter && f.type !== liveFilter) return false;
+    if (liveAdminFilter !== 'all') {
+      var em = (f.data?.admin_email || f.data?.email || '').toLowerCase();
+      if (em !== liveAdminFilter) return false;
+    }
+    return true;
+  });
   return React.createElement("div", {
     className: "desktop-wrap"
   }, React.createElement("div", {
@@ -8325,7 +8502,7 @@ function App() {
       margin: 0,
       letterSpacing: '-.03em'
     }
-  }, "AutoDial")), React.createElement("span", {
+  }, "AutoDial v2")), React.createElement("span", {
     style: {
       fontSize: 11,
       color: 'var(--text3)',
@@ -8561,7 +8738,33 @@ function App() {
         setTab(k);
       }
     }, v);
-  })), tab === 'home' && isManageMode && (() => {
+  })), React.createElement("div", {
+    className: "mode-banner",
+    style: {
+      borderColor: isCallMode ? 'rgba(63,185,80,.22)' : 'rgba(88,166,255,.22)'
+    }
+  }, React.createElement("div", null, React.createElement("strong", null, isCallMode ? 'Caller workspace' : 'Management workspace'), React.createElement("span", {
+    style: {
+      display: 'block'
+    }
+  }, isCallMode ? 'Dial flow, callbacks, appointment capture' : 'Live team view, analytics, admin operations')), React.createElement("span", {
+    className: "pill",
+    style: {
+      background: isCallMode ? 'var(--gdim)' : 'var(--bdim)',
+      color: isCallMode ? 'var(--green)' : 'var(--blue)'
+    }
+  }, isCallMode ? 'CALL' : 'MGMT')), (isOffline || syncStatus === 'offline' || syncStatus === 'pushing' || syncStatus === 'pulling') && React.createElement("div", {
+    className: "mode-banner",
+    style: {
+      marginTop: -4,
+      borderColor: isOffline || syncStatus === 'offline' ? 'rgba(248,81,73,.25)' : 'rgba(210,153,34,.25)',
+      background: isOffline || syncStatus === 'offline' ? 'var(--rdim)' : 'var(--amdim)'
+    }
+  }, React.createElement("div", null, React.createElement("strong", null, isOffline || syncStatus === 'offline' ? 'Offline mode' : 'Sync in progress'), React.createElement("span", {
+    style: {
+      display: 'block'
+    }
+  }, isOffline || syncStatus === 'offline' ? 'Changes stay local until connection returns' : 'Cloud state is updating across devices'))), tab === 'home' && isManageMode && (() => {
     var _adminEntriesH = Object.entries(adminSessions || {}).filter(([em]) => (em || '').toLowerCase() !== myEmail.toLowerCase()).map(([em, v]) => [em, Array.isArray(v) ? v : []]);
     var _todayKey = new Date().toDateString();
     var _oneDay = 86400000;
@@ -8577,6 +8780,7 @@ function App() {
     }).filter(x => x.amount > 0).sort((a, b) => b.amount - a.amount);
     var _totalOwed = _owed.reduce((a, x) => a + x.amount, 0);
     var _staleAppts = appointments.filter(a => !a._deleted && a.followUp === 'pending' && a.createdAt && _now - new Date(a.createdAt).getTime() > 7 * _oneDay);
+    var _missedCallbacks = priorityCallbacks.filter(c => c.scheduled_date < todayKey);
     var _newLeads = leads.filter(l => l.status === 'pending').length;
     var _activeAdmins = new Set(_adminEntriesH.filter(([em, ss]) => ss.some(s => new Date(s.startTime).toDateString() === _todayKey)).map(([em]) => em));
     var _knownAdmins = Object.keys(adminConfigs || {}).filter(em => em && em !== myEmail);
@@ -8796,6 +9000,55 @@ function App() {
         color: 'var(--amber)',
         fontSize: 18
       }
+    }, "\u2192"))), _missedCallbacks.length > 0 && React.createElement("div", {
+      onClick: () => setTab('cb'),
+      className: "card",
+      style: {
+        marginBottom: 8,
+        cursor: 'pointer',
+        borderColor: 'rgba(248,81,73,.28)',
+        background: 'linear-gradient(135deg,rgba(248,81,73,.06),transparent)'
+      }
+    }, React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10
+      }
+    }, React.createElement("div", {
+      style: {
+        width: 38,
+        height: 38,
+        borderRadius: 10,
+        background: 'var(--rdim)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: 'var(--red)',
+        fontWeight: 900
+      }
+    }, "!"), React.createElement("div", {
+      style: {
+        flex: 1
+      }
+    }, React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 13,
+        fontWeight: 700,
+        color: '#f1f5f9'
+      }
+    }, _missedCallbacks.length, " missed callback", _missedCallbacks.length === 1 ? '' : 's'), React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 10,
+        color: 'var(--text3)'
+      }
+    }, "Oldest: ", _missedCallbacks[0]?.lead_name || _missedCallbacks[0]?.lead_phone || 'callback')), React.createElement("span", {
+      style: {
+        color: 'var(--red)',
+        fontSize: 18
+      }
     }, "\u2192"))), _newLeads > 0 && React.createElement("div", {
       onClick: () => setTab('leads'),
       className: "card",
@@ -8889,7 +9142,7 @@ function App() {
         fontSize: 10,
         color: 'var(--text3)'
       }
-    }, _quietAdmins.slice(0, 3).map(em => (adminConfigs[em] || {}).bizName || em).join(', '), _quietAdmins.length > 3 ? ' · +' + (_quietAdmins.length - 3) : '')))), _totalOwed === 0 && _staleAppts.length === 0 && _newLeads === 0 && _quietAdmins.length === 0 && React.createElement("div", {
+    }, _quietAdmins.slice(0, 3).map(em => (adminConfigs[em] || {}).bizName || em).join(', '), _quietAdmins.length > 3 ? ' · +' + (_quietAdmins.length - 3) : '')))), _totalOwed === 0 && _staleAppts.length === 0 && _missedCallbacks.length === 0 && _newLeads === 0 && _quietAdmins.length === 0 && React.createElement("div", {
       className: "card",
       style: {
         textAlign: 'center',
@@ -9027,7 +9280,90 @@ function App() {
     style: {
       paddingBottom: 20
     }
-  }, session && !session.ended && React.createElement("div", {
+  }, React.createElement("div", {
+    className: "card",
+    style: {
+      marginBottom: 10,
+      padding: '12px 14px'
+    }
+  }, React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8
+    }
+  }, React.createElement("h3", {
+    style: {
+      margin: 0,
+      fontSize: 12,
+      fontWeight: 800,
+      color: '#f1f5f9'
+    }
+  }, "Pre-call readiness"), React.createElement("span", {
+    className: "pill",
+    style: {
+      background: readiness.every(x => x.ok || x.warn) ? 'var(--gdim)' : 'var(--rdim)',
+      color: readiness.every(x => x.ok || x.warn) ? 'var(--green)' : 'var(--red)'
+    }
+  }, readiness.every(x => x.ok || x.warn) ? 'Ready' : 'Blocked')), React.createElement("div", {
+    className: "readiness-grid"
+  }, readiness.map(x => React.createElement("div", {
+    key: x.key,
+    className: 'readiness-pill ' + (x.ok ? 'ok' : x.warn ? 'warn' : 'bad')
+  }, React.createElement("span", null, x.label), React.createElement("b", null, x.ok ? 'OK' : x.warn ? 'WARN' : 'FIX'))))), priorityCallbacks.length > 0 && React.createElement("div", {
+    className: "card",
+    style: {
+      marginBottom: 10,
+      borderColor: 'rgba(88,166,255,.25)',
+      background: 'linear-gradient(135deg,rgba(88,166,255,.06),transparent)'
+    }
+  }, React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8
+    }
+  }, React.createElement("h3", {
+    style: {
+      margin: 0,
+      fontSize: 13,
+      fontWeight: 800,
+      color: 'var(--blue)'
+    }
+  }, "Today's callback queue"), React.createElement("button", {
+    onClick: () => setTab('cb'),
+    style: {
+      padding: '5px 10px',
+      borderRadius: 8,
+      background: 'var(--bdim)',
+      color: 'var(--blue)',
+      fontSize: 10,
+      fontWeight: 800
+    }
+  }, "Open")), priorityCallbacks.slice(0, 3).map(c => React.createElement("div", {
+    key: c.id || c.lead_phone + c.scheduled_date,
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      gap: 8,
+      padding: '6px 0',
+      borderTop: '1px solid var(--border)'
+    }
+  }, React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: '#f1f5f9',
+      fontWeight: 700
+    }
+  }, c.lead_name || c.lead_phone), React.createElement("span", {
+    className: "mono",
+    style: {
+      fontSize: 10,
+      color: c.scheduled_date < todayKey ? 'var(--red)' : 'var(--text3)'
+    }
+  }, c.scheduled_date < todayKey ? 'overdue' : c.scheduled_time || 'today')))), session && !session.ended && React.createElement("div", {
     className: "card glow-border",
     style: {
       marginBottom: 10
@@ -15503,7 +15839,7 @@ function App() {
           color: 'var(--red)',
           margin: '0 0 8px'
         }
-      }, "Dupes (", dupes.length, ")"), dupes.slice(0, 8).map(([ph, arr]) => React.createElement("div", {
+      }, "Duplicate Leads (", dupes.length, ")"), dupes.slice(0, 8).map(([ph, arr]) => React.createElement("div", {
         key: ph,
         style: {
           display: 'flex',
@@ -15525,30 +15861,17 @@ function App() {
           flex: 1
         }
       }, arr.map(l => l.name).join(', ')), React.createElement("button", {
-        onClick: () => {
-          setLeads(p => {
-            var seen = new Set();
-            return p.filter(l => {
-              var k = l.phone.replace(/[^\d]/g, '');
-              if (k === ph) {
-                if (seen.has(k)) return false;
-                seen.add(k);
-              }
-              return true;
-            });
-          });
-          toast('Deduped ' + ph);
-        },
+        onClick: () => mergeDuplicatePhone(ph),
         style: {
           padding: '3px 8px',
           borderRadius: 6,
-          background: 'var(--rdim)',
-          color: 'var(--red)',
+          background: 'var(--adim)',
+          color: 'var(--accent2)',
           fontSize: 10,
           fontWeight: 600,
           flexShrink: 0
         }
-      }, "x1"))));
+      }, "Merge"))));
     })(), React.createElement("h3", {
       style: {
         fontSize: 13,
@@ -15618,7 +15941,29 @@ function App() {
       color: '#f1f5f9',
       marginBottom: 12
     }
-  }, "\u26A1 Live Activity"), liveFeed.length === 0 && React.createElement("div", {
+  }, "\u26A1 Live Activity"), React.createElement("div", {
+    className: "live-filter-bar"
+  }, [['all', 'All'], ['call', 'Calls'], ['appt', 'Appts'], ['session', 'Sessions']].map(([k, l]) => React.createElement("button", {
+    key: k,
+    className: liveFilter === k ? 'active' : '',
+    onClick: () => setLiveFilter(k)
+  }, l)), liveAdmins.length > 0 && React.createElement("select", {
+    value: liveAdminFilter,
+    onChange: e => setLiveAdminFilter(e.target.value),
+    style: {
+      width: 150,
+      padding: '7px 9px',
+      borderRadius: 9,
+      fontSize: 10,
+      fontWeight: 700,
+      flexShrink: 0
+    }
+  }, React.createElement("option", {
+    value: "all"
+  }, "All admins"), liveAdmins.map(em => React.createElement("option", {
+    key: em,
+    value: em
+  }, (adminConfigs[em] || {}).bizName || em)))), filteredLiveFeed.length === 0 && React.createElement("div", {
     className: "card",
     style: {
       textAlign: 'center',
@@ -15640,7 +15985,7 @@ function App() {
       fontSize: 10,
       marginTop: 4
     }
-  }, "When admins start calling, their actions appear here in real-time.")), liveFeed.map((f, i) => {
+  }, "When admins start calling, their actions appear here in real-time.")), filteredLiveFeed.map((f, i) => {
     var ago = Math.floor((Date.now() - f.ts) / 1000);
     var agoStr = ago < 60 ? ago + 's' : Math.floor(ago / 60) + 'm';
     var icons = {
@@ -15655,13 +16000,18 @@ function App() {
     };
     return React.createElement("div", {
       key: i,
-      className: "card fi",
+      className: "card fi timeline-item",
       style: {
         marginBottom: 6,
         padding: '10px 12px',
         borderLeft: `3px solid ${f.type === 'appt' ? 'var(--green)' : f.type === 'session' ? 'var(--accent)' : 'var(--text3)'}`
       }
-    }, React.createElement("div", {
+    }, React.createElement("span", {
+      className: "timeline-dot",
+      style: {
+        background: f.type === 'appt' ? 'var(--green)' : f.type === 'session' ? 'var(--accent)' : 'var(--text3)'
+      }
+    }), React.createElement("div", {
       style: {
         display: 'flex',
         alignItems: 'center',
@@ -16039,7 +16389,156 @@ function App() {
       color: 'var(--text3)',
       fontWeight: 600
     }
-  }, l)))), React.createElement("button", {
+  }, l)))), (() => {
+    var allSessions = Object.values(adminSessions || {}).flat();
+    var dialed = allSessions.reduce((a, s) => a + (s.dialed || 0), 0);
+    var sets = allSessions.reduce((a, s) => a + (s.sets || 0), 0) + appointments.length;
+    var closed = appointments.filter(a => a.followUp === 'closed').length;
+    var met = appointments.filter(a => a.followUp === 'met' || a.followUp === 'closed').length;
+    var cpl = Number(cfg.cpl || 0);
+    var byAdmin = Object.entries(adminSessions || {}).map(([em, ss]) => ({
+      em,
+      name: (adminConfigs[em] || {}).bizName || em,
+      dialed: (ss || []).reduce((a, s) => a + (s.dialed || 0), 0),
+      sets: (ss || []).reduce((a, s) => a + (s.sets || 0), 0)
+    })).sort((a, b) => b.sets - a.sets).slice(0, 5);
+    var bySource = {};
+    leads.forEach(l => {
+      var src = l.source || l.provider || l.batch || cfg.sheetTab || 'Default';
+      if (!bySource[src]) bySource[src] = {
+        leads: 0,
+        sets: 0,
+        closed: 0
+      };
+      bySource[src].leads++;
+      if (l.status === 'set') bySource[src].sets++;
+    });
+    appointments.forEach(a => {
+      var src = a.source || a.provider || cfg.sheetTab || 'Default';
+      if (!bySource[src]) bySource[src] = {
+        leads: 0,
+        sets: 0,
+        closed: 0
+      };
+      if (a.followUp === 'closed') bySource[src].closed++;
+    });
+    var sources = Object.entries(bySource).sort((a, b) => b[1].sets - a[1].sets).slice(0, 5);
+    return React.createElement(React.Fragment, null, React.createElement("div", {
+      className: "card",
+      style: {
+        marginBottom: 12
+      }
+    }, React.createElement("h3", {
+      style: {
+        margin: '0 0 10px',
+        fontSize: 13,
+        fontWeight: 800,
+        color: '#f1f5f9'
+      }
+    }, "Business Analytics"), React.createElement("div", {
+      className: "analytics-grid"
+    }, [['Dial to Appt', dialed ? (sets / dialed * 100).toFixed(1) + '%' : '--'], ['Appt to Close', sets ? (closed / sets * 100).toFixed(1) + '%' : '--'], ['Met Rate', sets ? (met / sets * 100).toFixed(1) + '%' : '--'], ['Cost / Appt', cpl && sets ? '$' + (dialed * cpl / sets).toFixed(2) : '--']].map(([label, val]) => React.createElement("div", {
+      key: label,
+      style: {
+        padding: 10,
+        borderRadius: 10,
+        background: 'var(--bg)',
+        textAlign: 'center'
+      }
+    }, React.createElement("p", {
+      className: "mono",
+      style: {
+        margin: 0,
+        fontSize: 17,
+        fontWeight: 900,
+        color: 'var(--accent2)'
+      }
+    }, val), React.createElement("p", {
+      style: {
+        margin: '2px 0 0',
+        fontSize: 10,
+        color: 'var(--text3)'
+      }
+    }, label))))), byAdmin.length > 0 && React.createElement("div", {
+      className: "card",
+      style: {
+        marginBottom: 12
+      }
+    }, React.createElement("h3", {
+      style: {
+        margin: '0 0 8px',
+        fontSize: 13,
+        fontWeight: 800,
+        color: 'var(--green)'
+      }
+    }, "Admin Performance"), byAdmin.map(a => React.createElement("div", {
+      key: a.em,
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        padding: '6px 0',
+        borderTop: '1px solid var(--border)'
+      }
+    }, React.createElement("span", {
+      style: {
+        fontSize: 12,
+        color: '#f1f5f9',
+        fontWeight: 700
+      }
+    }, a.name), React.createElement("span", {
+      className: "mono",
+      style: {
+        fontSize: 11,
+        color: 'var(--text2)'
+      }
+    }, a.sets, " appts / ", a.dialed, " dials")))), sources.length > 0 && React.createElement("div", {
+      className: "card",
+      style: {
+        marginBottom: 12
+      }
+    }, React.createElement("h3", {
+      style: {
+        margin: '0 0 8px',
+        fontSize: 13,
+        fontWeight: 800,
+        color: 'var(--gold)'
+      }
+    }, "Lead Source ROI"), sources.map(([src, s]) => React.createElement("div", {
+      key: src,
+      style: {
+        display: 'grid',
+        gridTemplateColumns: '1fr auto auto auto',
+        gap: 8,
+        padding: '6px 0',
+        borderTop: '1px solid var(--border)',
+        fontSize: 11,
+        alignItems: 'center'
+      }
+    }, React.createElement("span", {
+      style: {
+        color: '#f1f5f9',
+        fontWeight: 700,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }
+    }, src), React.createElement("span", {
+      className: "mono",
+      style: {
+        color: 'var(--text3)'
+      }
+    }, s.leads, " leads"), React.createElement("span", {
+      className: "mono",
+      style: {
+        color: 'var(--green)'
+      }
+    }, s.sets, " set"), React.createElement("span", {
+      className: "mono",
+      style: {
+        color: 'var(--gold)'
+      }
+    }, s.closed, " closed")))));
+  })(), React.createElement("button", {
     onClick: exportCSV,
     style: {
       width: '100%',
@@ -19218,7 +19717,7 @@ function App() {
       color: '#f1f5f9',
       textAlign: 'center'
     }
-  }, "More"), [['timesheet', '💰', 'Pay', 'Sessions & payouts'], ['tracking', '📊', 'Tracking', 'Team performance analytics'], ['settings', '⚙️', 'Settings', 'Preferences, integrations, team']].map(([_k, _ic, _lbl, _desc]) => React.createElement("button", {
+  }, "More"), [['timesheet', '💰', 'Payroll', 'Admin payouts only'], ['tracking', '📊', 'Tracking', 'Team performance analytics'], ['settings', '⚙️', 'Settings', 'Preferences, integrations, team']].map(([_k, _ic, _lbl, _desc]) => React.createElement("button", {
     key: _k,
     onClick: () => {
       setTab(_k);
@@ -24580,7 +25079,7 @@ WHERE p.id IS NULL;`;
       fontSize: 13
     }
   }, "Close")))), scriptOpen && React.createElement("div", {
-    className: "script-panel"
+    className: 'script-panel ' + (showRefNotes ? '' : 'ref-collapsed')
   }, React.createElement("div", {
     className: "sp-header"
   }, React.createElement("h3", {
@@ -24633,6 +25132,43 @@ WHERE p.id IS NULL;`;
       fontWeight: 700
     }
   }, "Edit"), React.createElement("button", {
+    onClick: snapshotScriptVersion,
+    title: "Save a script version",
+    style: {
+      padding: '5px 10px',
+      borderRadius: 8,
+      background: 'var(--bg3)',
+      color: 'var(--text2)',
+      fontSize: 11,
+      fontWeight: 700
+    }
+  }, "Snapshot"), scriptVersions.length > 0 && React.createElement("select", {
+    value: cfg.scriptVersionId || '',
+    onChange: e => restoreScriptVersion(e.target.value),
+    title: "Restore script version",
+    style: {
+      width: 120,
+      padding: '5px 8px',
+      borderRadius: 8,
+      fontSize: 11
+    }
+  }, React.createElement("option", {
+    value: ""
+  }, "Versions"), scriptVersions.map(v => React.createElement("option", {
+    key: v.id,
+    value: v.id
+  }, v.name || new Date(v.ts || Date.now()).toLocaleDateString('en-SG')))), React.createElement("button", {
+    onClick: () => setShowRefNotes(p => !p),
+    title: "Toggle reference notes",
+    style: {
+      padding: '5px 10px',
+      borderRadius: 8,
+      background: showRefNotes ? 'var(--amdim)' : 'var(--bg3)',
+      color: showRefNotes ? 'var(--amber)' : 'var(--text3)',
+      fontSize: 11,
+      fontWeight: 700
+    }
+  }, "Notes"), React.createElement("button", {
     onClick: () => setScriptOpen(false),
     style: {
       width: 28,
@@ -24935,10 +25471,11 @@ WHERE p.id IS NULL;`;
       minHeight: 'calc(100vh - 360px)'
     }
   })) : React.createElement(React.Fragment, null, cfg.callingScript || scriptContent ? React.createElement("div", {
+    className: "script-read",
     style: {
-      fontSize: 13.5,
+      fontSize: 14.5,
       color: 'var(--text)',
-      lineHeight: 1.7,
+      lineHeight: 1.75,
       fontFamily: 'inherit'
     },
     dangerouslySetInnerHTML: {
@@ -24993,7 +25530,7 @@ WHERE p.id IS NULL;`;
       fontWeight: 700
     }
   }, "+ Create Script")))), React.createElement("div", {
-    className: "sp-col",
+    className: "sp-col sp-ref-col",
     style: {
       background: 'var(--bg)'
     }
@@ -25041,6 +25578,7 @@ WHERE p.id IS NULL;`;
       minHeight: 'calc(100vh - 320px)'
     }
   }) : React.createElement(React.Fragment, null, cfg.refNotes || refNotes ? React.createElement("div", {
+    className: "script-read",
     style: {
       fontSize: 13,
       color: 'var(--text)',

@@ -1,7 +1,7 @@
 {
-  "name": "AutoDial Pro",
-  "short_name": "AutoDial",
-  "description": "Cold-calling power tool for financial consultants",
+  "name": "AutoDial v2",
+  "short_name": "AutoDial v2",
+  "description": "AutoDial v2 workspace for caller and management workflows",
   "id": "./",
   "start_url": "./",
   "scope": "./",
