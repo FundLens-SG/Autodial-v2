@@ -316,7 +316,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0010';
+window.APP_VERSION='2026.04.29.0011';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -924,27 +924,69 @@ window.gF=async function(url,opts){
     toast('Google session expired — tap Reconnect','err');throw new Error('Google expired')}
   return r};
 window.gSheets={
+  _canonicalTab(tab){
+    var t=String(tab||'').trim();
+    return /^(appointments?\s*(set|sheet|log)?|appts?\.?\s*(set|sheet|log)?)$/i.test(t)?'Appointments Set':t
+  },
+  _tabAliases(tab){
+    var c=this._canonicalTab(tab);
+    if(c==='Appointments Set')return['Appointments Set','Appointment Sheet','Appointments','Appointment Log','Appt Sheet','Appt Log'];
+    return[c]
+  },
+  _pickExistingTab(existing,requested){
+    var want=String(requested||'').toLowerCase();
+    var exact=(existing||[]).find(function(t){return String(t||'').toLowerCase()===want});
+    if(exact)return exact;
+    var aliases=this._tabAliases(requested).map(function(t){return String(t||'').toLowerCase()});
+    return(existing||[]).find(function(t){return aliases.indexOf(String(t||'').toLowerCase())>=0})||''
+  },
+  _headersForTab(tab){
+    var c=this._canonicalTab(tab);
+    if(c==='Timesheet')return['Date','Day','Admin','Start','End','Hours','Dialed','NP','CB','NI','Set','Tier','$/hr','Bonus','Total Pay','Status','AutoDial ID','Session Key','Last Synced','Sync Action'];
+    if(c==='Appointments Set')return['Date Set','Admin','Lead Name','Phone','Appt Date','Appt Time','Location','Duration','Status','Follow-Up','Tip/EFYC','Notes','AutoDial ID','Calendar Event ID','Last Synced'];
+    if(c==='Pay')return['Date','Admin','Amount','Sessions','Hours','Incentives','Invoice #','Screenshot','Status'];
+    return[]
+  },
+  async repairTabHeaders(id,tab,canonical){
+    var headers=this._headersForTab(canonical||tab);
+    if(!id||!tab||!headers.length)return false;
+    try{
+      var end=a1Col(headers.length-1);
+      var range=tab+'!A1:'+end+'1';
+      var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(range))).json();
+      var h=vals.values&&vals.values[0]?vals.values[0]:[];
+      var next=[...h];
+      for(var i=0;i<headers.length;i++)if(!next[i])next[i]=headers[i];
+      if(next.join('|')!==h.join('|'))await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(range)+'?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[next]})});
+      return true
+    }catch(e){console.warn('[repairTabHeaders]',tab,e?.message||e);return false}
+  },
   async ensureTabs(id,tabNames){
-    // Check existing tabs and create missing ones
     try{
       var meta=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'?fields=sheets.properties')).json();
       var existing=(meta.sheets||[]).map(function(s){return s.properties.title});
-      var missing=tabNames.filter(function(t){return existing.indexOf(t)===-1});
-      if(!missing.length)return existing;
-      // Batch create missing tabs
-      var reqs=missing.map(function(t){return{addSheet:{properties:{title:t}}}});
-      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:reqs})});
-      // Add headers to new tabs
-      for(var i=0;i<missing.length;i++){
-        var tab=missing[i];var headers=[];
-        if(tab==='Timesheet')headers=[['Date','Day','Admin','Start','End','Hours','Dialed','NP','CB','NI','Set','Tier','$/hr','Bonus','Total Pay','Status','AutoDial ID','Session Key','Last Synced','Sync Action']];
-        else if(tab==='Appointments Set')headers=[['Date Set','Admin','Lead Name','Phone','Appt Date','Appt Time','Location','Duration','Status','Follow-Up','Tip/EFYC','Notes']];
-        else if(tab==='Pay')headers=[['Date','Admin','Amount','Sessions','Hours','Incentives','Invoice #','Screenshot','Status']];
-        if(headers.length)await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab)+'!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',{method:'POST',body:JSON.stringify({values:headers})});
+      var planned=[];
+      (tabNames||[]).forEach(t=>{
+        var actual=this._pickExistingTab(existing,t);
+        var canonical=this._canonicalTab(t);
+        if(actual)planned.push({actual,canonical,create:false});
+        else{planned.push({actual:canonical,canonical,create:true});existing.push(canonical)}
+      });
+      var missing=[...new Set(planned.filter(function(p){return p.create}).map(function(p){return p.actual}))];
+      if(missing.length){
+        var reqs=missing.map(function(t){return{addSheet:{properties:{title:t}}}});
+        await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:reqs})});
       }
-      toast(missing.length+' tab(s) created: '+missing.join(', '));
-      return[...existing,...missing];
+      for(var i=0;i<planned.length;i++){
+        await this.repairTabHeaders(id,planned[i].actual,planned[i].canonical);
+      }
+      if(missing.length)toast(missing.length+' tab(s) created: '+missing.join(', '));
+      return existing;
     }catch(e){console.warn('[EnsureTabs]',e.message);return[]}
+  },
+  async resolveTab(id,requested){
+    var tabs=await this.ensureTabs(id,[requested]);
+    return this._pickExistingTab(tabs,requested)||this._canonicalTab(requested)
   },
   async writeBack(id,tab,row,col,val){
     // Write a value back to a specific cell
@@ -960,32 +1002,23 @@ window.gSheets={
       return newCol}catch(e){return-1}
   },
   async ensureApptSheet(id){
-    if(!id)return false;
-    await this.ensureTabs(id,['Appointments Set']);
+    if(!id)return'';
     try{
-      var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent('Appointments Set')+'!A1:O1')).json();
-      var h=vals.values&&vals.values[0]?vals.values[0]:[];
-      var next=[...h];
-      var extra=['AutoDial ID','Calendar Event ID','Last Synced'];
-      for(var i=0;i<extra.length;i++){
-        var col=12+i;
-        if(!next[col])next[col]=extra[i];
-      }
-      if(next.join('|')!==h.join('|')){
-        await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent('Appointments Set')+'!A1:O1?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[next]})});
-      }
-      return true
-    }catch(e){console.warn('[ensureApptSheet]',e?.message||e);return false}
+      var tab=await this.resolveTab(id,'Appointments Set');
+      await this.repairTabHeaders(id,tab,'Appointments Set');
+      return tab
+    }catch(e){console.warn('[ensureApptSheet]',e?.message||e);return''}
   },
   async appendAppt(id,appt,adminName){
-    await this.ensureApptSheet(id);
+    var apptTab=await this.ensureApptSheet(id);
+    if(!apptTab)return false;
     try{var row=[
       new Date().toLocaleDateString('en-SG',{day:'2-digit',month:'2-digit',year:'numeric'}),
       adminName,appt.name||'',appt.phone||'',appt.apptDate||'',appt.apptTime||'',
       appt.location||'',appt.duration||60,'Set','Pending',appt.tip||appt.efyc||0,appt.remarks||'',
       appt.autoId||appt.id||'',appt.calEventId||'',new Date().toLocaleString('en-SG')
     ];
-    var res=await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent('Appointments Set')+'!A:O:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
+    var res=await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(apptTab)+'!A:O:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
       {method:'POST',body:JSON.stringify({values:[row]})});
     try{return await res.json()}catch(_e){return{ok:true}}}catch(e){return false}
   },
@@ -994,17 +1027,19 @@ window.gSheets={
       var m=String(appendRange||'').match(/!A(\d+):/);
       if(!m)return false;
       var row=m[1];
-      await this.put(id,'Appointments Set!I'+row,'Undone');
-      await this.put(id,'Appointments Set!J'+row,'Undo');
-      await this.put(id,'Appointments Set!L'+row,'Undone by '+(actor||'AutoDial')+' '+new Date().toLocaleString());
-      await this.put(id,'Appointments Set!O'+row,new Date().toLocaleString('en-SG'));
+      var tabMatch=String(appendRange||'').match(/^'?([^'!]+)'?!/);
+      var tab=tabMatch?tabMatch[1]:await this.resolveTab(id,'Appointments Set');
+      await this.put(id,tab+'!I'+row,'Undone');
+      await this.put(id,tab+'!J'+row,'Undo');
+      await this.put(id,tab+'!L'+row,'Undone by '+(actor||'AutoDial')+' '+new Date().toLocaleString());
+      await this.put(id,tab+'!O'+row,new Date().toLocaleString('en-SG'));
       return true
     }catch(e){return false}
   },
   async findApptRow(id,appt){
     try{
-      await this.ensureApptSheet(id);
-      var rows=await this.vals(id,'Appointments Set!A:O');
+      var tab=await this.ensureApptSheet(id);
+      var rows=await this.vals(id,tab+'!A:O');
       var autoId=String(appt.apptSheetAutoId||appt.dbApptId||appt.id||appt.autoId||'');
       var calId=String(appt.calEventId||'');
       for(var i=rows.length-1;i>=1;i--){
@@ -1031,12 +1066,12 @@ window.gSheets={
     try{
       if(!id||!appt)return false;
       fields=fields||{};
-      await this.ensureApptSheet(id);
+      var tab=await this.ensureApptSheet(id);
       var row=fields&&fields.row||0;
       if(!row)row=await this.findApptRow(id,appt);
       if(!row)return false;
       var data=[];
-      function set(col,val){data.push({range:'Appointments Set!'+col+row,values:[[val==null?'':val]]})}
+      function set(col,val){data.push({range:tab+'!'+col+row,values:[[val==null?'':val]]})}
       if('apptDate'in fields)set('E',fields.apptDate);
       if('apptTime'in fields)set('F',fields.apptTime);
       if('location'in fields)set('G',fields.location);
@@ -4095,6 +4130,10 @@ function App() {
   }));
   var [adminConfigs, setAdminConfigs] = useState(() => _sanitizeAdminCfgs(load('acfg')));
   var [adminCfgVerified, setAdminCfgVerified] = useState(role !== 'admin');
+  useEffect(() => {
+    appStateRef.current.cfg = cfg;
+    appStateRef.current.role = role;
+  }, [cfg, role]);
   var [isOffline, setIsOffline] = useState(!navigator.onLine);
   useEffect(() => {
     var on = () => setIsOffline(false);
@@ -5440,8 +5479,9 @@ function App() {
     var html = _sanitizeRichHtml(scriptContent || cfg.callingScript || '');
     var notes = _sanitizeRichHtml(refNotes || cfg.refNotes || '');
     if (!html && !notes) return toast('Nothing to snapshot yet', 'err');
+    var editedAt = Date.now();
     var version = {
-      id: 'sv_' + Date.now(),
+      id: 'sv_' + editedAt,
       name: 'Script ' + new Date().toLocaleString('en-SG', {
         day: '2-digit',
         month: 'short',
@@ -5460,7 +5500,8 @@ function App() {
       callingScript: html,
       refNotes: notes,
       scriptVersionId: version.id,
-      scriptVersions: next
+      scriptVersions: next,
+      scriptLocalEditedAt: editedAt
     }));
     toast('Script version saved');
   }, [scriptContent, refNotes, cfg.callingScript, cfg.refNotes, myEmail, scriptVersions]);
@@ -5475,7 +5516,8 @@ function App() {
       ...s,
       callingScript: html,
       refNotes: notes,
-      scriptVersionId: v.id
+      scriptVersionId: v.id,
+      scriptLocalEditedAt: Date.now()
     }));
     document.querySelectorAll('.sp-edit').forEach(el => {
       el._init = false;
@@ -5493,12 +5535,21 @@ function App() {
         callingScript: '',
         refNotes: '',
         objections: [],
-        scriptVersions: []
+        scriptVersions: [],
+        ownerScriptShareTs: Date.now(),
+        scriptLocalEditedAt: 0
       }));
       DBG('[AutoDial] Script share disabled by Main');
       return;
     }
     if (!(s.html || s.notes || s.objections?.length)) return;
+    var sharedTs = Number(s.ts || 0);
+    var currentCfg = appStateRef.current.cfg || {};
+    var localEditTs = Number(currentCfg.scriptLocalEditedAt || 0);
+    if ((appStateRef.current.role || role) === 'admin' && sharedTs && localEditTs > sharedTs) {
+      DBG('[AutoDial] Kept admin script edits newer than Main share');
+      return;
+    }
     var html = _sanitizeRichHtml(s.html || '');
     var notes = _sanitizeRichHtml(s.notes || '');
     var sv = Array.isArray(s.versions) ? s.versions : [];
@@ -5510,7 +5561,9 @@ function App() {
       callingScript: html,
       refNotes: notes || p.refNotes || '',
       objections: _normalizeObjections(s.objections || p.objections || []),
-      scriptVersions: sv
+      scriptVersions: sv,
+      ownerScriptShareTs: sharedTs || Date.now(),
+      scriptLocalEditedAt: 0
     }));
     DBG('[AutoDial] Loaded shared script from Main');
   }, []);
@@ -5518,7 +5571,8 @@ function App() {
     var clean = _normalizeObjections(next);
     setCfg(s => ({
       ...s,
-      objections: clean
+      objections: clean,
+      scriptLocalEditedAt: Date.now()
     }));
     if (activeObjectionId && !clean.some(o => o.id === activeObjectionId)) setActiveObjectionId('');
     return clean;
@@ -5556,6 +5610,39 @@ function App() {
     saveObjections((cfg.objections || []).filter(o => o.id !== item.id));
     toast('Objection removed');
   }, [cfg.objections, saveObjections]);
+  var moveObjection = useCallback((item, dir) => {
+    if (!item) return;
+    var list = _normalizeObjections(cfg.objections || []);
+    var idx = list.findIndex(o => o.id === item.id);
+    var nextIdx = idx + dir;
+    if (idx < 0 || nextIdx < 0 || nextIdx >= list.length) return;
+    [list[idx], list[nextIdx]] = [list[nextIdx], list[idx]];
+    saveObjections(list);
+    setActiveObjectionId(item.id);
+  }, [cfg.objections, saveObjections]);
+  var dropObjection = useCallback((fromId, toId) => {
+    if (!fromId || !toId || fromId === toId) return;
+    var list = _normalizeObjections(cfg.objections || []);
+    var from = list.findIndex(o => o.id === fromId);
+    var to = list.findIndex(o => o.id === toId);
+    if (from < 0 || to < 0) return;
+    var moved = list.splice(from, 1)[0];
+    list.splice(to, 0, moved);
+    saveObjections(list);
+    setActiveObjectionId(fromId);
+    toast('Objection order updated');
+  }, [cfg.objections, saveObjections]);
+  var obMoveBtnStyle = {
+    width: 22,
+    height: 24,
+    borderRadius: 7,
+    background: 'var(--bg3)',
+    color: 'var(--text3)',
+    fontSize: 11,
+    fontWeight: 900,
+    padding: 0,
+    border: '1px solid var(--border)'
+  };
   var mergeDuplicatePhone = useCallback(ph => {
     setLeads(prev => {
       var statusRank = {
@@ -19462,7 +19549,7 @@ function App() {
         var meta = await (await gF('https://sheets.googleapis.com/v4/spreadsheets/' + ac.timesheetId + '?fields=sheets.properties')).json();
         var _tabs = (meta.sheets || []).map(s => s.properties.title);
         var tsTab = _tabs.find(t => /time.?sheet|pay.?sheet|hours|payroll|salary|wage|pay.?slip|earning|compensation|cha.?ching|hourly/i.test(t));
-        var apptTab = _tabs.find(t => /appoint|appt|meeting|booking|schedule|confirm|client.*list|prospect|appt.*set|set.*appt|confirmed|calendar/i.test(t));
+        var apptTab = _tabs.find(t => gSheets._canonicalTab(t) === 'Appointments Set') || _tabs.find(t => /appoint|appt|meeting|booking|schedule|confirm|client.*list|prospect|appt.*set|set.*appt|confirmed|calendar/i.test(t));
         setAdminConfigs(p => ({
           ...p,
           [em]: {
@@ -19489,7 +19576,39 @@ function App() {
       fontWeight: 600,
       whiteSpace: 'nowrap'
     }
-  }, "Load Tabs")), ac.sheetTab && React.createElement("p", {
+  }, "Load Tabs"), ac.timesheetId && React.createElement("button", {
+    onClick: async () => {
+      if (!gOk) return toast('Connect Google', 'err');
+      if (!ac.timesheetId) return toast('Link a Google Sheet first', 'err');
+      try {
+        toast('Creating/repairing tabs...', 'info');
+        var _tabs2 = await gSheets.ensureTabs(ac.timesheetId, ['Timesheet', 'Appointments Set', 'Pay']);
+        var tsTab = _tabs2.find(t => /time.?sheet|pay.?sheet|hours|payroll|salary|wage|pay.?slip|earning|compensation|cha.?ching|hourly/i.test(t)) || 'Timesheet';
+        var apptTab = _tabs2.find(t => gSheets._canonicalTab(t) === 'Appointments Set') || 'Appointments Set';
+        setAdminConfigs(p => ({
+          ...p,
+          [em]: {
+            ...p[em],
+            _sheetTabs: _tabs2,
+            _detectedTs: tsTab,
+            _detectedAppt: apptTab
+          }
+        }));
+        toast('Tabs ready: Timesheet, ' + apptTab + ', Pay');
+      } catch (e) {
+        toast('Repair failed: ' + e.message, 'err');
+      }
+    },
+    style: {
+      padding: '4px 8px',
+      borderRadius: 6,
+      background: 'var(--gdim)',
+      color: 'var(--green)',
+      fontSize: 10,
+      fontWeight: 700,
+      whiteSpace: 'nowrap'
+    }
+  }, "Create / Repair Tabs Now")), ac.sheetTab && React.createElement("p", {
     style: {
       fontSize: 10,
       color: 'var(--green)',
@@ -19750,7 +19869,7 @@ function App() {
     style: {
       color: 'var(--accent2)'
     }
-  }, "Pay"), " tabs are auto-created!")), React.createElement("div", {
+  }, "Pay"), " tabs are auto-created when used. Use Create / Repair Tabs Now to create or fix headers immediately.")), React.createElement("div", {
     style: {
       marginBottom: 6
     }
@@ -27696,10 +27815,12 @@ WHERE p.id IS NULL;`;
       var cleanNotes = _sanitizeRichHtml(refNotes);
       setScriptContent(cleanScript);
       setRefNotes(cleanNotes);
+      var editedAt = Date.now();
       setCfg(s => ({
         ...s,
         callingScript: cleanScript,
-        refNotes: cleanNotes
+        refNotes: cleanNotes,
+        scriptLocalEditedAt: editedAt
       }));
       setScriptEditing(false);
       setRefEditing(false);
@@ -28121,7 +28242,8 @@ WHERE p.id IS NULL;`;
       setScriptContent(tpl);
       setCfg(s => ({
         ...s,
-        callingScript: tpl
+        callingScript: tpl,
+        scriptLocalEditedAt: Date.now()
       }));
       setScriptEditing(true);
     },
@@ -28150,7 +28272,8 @@ WHERE p.id IS NULL;`;
       setRefNotes(cleanNotes);
       setCfg(s => ({
         ...s,
-        refNotes: cleanNotes
+        refNotes: cleanNotes,
+        scriptLocalEditedAt: Date.now()
       }));
       setRefEditing(false);
       toast('Notes saved ✓');
@@ -28188,12 +28311,50 @@ WHERE p.id IS NULL;`;
     }
   }, "+ Add")), scriptObjections.length ? React.createElement("div", {
     className: "ob-chip-row"
-  }, scriptObjections.map(o => React.createElement("button", {
+  }, scriptObjections.map((o, i) => React.createElement("div", {
     key: o.id,
+    draggable: !!refEditing,
+    onDragStart: e => {
+      e.dataTransfer.setData('text/plain', o.id);
+      e.dataTransfer.effectAllowed = 'move';
+    },
+    onDragOver: e => {
+      if (refEditing) e.preventDefault();
+    },
+    onDrop: e => {
+      if (!refEditing) return;
+      e.preventDefault();
+      dropObjection(e.dataTransfer.getData('text/plain'), o.id);
+    },
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 3
+    }
+  }, refEditing && React.createElement("button", {
+    onClick: () => moveObjection(o, -1),
+    disabled: i === 0,
+    title: "Move up",
+    style: {
+      ...obMoveBtnStyle,
+      opacity: i === 0 ? .35 : 1
+    }
+  }, "↑"), React.createElement("button", {
     className: 'ob-chip' + (activeObjectionId === o.id ? ' active' : ''),
     onClick: () => setActiveObjectionId(p => p === o.id ? '' : o.id),
-    title: _htmlToPlain(o.answer, 220)
-  }, o.title))) : React.createElement("p", {
+    title: (refEditing ? 'Drag to reorder. ' : '') + _htmlToPlain(o.answer, 220),
+    style: refEditing ? {
+      cursor: 'grab'
+    } : {}
+  }, o.title), refEditing && React.createElement("button", {
+    onClick: () => moveObjection(o, 1),
+    disabled: i === scriptObjections.length - 1,
+    title: "Move down",
+    style: {
+      ...obMoveBtnStyle,
+      opacity: i === scriptObjections.length - 1 ? .35 : 1
+    }
+  }, "↓")))) : React.createElement("p", {
     style: {
       margin: 0,
       color: 'var(--text3)',
@@ -28334,7 +28495,8 @@ WHERE p.id IS NULL;`;
       setRefNotes(tpl);
       setCfg(s => ({
         ...s,
-        refNotes: tpl
+        refNotes: tpl,
+        scriptLocalEditedAt: Date.now()
       }));
       setRefEditing(true);
     },
