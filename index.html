@@ -308,7 +308,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0003';
+window.APP_VERSION='2026.04.29.0004';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -951,13 +951,33 @@ window.gSheets={
       await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab)+'!'+colLetter+'1?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[[headerName]]})});
       return newCol}catch(e){return-1}
   },
+  async ensureApptSheet(id){
+    if(!id)return false;
+    await this.ensureTabs(id,['Appointments Set']);
+    try{
+      var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent('Appointments Set')+'!A1:O1')).json();
+      var h=vals.values&&vals.values[0]?vals.values[0]:[];
+      var next=[...h];
+      var extra=['AutoDial ID','Calendar Event ID','Last Synced'];
+      for(var i=0;i<extra.length;i++){
+        var col=12+i;
+        if(!next[col])next[col]=extra[i];
+      }
+      if(next.join('|')!==h.join('|')){
+        await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent('Appointments Set')+'!A1:O1?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[next]})});
+      }
+      return true
+    }catch(e){console.warn('[ensureApptSheet]',e?.message||e);return false}
+  },
   async appendAppt(id,appt,adminName){
+    await this.ensureApptSheet(id);
     try{var row=[
       new Date().toLocaleDateString('en-SG',{day:'2-digit',month:'2-digit',year:'numeric'}),
       adminName,appt.name||'',appt.phone||'',appt.apptDate||'',appt.apptTime||'',
-      appt.location||'',appt.duration||60,'Set','Pending',appt.tip||appt.efyc||0,appt.remarks||''
+      appt.location||'',appt.duration||60,'Set','Pending',appt.tip||appt.efyc||0,appt.remarks||'',
+      appt.autoId||appt.id||'',appt.calEventId||'',new Date().toLocaleString('en-SG')
     ];
-    var res=await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent('Appointments Set')+'!A:L:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
+    var res=await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent('Appointments Set')+'!A:O:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
       {method:'POST',body:JSON.stringify({values:[row]})});
     try{return await res.json()}catch(_e){return{ok:true}}}catch(e){return false}
   },
@@ -969,8 +989,61 @@ window.gSheets={
       await this.put(id,'Appointments Set!I'+row,'Undone');
       await this.put(id,'Appointments Set!J'+row,'Undo');
       await this.put(id,'Appointments Set!L'+row,'Undone by '+(actor||'AutoDial')+' '+new Date().toLocaleString());
+      await this.put(id,'Appointments Set!O'+row,new Date().toLocaleString('en-SG'));
       return true
     }catch(e){return false}
+  },
+  async findApptRow(id,appt){
+    try{
+      await this.ensureApptSheet(id);
+      var rows=await this.vals(id,'Appointments Set!A:O');
+      var autoId=String(appt.apptSheetAutoId||appt.dbApptId||appt.id||appt.autoId||'');
+      var calId=String(appt.calEventId||'');
+      for(var i=rows.length-1;i>=1;i--){
+        var r=rows[i]||[];
+        if(autoId&&String(r[12]||'')===autoId)return i+1;
+        if(calId&&String(r[13]||'')===calId)return i+1;
+      }
+      var phone=normalizePhone(appt.phone||'');
+      var date=String(appt.apptDate||'');
+      var time=String(appt.apptTime||'').slice(0,5);
+      var name=String(appt.name||'').trim().toLowerCase();
+      for(var j=rows.length-1;j>=1;j--){
+        var row=rows[j]||[];
+        var rowPhone=normalizePhone(row[3]||'');
+        var rowDate=String(row[4]||'');
+        var rowTime=String(row[5]||'').slice(0,5);
+        var rowName=String(row[2]||'').trim().toLowerCase();
+        if(phone&&rowPhone===phone&&(date&&rowDate===date||time&&rowTime===time||name&&rowName===name))return j+1;
+      }
+    }catch(e){}
+    return 0
+  },
+  async updateApptRow(id,appt,fields,actor){
+    try{
+      if(!id||!appt)return false;
+      fields=fields||{};
+      await this.ensureApptSheet(id);
+      var row=fields&&fields.row||0;
+      if(!row)row=await this.findApptRow(id,appt);
+      if(!row)return false;
+      var data=[];
+      function set(col,val){data.push({range:'Appointments Set!'+col+row,values:[[val==null?'':val]]})}
+      if('apptDate'in fields)set('E',fields.apptDate);
+      if('apptTime'in fields)set('F',fields.apptTime);
+      if('location'in fields)set('G',fields.location);
+      if('duration'in fields)set('H',fields.duration);
+      if('status'in fields)set('I',fields.status);
+      if('followUp'in fields)set('J',fields.followUp);
+      if('tip'in fields)set('K',fields.tip);
+      if('notes'in fields)set('L',fields.notes);
+      if(appt.apptSheetAutoId||appt.dbApptId||appt.id)set('M',appt.apptSheetAutoId||appt.dbApptId||appt.id);
+      if(appt.calEventId)set('N',appt.calEventId);
+      set('O',new Date().toLocaleString('en-SG')+(actor?' by '+actor:''));
+      if(!data.length)return false;
+      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values:batchUpdate?valueInputOption=USER_ENTERED',{method:'POST',body:JSON.stringify({data})});
+      return row
+    }catch(e){console.warn('[updateApptRow]',e?.message||e);return false}
   },
   async appendPay(id,payment){
     try{var row=[
@@ -2618,6 +2691,30 @@ function isHeaderLike(v) {
   var s = String(v).trim().toLowerCase();
   return /^(first.?name|last.?name|full.?name|name|phone|tel|mobile|email|age|gender|sex|race|residential|transaction|remarks|notes|status|company|income|savings|birthday|dob|date.?of.?birth|occupation|industry|sector|job|site|source|lead.?source|salutation|hp|hp.?number|contact)$/i.test(s) || /^(first|last|surname|client|customer|cell|number|whatsapp|comments?|result|outcome|address|postal|zip|street)$/i.test(s);
 }
+function findVendorLabelBefore(rows, headerIdx) {
+  for (var back = 1; back <= 3; back++) {
+    var ri = headerIdx - back;
+    if (ri < 0) break;
+    var row = rows[ri] || [];
+    var cells = row.map(function (v) {
+      return String(v || '').trim();
+    }).filter(Boolean);
+    if (!cells.length) continue;
+    if (cells.length > 3) continue;
+    if (cells.some(function (v) {
+      return isHeaderLike(v) || isPhoneLike(v) || isEmailLike(v) || isAgeLike(v);
+    })) continue;
+    var label = cells.join(' ').replace(/\s+/g, ' ').trim();
+    if (label.length < 2 || label.length > 60) continue;
+    if (!/[a-z]/i.test(label) || /\d{4,}/.test(label)) continue;
+    if (/^(total|subtotal|remarks?|notes?|status|source|lead|vendor|admin|main)$/i.test(label)) continue;
+    return {
+      label: label,
+      rowIdx: ri
+    };
+  }
+  return null;
+}
 function isRemarksLike(v) {
   if (!v) return false;
   var s = String(v).toLowerCase().trim();
@@ -2842,7 +2939,9 @@ function detectBatches(headers, rows) {
     endRow: rows.length,
     headers: headers,
     colMap: null,
-    isShifted: false
+    isShifted: false,
+    source: '',
+    index: 0
   }];
   var primaryPhoneCol = -1;
   for (var i = 0; i < headers.length; i++) {
@@ -2857,11 +2956,14 @@ function detectBatches(headers, rows) {
     endRow: rows.length,
     headers: headers,
     colMap: null,
-    isShifted: false
+    isShifted: false,
+    source: '',
+    index: 0
   }];
   var batches = [];
   var batchStart = 0;
   var currentPhoneCol = primaryPhoneCol;
+  var currentSource = '';
   var SCAN_WINDOW = 8;
   for (var ri = 0; ri < rows.length; ri++) {
     var row = rows[ri];
@@ -2875,18 +2977,23 @@ function detectBatches(headers, rows) {
       return isHeaderLike(v);
     }).length;
     if (headerCells >= 3) {
-      if (ri > batchStart) {
+      var vendor = findVendorLabelBefore(rows, ri);
+      var prevEnd = vendor && vendor.rowIdx >= batchStart ? vendor.rowIdx : ri;
+      if (prevEnd > batchStart) {
         batches.push({
           startRow: batchStart,
-          endRow: ri,
+          endRow: prevEnd,
           headers: headers,
-          colMap: detectBatchColumns(rows, batchStart, ri),
+          colMap: detectBatchColumns(rows, batchStart, prevEnd),
           isShifted: currentPhoneCol !== primaryPhoneCol,
-          phoneCol: currentPhoneCol
+          phoneCol: currentPhoneCol,
+          source: currentSource,
+          index: batches.length
         });
       }
       headers = row.map(String);
       batchStart = ri + 1;
+      currentSource = vendor?.label || '';
       var newPhoneCol = detectPhoneCol(rows, ri + 1, SCAN_WINDOW);
       if (newPhoneCol !== -1) currentPhoneCol = newPhoneCol;
       continue;
@@ -2918,7 +3025,9 @@ function detectBatches(headers, rows) {
               headers: headers,
               colMap: detectBatchColumns(rows, batchStart, ri),
               isShifted: currentPhoneCol !== primaryPhoneCol,
-              phoneCol: currentPhoneCol
+              phoneCol: currentPhoneCol,
+              source: currentSource,
+              index: batches.length
             });
           }
           DBG('[BatchDetect] Shift at row', ri + 2, 'phone col', currentPhoneCol, '→', altPhoneCol);
@@ -2935,7 +3044,9 @@ function detectBatches(headers, rows) {
       headers: headers,
       colMap: detectBatchColumns(rows, batchStart, rows.length),
       isShifted: currentPhoneCol !== primaryPhoneCol,
-      phoneCol: currentPhoneCol
+      phoneCol: currentPhoneCol,
+      source: currentSource,
+      index: batches.length
     });
   }
   if (batches.length <= 1) return batches.length ? batches : [{
@@ -2943,7 +3054,9 @@ function detectBatches(headers, rows) {
     endRow: rows.length,
     headers: headers,
     colMap: null,
-    isShifted: false
+    isShifted: false,
+    source: '',
+    index: 0
   }];
   DBG('[BatchDetect] Found', batches.length, 'batches');
   return batches;
@@ -2975,6 +3088,7 @@ function parseBatch(rows, batchInfo) {
     var race = map.race !== -1 ? String(r[map.race] || '').trim() : '';
     var email = map.email !== -1 ? String(r[map.email] || '').trim() : '';
     var source = map.source !== -1 ? String(r[map.source] || '').trim() : '';
+    if (!source) source = batchInfo.source || batchInfo.vendor || '';
     var rmk = map.remarks !== -1 ? String(r[map.remarks] || '').trim() : '';
     var statusText = map.status !== -1 ? String(r[map.status] || '').trim() : '';
     var status = 'pending',
@@ -3041,6 +3155,7 @@ function parseBatch(rows, batchInfo) {
       income: '',
       gender: gender,
       source: source,
+      provider: source,
       status: status,
       npCount: npCount,
       cbDate: cbDate,
@@ -3052,7 +3167,8 @@ function parseBatch(rows, batchInfo) {
       sheetRow: ri + 2,
       statusCol: map.status !== -1 ? map.status : map.remarks,
       sheetValue: map.status !== -1 ? statusText : rmk,
-      _batchIdx: batchInfo.isShifted ? 1 : 0,
+      _batchIdx: typeof batchInfo.index === 'number' ? batchInfo.index : batchInfo.isShifted ? 1 : 0,
+      _batchName: batchInfo.source || '',
       _confidence: map.confidence || {}
     });
   }
@@ -3068,14 +3184,20 @@ function parseSheetMultiBatch(headers, rows) {
   }
   var allLeads = [];
   var batchSummary = [];
+  var batchSummarySources = [];
   for (var b = 0; b < batches.length; b++) {
     var batch = batches[b];
     var result = parseBatch(rows, batch);
     if (result.leads.length) {
       allLeads = allLeads.concat(result.leads);
+      batchSummarySources.push(batch.source || '');
       batchSummary.push('Batch ' + (b + 1) + ': rows ' + (batch.startRow + 2) + '-' + (batch.endRow + 1) + ' → ' + result.leads.length + ' leads' + (batch.isShifted ? ' (SHIFTED)' : ''));
     }
   }
+  batchSummary = batchSummary.map(function (s, idx) {
+    var source = batchSummarySources[idx];
+    return source ? s.replace(/^Batch (\d+):/, 'Batch $1 (' + source + '):') : s;
+  });
   if (allLeads.length === 0) return null;
   DBG('[BatchDetect] Parsed', allLeads.length, 'leads from', batches.length, 'batches');
   batchSummary.forEach(function (s) {
@@ -7776,6 +7898,11 @@ function App() {
   var tier = getTier(totalSets, myCfg.tierMins);
   var hourlyRate = myCfg.payRates[tier.idx] || myCfg.payRates[0];
   var userName = window._prof?.full_name || myEmail || 'User';
+  var syncApptSheet = useCallback(async (appt, fields = {}) => {
+    var apptSheetId = appt?.apptSheetId || myCfg.timesheetId || cfg.sheetId;
+    if (!apptSheetId || !localStorage.getItem('ad_gt')) return false;
+    return gSheets.updateApptRow(apptSheetId, appt, fields, userName);
+  }, [myCfg.timesheetId, cfg.sheetId, userName]);
   var monthlyAppts = getMonthlyAppts(appointments, myEmail);
   var rank = getRank(monthlyAppts, cfg.starThresholds);
   var nextRank = getNextRank(monthlyAppts, cfg.starThresholds);
@@ -9048,7 +9175,7 @@ function App() {
     var _bg = syncStatus === 'offline' ? 'var(--rdim)' : _fresh ? 'var(--gdim)' : syncStatus === 'pushing' || syncStatus === 'pulling' ? 'var(--amdim)' : 'var(--bg3)';
     var _label = syncStatus === 'offline' ? 'Offline' : _fresh ? 'Synced' : syncStatus === 'pushing' ? 'Pushing…' : syncStatus === 'pulling' ? 'Pulling…' : _ago !== null ? _ago + 's ago' : 'Idle';
     return React.createElement("button", {
-      onClick: () => {
+      onClick: async () => {
         if (window._liveSyncPull) {
           window._liveSyncPull();
           toast('↻ Force-pulled from cloud', 'info');
@@ -12977,9 +13104,10 @@ function App() {
   }, v))), isManageMode && (() => {
     var _pendingAppts = appointments.filter(a => !a._deleted && a.followUp === 'pending' && !isApptDeleted(a, _getDelIds()));
     var _selCount = selectedAppts.size;
-    var _bulkApply = status => {
+    var _bulkApply = async status => {
       if (_selCount === 0) return;
       var _now = new Date().toISOString();
+      var _targetsForSheet = appointments.filter(a => selectedAppts.has(a.id));
       setAppointments(p => p.map(a => selectedAppts.has(a.id) ? {
         ...a,
         followUp: status,
@@ -13000,6 +13128,15 @@ function App() {
           }))]);
         }
       }
+      await Promise.all(_targetsForSheet.map(a => syncApptSheet({
+        ...a,
+        followUp: status,
+        followUpDate: _now
+      }, {
+        status: 'Set',
+        followUp: status === 'flykite' ? 'Fly Kite' : status.charAt(0).toUpperCase() + status.slice(1),
+        notes: (a.remarks || '') + ' [' + status + ' ' + new Date().toLocaleString('en-SG') + ']'
+      })));
       setSelectedAppts(new Set());
       toast('✓ ' + _selCount + ' appointment' + (_selCount === 1 ? '' : 's') + ' → ' + status);
     };
@@ -13083,8 +13220,8 @@ function App() {
         fontWeight: 700,
         border: '1px solid rgba(248,81,73,.25)'
       }
-    }, "\uD83E\uDE81 Fly Kite"), React.createElement("button", {
-      onClick: () => {
+  }, "\uD83E\uDE81 Fly Kite"), React.createElement("button", {
+      onClick: async () => {
         if (!confirm('Delete ' + _selCount + ' selected appointment' + (_selCount === 1 ? '' : 's') + '?')) return;
         var _toNuke = appointments.filter(a => selectedAppts.has(a.id) && a.calEventId);
         if (_toNuke.length && window.gCal) {
@@ -13097,7 +13234,13 @@ function App() {
           setWeekEvents(prev => prev.filter(ev => !_ids.has(ev.id)));
         }
         var _d = JSON.parse(localStorage.getItem('_deletedApptIds') || '[]');
-        appointments.filter(a => selectedAppts.has(a.id)).forEach(a => {
+        var _sheetDeletes = appointments.filter(a => selectedAppts.has(a.id));
+        await Promise.all(_sheetDeletes.map(a => syncApptSheet(a, {
+          status: 'Deleted',
+          followUp: 'Deleted',
+          notes: 'Deleted by ' + userName + ' ' + new Date().toLocaleString('en-SG')
+        })));
+        _sheetDeletes.forEach(a => {
           if (a.id) _d.push(String(a.id));
           if (a.phone) _d.push(a.phone);
         });
@@ -13475,21 +13618,13 @@ function App() {
           }
           _mainWritebackAdminAppt(_updated);
         }
-        var tsId = myCfg.timesheetId || cfg.sheetId;
-        if (tsId && localStorage.getItem('ad_gt')) {
-          try {
-            gSheets.vals(tsId, 'Appointments Set!A:L').then(rows => {
-              if (!rows || rows.length < 2) return;
-              for (var ri = 1; ri < rows.length; ri++) {
-                if ((rows[ri][3] || '') === (a.phone || '') && (rows[ri][4] || '') === (a.apptDate || '')) {
-                  var cell = 'Appointments Set!I' + (ri + 1);
-                  gSheets.put(tsId, cell, k === 'met' ? 'Met' : k === 'closed' ? 'Closed' : k === 'flykite' ? 'Fly Kite' : k === 'postponed' ? 'Postponed' : 'Pending').catch(() => {});
-                  break;
-                }
-              }
-            }).catch(() => {});
-          } catch (e) {}
-        }
+        await syncApptSheet(a, {
+          apptDate: k === 'postponed' ? '' : a.apptDate || '',
+          apptTime: k === 'postponed' ? '' : a.apptTime || '',
+          status: 'Set',
+          followUp: k === 'flykite' ? 'Fly Kite' : k.charAt(0).toUpperCase() + k.slice(1),
+          notes: (a.remarks || '') + ' [' + k + ' ' + new Date().toLocaleString('en-SG') + ']'
+        });
         if (k === 'met') {
           setIncentives(p => [...p, {
             id: Date.now(),
@@ -23529,6 +23664,13 @@ WHERE p.id IS NULL;`;
       if (_target.admin && _target.admin.toLowerCase() !== myEmail.toLowerCase()) {
         _mainWritebackAdminAppt(_updated);
       }
+      await syncApptSheet(_updated, {
+        apptDate: '',
+        apptTime: '',
+        status: 'Set',
+        followUp: 'Postponed',
+        notes: (_updated.remarks || '') + ' [Postponed no date ' + new Date().toLocaleString('en-SG') + ']'
+      });
       toast(_target.name + ' — postponed without date ⏸');
       setShowAppt(false);
       setApptLocation('');
@@ -23653,6 +23795,15 @@ WHERE p.id IS NULL;`;
           if (_target.admin && _target.admin.toLowerCase() !== myEmail.toLowerCase()) {
             _mainWritebackAdminAppt(_updated);
           }
+          await syncApptSheet(_updated, {
+            apptDate,
+            apptTime,
+            location: apptLocation,
+            duration: dur,
+            status: 'Set',
+            followUp: 'Pending',
+            notes: apptObs || _target.remarks || ''
+          });
           pickerEventsCacheRef.current = {
             key: '',
             ts: 0,
@@ -23769,6 +23920,7 @@ WHERE p.id IS NULL;`;
           location: apptLocation,
           shaky: apptShaky
         }, _user?.id);
+        var _localApptId = savedApptRow?.id || 'appt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
         DB.notify(null, 'appt_set', 'Appt set: ' + myEmail, (lead?.name || '') + ' on ' + apptDate + ' at ' + apptTime + (apptLocation ? ' @ ' + apptLocation : ''), {
           leadName: lead?.name,
           apptDate,
@@ -23786,6 +23938,9 @@ WHERE p.id IS NULL;`;
             var next = p.slice();
             next[idx] = {
               ...next[idx],
+              id: next[idx].id || _localApptId,
+              dbApptId: savedApptRow?.id || next[idx].dbApptId || '',
+              apptSheetAutoId: _localApptId,
               apptDate,
               apptTime,
               calEventId: evt?.id || '',
@@ -23796,7 +23951,9 @@ WHERE p.id IS NULL;`;
             return next;
           }
           return [...p, {
-            id: Date.now() + Math.random(),
+            id: _localApptId,
+            dbApptId: savedApptRow?.id || '',
+            apptSheetAutoId: _localApptId,
             leadId: lead.id,
             name: lead.name,
             phone: lead.phone,
@@ -23834,6 +23991,9 @@ WHERE p.id IS NULL;`;
         var apptSheetId = myCfg.timesheetId || cfg.sheetId;
         if (apptSheetId && localStorage.getItem('ad_gt')) {
           var apptSheetRes = await gSheets.appendAppt(apptSheetId, {
+            id: _localApptId,
+            autoId: _localApptId,
+            calEventId: evt?.id || '',
             name: lead?.name,
             phone: lead?.phone,
             apptDate,
@@ -23847,6 +24007,12 @@ WHERE p.id IS NULL;`;
             apptSheetId,
             apptSheetRange: apptSheetRes?.updates?.updatedRange || ''
           };
+          setAppointments(p => p.map(a => a.id === _localApptId || a.phone === lead?.phone && a.apptDate === apptDate && a.apptTime === apptTime ? {
+            ...a,
+            apptSheetId,
+            apptSheetRange: apptSheetRes?.updates?.updatedRange || '',
+            apptSheetAutoId: _localApptId
+          } : a));
         }
       } catch (ev) {
         toast(ev.message, 'err');
@@ -25601,6 +25767,21 @@ WHERE p.id IS NULL;`;
           });
         }
         toast('✓ Event updated · synced to ' + (_editedRow?.admin || 'AutoDial'));
+        if (_editedRow) await syncApptSheet({
+          ..._editedRow,
+          apptDate: _newApptDate,
+          apptTime: _newApptTime,
+          duration: calEditForm.duration,
+          location: patch.location
+        }, {
+          apptDate: _newApptDate,
+          apptTime: _newApptTime,
+          duration: calEditForm.duration,
+          location: patch.location,
+          status: 'Set',
+          followUp: _editedRow.followUp || 'Pending',
+          notes: _editedRow.remarks || ''
+        });
         setCalEditEvent(null);
       } catch (e) {
         toast('Update failed: ' + (e.message || e), 'err');
@@ -25693,6 +25874,11 @@ WHERE p.id IS NULL;`;
         _liveSyncRef.current.localApptsGuardUntil = Date.now() + 6000;
       } catch (_e) {}
       await _wipeCalEvent();
+      await syncApptSheet(_a, {
+        status: 'Deleted',
+        followUp: 'Deleted',
+        notes: 'Deleted by ' + userName + ' ' + new Date().toLocaleString('en-SG')
+      });
       var delIds = JSON.parse(localStorage.getItem('_deletedApptIds') || '[]');
       if (_a.id) delIds.push(String(_a.id));
       if (_a.calEventId) delIds.push(String(_a.calEventId));
@@ -25790,6 +25976,15 @@ WHERE p.id IS NULL;`;
         followUp: 'flykite',
         followUpDate: _now
       } : x));
+      await syncApptSheet({
+        ..._a,
+        followUp: 'flykite',
+        followUpDate: _now
+      }, {
+        status: 'Set',
+        followUp: 'Fly Kite',
+        notes: (_a.remarks || '') + ' [Fly Kite ' + new Date().toLocaleString('en-SG') + ']'
+      });
       if (_a.admin && _a.admin.toLowerCase() !== myEmail.toLowerCase()) {
         _mainWritebackAdminAppt({
           ..._a,
