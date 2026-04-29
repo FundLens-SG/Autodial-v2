@@ -212,6 +212,21 @@ button:active{transform:scale(.97)}
 .t-ok{background:rgba(63,185,80,.15);border:1px solid rgba(63,185,80,.3);color:var(--green)}
 .t-err{background:rgba(248,81,73,.15);border:1px solid rgba(248,81,73,.3);color:var(--red)}
 .t-info{background:var(--adim);border:1px solid rgba(99,102,241,.3);color:var(--accent2)}
+.touch-action-row button{min-height:46px}
+@media(max-width:720px){
+  input,select,textarea{font-size:16px}
+  button{min-height:40px}
+  .content-pad{padding-left:12px;padding-right:12px;padding-bottom:118px}
+  .card{border-radius:14px;padding:14px}
+  .hdr-row1{gap:7px;padding-left:12px;padding-right:12px}
+  .hdr-row1 h1{font-size:16px!important}
+  .hdr-row2{padding-left:12px;padding-right:12px}
+  .mode-banner{margin-left:12px;margin-right:12px}
+  .app-tabs{padding-left:8px;padding-right:8px;gap:5px}
+  .app-tabs button{min-width:82px;min-height:48px;padding:13px 10px;font-size:13px}
+  .readiness-grid{grid-template-columns:1fr}
+  .touch-action-row{grid-template-columns:1fr!important}
+}
 </style>
 </head>
 <body>
@@ -288,7 +303,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.28.0004';
+window.APP_VERSION='2026.04.29.0001';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -4175,6 +4190,7 @@ function App() {
     skipAllNP: false,
     includeCB: false
   });
+  var [leadFocusMode, setLeadFocusMode] = useState(load('leadFocusMode') || 'auto');
   var [gOk, setGOk] = useState(!!localStorage.getItem('ad_gt'));
   useEffect(() => {
     window._gOkCb = setGOk;
@@ -4382,6 +4398,7 @@ function App() {
   var [showColPicker, setShowColPicker] = useState(null);
   var [showColMap, setShowColMap] = useState(false);
   var [detectedColMap, setDetectedColMap] = useState(null);
+  var [importReview, setImportReview] = useState(null);
   var [aiAnalyzing, setAiAnalyzing] = useState(false);
   var [payConfigOpen, setPayConfigOpen] = useState(false);
   var [showSlotPicker, setShowSlotPicker] = useState(false);
@@ -4736,8 +4753,12 @@ function App() {
   var [showApprovalModal, setShowApprovalModal] = useState(false);
   var [showHelp, setShowHelp] = useState(!localStorage.getItem('autodial_seen_help'));
   var [showMoreMenu, setShowMoreMenu] = useState(false);
-  var [settingsSubtab, setSettingsSubtab] = useState('prefs');
-  useEffect(() => {}, [role, settingsSubtab]);
+  var [showActivityDrawer, setShowActivityDrawer] = useState(false);
+  var [settingsSearch, setSettingsSearch] = useState('');
+  var [settingsSubtab, setSettingsSubtab] = useState(load('settingsSubtab') || 'setup');
+  useEffect(() => {
+    save('settingsSubtab', settingsSubtab);
+  }, [settingsSubtab]);
   var fileRef = useRef(null);
   var cdRef = useRef(null);
   var timerRef = useRef(null);
@@ -4900,6 +4921,21 @@ function App() {
       return def;
     }
   };
+  useEffect(() => {
+    save('leadFocusMode', leadFocusMode);
+  }, [leadFocusMode]);
+  var dialQueuePriority = useCallback(() => {
+    var base = cfg.queuePriority || ['blank', 'cb_due', 'np_retry'];
+    if (leadFocusMode === 'np') return ['np_retry', ...base.filter(x => x !== 'np_retry')];
+    if (leadFocusMode === 'blank') return ['blank', ...base.filter(x => x !== 'blank')];
+    return base;
+  }, [cfg.queuePriority, leadFocusMode]);
+  var dialFilters = useCallback((extra = {}) => ({
+    ...filters,
+    npMax: n(myCfg.npMax, 5),
+    queuePriority: dialQueuePriority(),
+    ...extra
+  }), [filters, myCfg, dialQueuePriority]);
   var phoneDigits = ph => String(ph || '').replace(/[^\d+]/g, '');
   var hasCallablePhone = ph => phoneDigits(ph).replace(/[^\d]/g, '').length >= 7;
   var getReadiness = (candidateLead = null) => {
@@ -8130,7 +8166,7 @@ function App() {
   }, [curIdx, session, totalSets, myCfg, syncSheet, monthlyAppts, role, mainMode, myEmail, userName]);
   var moveNext = useCallback(() => {
     setLeads(p => {
-      var n = getNextDialable(p, curIdx, filters);
+      var n = getNextDialable(p, curIdx, dialFilters());
       if (n === -1) {
         setRunning(false);
         setPhase('idle');
@@ -8145,7 +8181,7 @@ function App() {
       }, 300);
       return p;
     });
-  }, [curIdx, filters, dial]);
+  }, [curIdx, dialFilters, dial]);
   var claimLead = useCallback(leadIdx => {
     if (!_SB || !_user || leadIdx < 0 || leadIdx >= leads.length) return;
     var lead = leads[leadIdx];
@@ -8178,9 +8214,7 @@ function App() {
     if (idx >= 0 && idx < curLeads.length && (curLeads[idx].status === 'ni' || curLeads[idx].status === 'set')) {
       console.warn('[AutoDial] proceedToLead: lead ' + idx + ' is ' + curLeads[idx].status + ', finding next…');
       idx = getNextDialable(curLeads, idx, {
-        ...filters,
-        npMax: n(myCfg.npMax, 5),
-        queuePriority: cfg.queuePriority
+        ...dialFilters()
       });
     }
     if (idx === -1 || idx >= curLeads.length) {
@@ -8195,9 +8229,7 @@ function App() {
     if (claim) {
       toast('⚠️ ' + claim.name + ' is already calling ' + leadsRef.current[idx]?.name, 'err');
       var nextIdx = getNextDialable(leadsRef.current, idx, {
-        ...filters,
-        npMax: n(myCfg.npMax, 5),
-        queuePriority: cfg.queuePriority
+        ...dialFilters()
       });
       if (nextIdx === -1) {
         setRunning(false);
@@ -8217,14 +8249,12 @@ function App() {
       var l = leadsRef.current[idx];
       if (l) dial(l.phone);
     }, 300);
-  }, [dial, filters, cfg, myCfg, checkClaim, claimLead, blockIfNotReady]);
+  }, [dial, dialFilters, checkClaim, claimLead, blockIfNotReady]);
   var handleOutcome = useCallback((status, extra = {}) => {
     var leadIdx = curIdx;
     if (status === 'pending') {
       var nextIdx = getNextDialable(leads, leadIdx, {
-        ...filters,
-        npMax: n(myCfg.npMax, 5),
-        queuePriority: cfg.queuePriority
+        ...dialFilters()
       });
       nextLeadRef.current = nextIdx;
       if (autoAdvanceTimerRef.current) {
@@ -8323,9 +8353,7 @@ function App() {
       return l;
     });
     nextLeadRef.current = getNextDialable(simulated, leadIdx, {
-      ...filters,
-      npMax: n(myCfg.npMax, 5),
-      queuePriority: cfg.queuePriority
+      ...dialFilters()
     });
     if (status === 'ni' || status === 'np' || status === 'cb') {
       appStateRef.current._lastUndo = {
@@ -8362,7 +8390,7 @@ function App() {
         }, 400);
       }
     }
-  }, [applyOutcome, curIdx, leads, filters, cfg, myCfg, bestStreak, session, dial]);
+  }, [applyOutcome, curIdx, leads, filters, cfg, myCfg, bestStreak, session, dial, dialFilters]);
   var finishPostCall = useCallback(() => {
     if (postCallNote.trim() && showPostCall) {
       var idx = showPostCall.leadIdx;
@@ -8410,9 +8438,7 @@ function App() {
       startSession(chosenSlot || slots[0] || null);
     }
     var f = getNextDialable(leads, -1, {
-      ...filters,
-      npMax: n(myCfg.npMax, 5),
-      queuePriority: cfg.queuePriority
+      ...dialFilters()
     });
     if (f === -1) {
       toast('No eligible leads — session cleared', 'err');
@@ -8487,6 +8513,41 @@ function App() {
     }
     setSheetSearching(false);
   };
+  var buildImportReview = (nextLeads, meta = {}) => {
+    var colMap = meta.colMap || {};
+    var confidence = colMap.confidence || {};
+    var lowCols = Object.entries(confidence).filter(([k, v]) => v !== '' && v != null && +v < 60).map(([k, v]) => ({
+      key: k,
+      score: +v
+    }));
+    var questionable = (nextLeads || []).filter(l => {
+      var conf = l._confidence || confidence || {};
+      var lowPhone = conf.phone != null && +conf.phone < 60;
+      var lowName = conf.name != null && +conf.name < 60;
+      var sameNamePhone = String(l.name || '').replace(/[^\d]/g, '') && String(l.name || '').replace(/[^\d]/g, '') === String(l.phone || '').replace(/[^\d]/g, '');
+      return l.needsReview || !hasCallablePhone(l.phone) || !l.name || sameNamePhone || lowPhone || lowName;
+    }).slice(0, 50);
+    return {
+      id: Date.now() + Math.random(),
+      leads: nextLeads || [],
+      meta,
+      lowCols,
+      questionable,
+      count: (nextLeads || []).length,
+      ts: Date.now()
+    };
+  };
+  var stageLeadImport = (nextLeads, meta = {}) => {
+    var review = buildImportReview(nextLeads, meta);
+    if (review.lowCols.length || review.questionable.length) {
+      setImportReview(review);
+      toast('Review import before accepting: ' + review.questionable.length + ' questionable rows', 'info');
+      return false;
+    }
+    setLeads(nextLeads || []);
+    setImportReview(null);
+    return true;
+  };
   var reanalyzeWithAI = async (headers, rows) => {
     if (!headers || !rows) return;
     var key = geminiKey();
@@ -8505,7 +8566,12 @@ function App() {
         if (_ri === -1) _ri = _rh.findIndex(x => /^status$/i.test(x.trim()));
         if (_ri === -1) _ri = _rh.findIndex(x => x.trim().length < 12 && /remarks|notes|comment/i.test(x.trim()));
         var rv = validateStatuses(ai.leads, _rr, _ri);
-        setLeads(rv);
+        stageLeadImport(rv, {
+          source: 'AI re-analysis',
+          colMap: ai.colMap || detectedColMap || null,
+          headers,
+          rows
+        });
         toast('✨ ' + ai.count + ' leads reanalyzed!');
         var detected = ai.leads.filter(l => l.status !== 'pending').length;
         if (detected > 0) toast(detected + ' leads with detected status', 'info');
@@ -8550,7 +8616,12 @@ function App() {
       if (multiBatch && multiBatch.leads.length) {
         var validated = validateStatuses(multiBatch.leads, r, -1);
         var _final2 = await claudePipeline(validated, h, r, multiBatch._colMap || null);
-        setLeads(_final2);
+        stageLeadImport(_final2, {
+          source: 'Google Sheet',
+          colMap: multiBatch._colMap || null,
+          headers: h,
+          rows: r
+        });
         if (multiBatch._colMap) setDetectedColMap(multiBatch._colMap);
         var ni = _final2.filter(l => l.status === 'ni').length,
           pend = _final2.filter(l => l.status === 'pending').length;
@@ -8565,7 +8636,12 @@ function App() {
       if (ai?.leads.length) {
         var _validated = validateStatuses(ai.leads, r, rmkCol);
         var _final3 = await claudePipeline(_validated, h, r, ai.colMap || null);
-        setLeads(_final3);
+        stageLeadImport(_final3, {
+          source: 'Google Sheet + AI',
+          colMap: ai.colMap || null,
+          headers: h,
+          rows: r
+        });
         var _ni = _final3.filter(l => l.status === 'ni').length,
           _pend = _final3.filter(l => l.status === 'pending').length;
         toast('✨ ' + _final3.length + ' leads | ' + _pend + ' callable, ' + _ni + ' NI');
@@ -8581,7 +8657,12 @@ function App() {
       if (res.colMap) setDetectedColMap(res.colMap);
       var validated2 = validateStatuses(res.leads, r, rmkCol);
       var final = await claudePipeline(validated2, h, r, res.colMap || null);
-      setLeads(final);
+      stageLeadImport(final, {
+        source: 'Google Sheet',
+        colMap: res.colMap || null,
+        headers: h,
+        rows: r
+      });
       var ni2 = final.filter(l => l.status === 'ni').length,
         pend2 = final.filter(l => l.status === 'pending').length;
       toast(final.length + ' leads | ' + pend2 + ' callable, ' + ni2 + ' NI');
@@ -8626,7 +8707,21 @@ function App() {
         var _hri2 = h.findIndex(x => /^(remarks?|notes?|comments?)$/i.test(x.trim()));
         if (_hri2 === -1) _hri2 = h.findIndex(x => /^status$/i.test(x.trim()));
         if (_hri2 === -1) _hri2 = h.findIndex(x => x.trim().length < 12 && /remarks|notes|comment/i.test(x.trim()));
-        setLeads(p => [...p, ...validateStatuses(ai.leads, r, _hri2)]);
+        setLeads(p => {
+          var merged = [...p, ...validateStatuses(ai.leads, r, _hri2)];
+          var review = buildImportReview(merged, {
+            source: 'File upload + AI',
+            colMap: ai.colMap || null,
+            headers: h,
+            rows: r
+          });
+          if (review.lowCols.length || review.questionable.length) {
+            setTimeout(() => setImportReview(review), 0);
+            setTimeout(() => toast('Review file import before accepting: ' + review.questionable.length + ' questionable rows', 'info'), 0);
+            return p;
+          }
+          return merged;
+        });
         toast('✨ ' + ai.count + ' imported');
         return;
       }
@@ -8636,7 +8731,21 @@ function App() {
       var _hri = h.findIndex(x => /^(remarks?|notes?|comments?|result|outcome)$/i.test(x.trim()));
       if (_hri === -1) _hri = h.findIndex(x => /^status$/i.test(x.trim()));
       if (_hri === -1) _hri = h.findIndex(x => x.trim().length < 12 && /remarks|notes|comment/i.test(x.trim()));
-      setLeads(p => [...p, ...validateStatuses(res.leads, r, _hri)]);
+      setLeads(p => {
+        var merged = [...p, ...validateStatuses(res.leads, r, _hri)];
+        var review = buildImportReview(merged, {
+          source: 'File upload',
+          colMap: res.colMap || null,
+          headers: h,
+          rows: r
+        });
+        if (review.lowCols.length || review.questionable.length) {
+          setTimeout(() => setImportReview(review), 0);
+          setTimeout(() => toast('Review file import before accepting: ' + review.questionable.length + ' questionable rows', 'info'), 0);
+          return p;
+        }
+        return merged;
+      });
       toast(res.count + ' imported');
     } catch (err) {
       toast(err.message, 'err');
@@ -8828,7 +8937,25 @@ function App() {
         animation: syncStatus === 'pushing' || syncStatus === 'pulling' ? 'pulse 1s infinite' : undefined
       }
     }), _label);
-  })(), syncing && React.createElement("span", {
+  })(), React.createElement("button", {
+    onClick: () => setShowActivityDrawer(true),
+    title: "Activity and undo timeline",
+    style: {
+      width: 30,
+      height: 30,
+      borderRadius: 8,
+      background: syncTrail.length || undoInfo || importReview ? 'var(--amdim)' : 'var(--bg3)',
+      color: syncTrail.length || undoInfo || importReview ? 'var(--amber)' : 'var(--text3)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+      padding: 0,
+      fontSize: 13,
+      fontWeight: 900,
+      border: '1px solid ' + (syncTrail.length || undoInfo || importReview ? 'rgba(210,153,34,.3)' : 'var(--border)')
+    }
+  }, "\u25F4"), syncing && React.createElement("span", {
     className: "pill",
     style: {
       background: 'var(--adim)',
@@ -9032,6 +9159,8 @@ function App() {
     var _knownAdmins = Object.keys(adminConfigs || {}).filter(em => em && em !== myEmail);
     var _quietAdmins = _knownAdmins.filter(em => !_activeAdmins.has(em));
     var _todaySessions = _adminEntriesH.flatMap(([em, ss]) => ss).filter(s => new Date(s.startTime).toDateString() === _todayKey);
+    var _weakCallers = _todaySessions.filter(s => (s.dialed || 0) >= 10 && (s.sets || 0) === 0).length;
+    var _hotStreaks = _todaySessions.filter(s => (s.sets || 0) >= 2).length;
     var _todayAppts = appointments.filter(a => a.createdAt && new Date(a.createdAt).toDateString() === _todayKey);
     var _todayClosed = _todayAppts.filter(a => a.followUp === 'closed');
     var _todayRevenue = _todayClosed.reduce((a, x) => a + (x.efyc || 0), 0);
@@ -9054,7 +9183,7 @@ function App() {
         textTransform: 'uppercase',
         letterSpacing: '.1em'
       }
-    }, "Today \xB7 ", new Date().toLocaleDateString('en-SG', {
+    }, "Manager command center \xB7 ", new Date().toLocaleDateString('en-SG', {
       weekday: 'long',
       day: 'numeric',
       month: 'short'
@@ -9137,7 +9266,37 @@ function App() {
         fontSize: 9,
         color: 'var(--text3)'
       }
-    }, "EFYC")))), React.createElement("h3", {
+    }, "EFYC")))), React.createElement("div", {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4,1fr)',
+        gap: 6,
+        marginTop: 10
+      }
+    }, [['Live admins', liveAdmins.length], ['Pay due', '$' + _totalOwed.toFixed(0)], ['Weak callers', _weakCallers], ['Hot streaks', _hotStreaks]].map(([label, val]) => React.createElement("div", {
+      key: label,
+      style: {
+        padding: '7px 6px',
+        borderRadius: 8,
+        background: 'var(--bg)',
+        border: '1px solid var(--border)',
+        textAlign: 'center'
+      }
+    }, React.createElement("p", {
+      className: "mono",
+      style: {
+        margin: 0,
+        fontSize: 12,
+        fontWeight: 900,
+        color: label === 'Weak callers' && val > 0 ? 'var(--amber)' : label === 'Hot streaks' && val > 0 ? 'var(--green)' : 'var(--text)'
+      }
+    }, val), React.createElement("p", {
+      style: {
+        margin: '2px 0 0',
+        fontSize: 8,
+        color: 'var(--text3)'
+      }
+    }, label)))), React.createElement("h3", {
       style: {
         fontSize: 13,
         fontWeight: 700,
@@ -9557,7 +9716,64 @@ function App() {
   }, readiness.map(x => React.createElement("div", {
     key: x.key,
     className: 'readiness-pill ' + (x.ok ? 'ok' : x.warn ? 'warn' : 'bad')
-  }, React.createElement("span", null, x.label), React.createElement("b", null, x.ok ? 'OK' : x.warn ? 'WARN' : 'FIX'))))), priorityCallbacks.length > 0 && React.createElement("div", {
+  }, React.createElement("span", null, x.label), React.createElement("b", null, x.ok ? 'OK' : x.warn ? 'WARN' : 'FIX'))))), React.createElement("div", {
+    className: "card",
+    style: {
+      marginBottom: 10,
+      padding: 12,
+      borderColor: 'rgba(99,102,241,.22)',
+      background: 'linear-gradient(135deg,rgba(99,102,241,.06),rgba(88,166,255,.03))'
+    }
+  }, React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+      marginBottom: 8
+    }
+  }, React.createElement("div", null, React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 12,
+      fontWeight: 800,
+      color: '#f1f5f9'
+    }
+  }, "Focus queue"), React.createElement("p", {
+    style: {
+      margin: '2px 0 0',
+      fontSize: 10,
+      color: 'var(--text3)'
+    }
+  }, "Uncalled: ", leads.filter(l => (l.status || 'pending') === 'pending').length, " | NP: ", leads.filter(l => l.status === 'np').length)), React.createElement("span", {
+    className: "pill",
+    style: {
+      background: leadFocusMode === 'auto' ? 'var(--bg3)' : 'var(--adim)',
+      color: leadFocusMode === 'auto' ? 'var(--text3)' : 'var(--accent2)'
+    }
+  }, leadFocusMode === 'np' ? 'NP FIRST' : leadFocusMode === 'blank' ? 'UNCALLED FIRST' : 'AUTO')), React.createElement("div", {
+    className: "touch-action-row",
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(3,1fr)',
+      gap: 6
+    }
+  }, [['auto', 'Auto'], ['blank', 'Uncalled'], ['np', 'NP first']].map(([mode, label]) => React.createElement("button", {
+    key: mode,
+    onClick: () => {
+      setLeadFocusMode(mode);
+      toast(mode === 'np' ? 'Focusing NP retries first' : mode === 'blank' ? 'Focusing uncalled leads first' : 'Using default queue priority', 'info');
+    },
+    style: {
+      padding: '10px 6px',
+      borderRadius: 10,
+      background: leadFocusMode === mode ? 'var(--adim)' : 'var(--bg3)',
+      color: leadFocusMode === mode ? 'var(--accent2)' : 'var(--text2)',
+      fontSize: 11,
+      fontWeight: 800,
+      border: '1px solid ' + (leadFocusMode === mode ? 'rgba(99,102,241,.35)' : 'var(--border)')
+    }
+  }, label)))), priorityCallbacks.length > 0 && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 10,
@@ -10705,9 +10921,7 @@ function App() {
   }, "Dial"), React.createElement("button", {
     onClick: () => {
       var skipIdx = getNextDialable(leads, nextPreviewIdx, {
-        ...filters,
-        npMax: n(myCfg.npMax, 5),
-        queuePriority: cfg.queuePriority
+        ...dialFilters()
       });
       if (skipIdx === -1) {
         toast('No more leads', 'info');
@@ -14530,7 +14744,7 @@ function App() {
         fontSize: 10,
         color: 'var(--text3)'
       }
-    }, isManageMode ? _allAdminSessions.length : sessionLog.length, " sessions"), isCallMode && role !== 'admin' && sessionLog.length > 0 && React.createElement("button", {
+    }, isManageMode ? _allAdminSessions.length : sessionLog.length, " sessions"), isCallMode && sessionLog.length > 0 && React.createElement("button", {
       onClick: () => {
         if (!confirm('⚠️ Delete ALL ' + sessionLog.length + ' sessions?\n\nThis will reset pay history and cannot be undone.')) return;
         setSessionLog([]);
@@ -14711,10 +14925,11 @@ function App() {
           fontSize: 10,
           fontWeight: 600
         }
-      }, "\u2713 Mark Paid"), (role !== 'admin' || myCfg.adminCanDelete) && React.createElement("button", {
+      }, "\u2713 Mark Paid"), isCallMode && React.createElement("button", {
         onClick: () => {
           if (!confirm('Delete this session?')) return;
           setSessionLog(p => p.filter((_, j) => j !== i));
+          toast('Session deleted');
         },
         style: {
           marginTop: 4,
@@ -16842,7 +17057,44 @@ function App() {
     }
   }, "\u2B07 Export Report")), tab === 'settings' && React.createElement("div", {
     className: "content-pad"
-  }, React.createElement("div", {
+  }, React.createElement("input", {
+    value: settingsSearch,
+    onChange: e => setSettingsSearch(e.target.value),
+    placeholder: "Search settings...",
+    style: {
+      marginBottom: 10,
+      fontSize: 13
+    }
+  }), settingsSearch && React.createElement("div", {
+    className: "card",
+    style: {
+      marginBottom: 10,
+      padding: 10,
+      borderColor: 'rgba(99,102,241,.22)'
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: '0 0 8px',
+      fontSize: 11,
+      color: 'var(--text3)'
+    }
+  }, "Quick jump"), [['setup', 'Setup checklist'], ['integr', 'Google, sheets, calendar'], ['ai', 'AI import review'], ['data', 'Sync diagnostics'], ['team', 'Admins and pay'], ['prefs', 'Calling preferences']].filter(([k, label]) => label.toLowerCase().includes(settingsSearch.toLowerCase()) && (k !== 'team' || isManageMode)).map(([k, label]) => React.createElement("button", {
+    key: k,
+    onClick: () => {
+      setSettingsSubtab(k);
+      setSettingsSearch('');
+    },
+    style: {
+      margin: '0 6px 6px 0',
+      padding: '7px 10px',
+      borderRadius: 8,
+      background: 'var(--bg3)',
+      color: 'var(--accent2)',
+      fontSize: 10,
+      fontWeight: 800,
+      border: '1px solid var(--border)'
+    }
+  }, label))), React.createElement("div", {
     style: {
       display: 'flex',
       gap: 4,
@@ -16853,7 +17105,7 @@ function App() {
       border: '1px solid var(--border)',
       flexWrap: 'wrap'
     }
-  }, [['prefs', '📞', 'Calling'], ['integr', '🔗', 'Integrations'], ...(isManageMode ? [['team', '👥', 'Admin']] : []), ...(isCreatorUser ? [['owner', '👑', 'Owner']] : [])].map(([_k, _ic, _lbl]) => React.createElement("button", {
+  }, [['setup', 'Start', 'Setup'], ['prefs', 'Call', 'Calling'], ['integr', 'Link', 'Connect'], ['ai', 'AI', 'Import'], ['data', 'Sync', 'Data'], ...(isManageMode ? [['team', 'Team', 'Admins']] : []), ...(isCreatorUser ? [['owner', 'Own', 'Owner']] : [])].map(([_k, _ic, _lbl]) => React.createElement("button", {
     key: _k,
     onClick: () => setSettingsSubtab(_k),
     style: {
@@ -16875,7 +17127,358 @@ function App() {
     style: {
       fontSize: 13
     }
-  }, _ic), _lbl))), settingsSubtab === 'team' && isManageMode && React.createElement(React.Fragment, null, isManageMode && React.createElement("div", {
+  }, _ic), _lbl))), settingsSubtab === 'setup' && (() => {
+    var setupItems = [{
+      label: 'Connect Google',
+      done: gOk,
+      action: connectG
+    }, {
+      label: 'Pick leads sheet',
+      done: !!(cfg.sheetId || myCfg.timesheetId),
+      action: () => setSettingsSubtab('integr')
+    }, {
+      label: 'Pick leads tab',
+      done: !!(cfg.sheetTab || myCfg.sheetTab),
+      action: () => setSettingsSubtab('integr')
+    }, {
+      label: 'Confirm detected columns',
+      done: !!detectedColMap,
+      action: () => rawSheet ? setShowColMap(true) : setTab('leads')
+    }, {
+      label: 'Connect calendar',
+      done: !!(gOk && (calList.length || calShares.length || myCfg.targetCalendarId)),
+      action: () => setTab('cal')
+    }, {
+      label: 'Test one appointment',
+      done: appointments.length > 0 || weekEvents.length > 0,
+      action: () => setTab('appts')
+    }, {
+      label: 'Invite admins',
+      done: role === 'admin' || Object.keys(adminConfigs || {}).length > 0,
+      action: () => isManageMode ? setSettingsSubtab('team') : setSettingsSubtab('integr')
+    }];
+    var doneCount = setupItems.filter(x => x.done).length;
+    return React.createElement("div", {
+      className: "card",
+      style: {
+        marginBottom: 12,
+        borderColor: doneCount === setupItems.length ? 'rgba(63,185,80,.25)' : 'rgba(99,102,241,.25)'
+      }
+    }, React.createElement("div", {
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 10
+      }
+    }, React.createElement("div", null, React.createElement("h3", {
+      style: {
+        margin: 0,
+        fontSize: 15,
+        fontWeight: 900,
+        color: '#f1f5f9'
+      }
+    }, "Guided setup"), React.createElement("p", {
+      style: {
+        margin: '3px 0 0',
+        fontSize: 11,
+        color: 'var(--text3)'
+      }
+    }, doneCount, " of ", setupItems.length, " complete")), React.createElement("span", {
+      className: "pill",
+      style: {
+        background: doneCount === setupItems.length ? 'var(--gdim)' : 'var(--adim)',
+        color: doneCount === setupItems.length ? 'var(--green)' : 'var(--accent2)'
+      }
+    }, Math.round(doneCount / setupItems.length * 100), "%")), React.createElement("div", {
+      style: {
+        height: 6,
+        borderRadius: 999,
+        background: 'var(--bg3)',
+        overflow: 'hidden',
+        marginBottom: 10
+      }
+    }, React.createElement("div", {
+      style: {
+        width: doneCount / setupItems.length * 100 + '%',
+        height: '100%',
+        background: 'linear-gradient(90deg,var(--accent),var(--green))'
+      }
+    })), setupItems.map(item => React.createElement("button", {
+      key: item.label,
+      onClick: item.action,
+      style: {
+        width: '100%',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        padding: '11px 12px',
+        marginBottom: 6,
+        borderRadius: 10,
+        background: item.done ? 'var(--gdim)' : 'var(--bg3)',
+        color: item.done ? 'var(--green)' : 'var(--text2)',
+        border: '1px solid ' + (item.done ? 'rgba(63,185,80,.22)' : 'var(--border)'),
+        fontSize: 12,
+        fontWeight: 800,
+        textAlign: 'left'
+      }
+    }, React.createElement("span", null, item.label), React.createElement("span", {
+      className: "pill",
+      style: {
+        background: item.done ? 'rgba(63,185,80,.14)' : 'var(--bg)',
+        color: item.done ? 'var(--green)' : 'var(--text3)'
+      }
+    }, item.done ? 'Done' : 'Open'))));
+  })(), settingsSubtab === 'data' && (() => {
+    var qSaved = load('_sheetQueue');
+    var qCount = (sheetQueueRef.current || []).length + (Array.isArray(qSaved) ? qSaved.length : 0);
+    var diagRows = [{
+      label: 'Calendar',
+      ok: gOk && (calList.length > 0 || weekEvents.length > 0 || calShares.length > 0),
+      detail: weekEvents.length ? weekEvents.length + ' events loaded' : gOk ? 'Connected, no events loaded' : 'Google not connected'
+    }, {
+      label: 'Drive',
+      ok: gOk,
+      detail: gOk ? 'Drive search available' : 'Connect Google first'
+    }, {
+      label: 'Leads Sheet',
+      ok: !!(cfg.sheetId && cfg.sheetTab),
+      detail: cfg.sheetTab || myCfg.sheetTab || 'No tab selected'
+    }, {
+      label: 'Appointment Sheet',
+      ok: !!(myCfg.timesheetId || cfg.sheetId),
+      detail: myCfg._tsName || cfg.sheetTab || 'Using local appointment store'
+    }, {
+      label: 'Supabase',
+      ok: !!(_SB && window._cloudReady && syncStatus !== 'offline'),
+      detail: syncStatus + (lastSyncAt ? ' | ' + new Date(lastSyncAt).toLocaleTimeString() : '')
+    }, {
+      label: 'Sheet Queue',
+      ok: qCount === 0,
+      detail: qCount + ' pending write' + (qCount === 1 ? '' : 's')
+    }];
+    return React.createElement(React.Fragment, null, React.createElement("div", {
+      className: "card",
+      style: {
+        marginBottom: 12
+      }
+    }, React.createElement("h3", {
+      style: {
+        margin: '0 0 8px',
+        fontSize: 15,
+        fontWeight: 900,
+        color: '#f1f5f9'
+      }
+    }, "Sync diagnostics"), diagRows.map(row => React.createElement("div", {
+      key: row.label,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+        padding: '9px 0',
+        borderTop: '1px solid var(--border)'
+      }
+    }, React.createElement("div", null, React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 12,
+        fontWeight: 800,
+        color: '#f1f5f9'
+      }
+    }, row.label), React.createElement("p", {
+      style: {
+        margin: '2px 0 0',
+        fontSize: 10,
+        color: 'var(--text3)'
+      }
+    }, row.detail)), React.createElement("span", {
+      className: "pill",
+      style: {
+        background: row.ok ? 'var(--gdim)' : 'var(--amdim)',
+        color: row.ok ? 'var(--green)' : 'var(--amber)'
+      }
+    }, row.ok ? 'OK' : 'Check'))), React.createElement("div", {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(3,1fr)',
+        gap: 6,
+        marginTop: 10
+      }
+    }, React.createElement("button", {
+      onClick: flushSheetQueue,
+      style: {
+        padding: 10,
+        background: 'var(--bg3)',
+        color: 'var(--text2)',
+        border: '1px solid var(--border)',
+        fontSize: 10,
+        fontWeight: 800
+      }
+    }, "Flush"), React.createElement("button", {
+      onClick: () => window._liveSyncPull && window._liveSyncPull(),
+      style: {
+        padding: 10,
+        background: 'var(--adim)',
+        color: 'var(--accent2)',
+        border: '1px solid rgba(99,102,241,.25)',
+        fontSize: 10,
+        fontWeight: 800
+      }
+    }, "Pull"), React.createElement("button", {
+      onClick: fetchLeads,
+      style: {
+        padding: 10,
+        background: 'var(--gdim)',
+        color: 'var(--green)',
+        border: '1px solid rgba(63,185,80,.25)',
+        fontSize: 10,
+        fontWeight: 800
+      }
+    }, "Leads"))), React.createElement("div", {
+      className: "card",
+      style: {
+        marginBottom: 12
+      }
+    }, React.createElement("h3", {
+      style: {
+        margin: '0 0 8px',
+        fontSize: 15,
+        fontWeight: 900,
+        color: '#f1f5f9'
+      }
+    }, "Undo timeline"), undoInfo && React.createElement("div", {
+      style: {
+        padding: '8px 10px',
+        borderRadius: 10,
+        background: 'var(--amdim)',
+        color: 'var(--amber)',
+        marginBottom: 8,
+        fontSize: 11,
+        fontWeight: 800
+      }
+    }, "Undo available: ", undoInfo.status.toUpperCase(), " -> ", undoInfo.name), syncTrail.length ? syncTrail.map(item => React.createElement("div", {
+      key: item.id,
+      style: {
+        padding: '8px 0',
+        borderTop: '1px solid var(--border)'
+      }
+    }, React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 12,
+        fontWeight: 800,
+        color: 'var(--accent2)'
+      }
+    }, item.title), (item.steps || []).map((s, idx) => React.createElement("p", {
+      key: idx,
+      style: {
+        margin: '2px 0',
+        fontSize: 10,
+        color: s.ok ? 'var(--green)' : 'var(--amber)'
+      }
+    }, s.ok ? 'OK ' : 'Check ', s.label, s.msg ? ': ' + s.msg : '')))) : React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 11,
+        color: 'var(--text3)'
+      }
+    }, "No undo events yet")));
+  })(), settingsSubtab === 'ai' && React.createElement(React.Fragment, null, React.createElement("div", {
+    className: "card",
+    style: {
+      marginBottom: 12,
+      borderColor: importReview ? 'rgba(210,153,34,.32)' : 'var(--border)'
+    }
+  }, React.createElement("h3", {
+    style: {
+      margin: '0 0 6px',
+      fontSize: 15,
+      fontWeight: 900,
+      color: '#f1f5f9'
+    }
+  }, "AI import review"), React.createElement("p", {
+    style: {
+      margin: '0 0 10px',
+      fontSize: 11,
+      color: 'var(--text3)'
+    }
+  }, importReview ? importReview.count + ' leads are staged and waiting for approval' : 'Questionable lead rows and weak column matches will pause before acceptance.'), React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(3,1fr)',
+      gap: 6
+    }
+  }, React.createElement("button", {
+    onClick: () => rawSheet ? reanalyzeWithAI(rawSheet.headers, rawSheet.rows) : fetchLeads(),
+    disabled: aiAnalyzing,
+    style: {
+      padding: 10,
+      background: 'var(--adim)',
+      color: 'var(--accent2)',
+      fontSize: 10,
+      fontWeight: 800,
+      border: '1px solid rgba(99,102,241,.25)'
+    }
+  }, aiAnalyzing ? 'Analyzing' : 'Analyze'), React.createElement("button", {
+    onClick: () => rawSheet ? setShowColMap(true) : setTab('leads'),
+    style: {
+      padding: 10,
+      background: 'var(--bg3)',
+      color: 'var(--text2)',
+      fontSize: 10,
+      fontWeight: 800,
+      border: '1px solid var(--border)'
+    }
+  }, "Columns"), React.createElement("button", {
+    onClick: () => setImportReview(null),
+    style: {
+      padding: 10,
+      background: importReview ? 'var(--rdim)' : 'var(--bg3)',
+      color: importReview ? 'var(--red)' : 'var(--text3)',
+      fontSize: 10,
+      fontWeight: 800,
+      border: '1px solid ' + (importReview ? 'rgba(248,81,73,.25)' : 'var(--border)')
+    }
+  }, "Clear"))), React.createElement("div", {
+    className: "card",
+    style: {
+      marginBottom: 12
+    }
+  }, React.createElement("h3", {
+    style: {
+      margin: '0 0 6px',
+      fontSize: 14,
+      fontWeight: 800,
+      color: 'var(--accent2)'
+    }
+  }, "Column confidence"), detectedColMap?.confidence ? Object.entries(detectedColMap.confidence).map(([k, v]) => React.createElement("div", {
+    key: k,
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      padding: '6px 0',
+      borderTop: '1px solid var(--border)',
+      fontSize: 11
+    }
+  }, React.createElement("span", {
+    style: {
+      color: 'var(--text2)',
+      fontWeight: 700
+    }
+  }, k), React.createElement("span", {
+    className: "mono",
+    style: {
+      color: +v < 60 ? 'var(--amber)' : 'var(--green)',
+      fontWeight: 800
+    }
+  }, v, "%"))) : React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: 'var(--text3)'
+    }
+  }, "Fetch or upload leads to see confidence scores."))), settingsSubtab === 'team' && isManageMode && React.createElement(React.Fragment, null, isManageMode && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 12
@@ -18288,23 +18891,20 @@ function App() {
       fontWeight: 600,
       color: '#f1f5f9'
     }
-  }, "\uD83D\uDD12 Admins can delete pay history"), React.createElement("p", {
+  }, "Admins can delete accidental sessions"), React.createElement("p", {
     style: {
       margin: 0,
       fontSize: 10,
       color: 'var(--text3)'
     }
-  }, "When off, admins cannot delete their own sessions. Syncs on next Sync All.")), React.createElement("button", {
-    onClick: () => setCfg(s => ({
-      ...s,
-      adminCanDelete: !s.adminCanDelete
-    })),
+  }, "Always enabled for admins and mains. Use Pay > Sessions to delete one or clear all.")), React.createElement("button", {
+    onClick: () => toast('Session cleanup is always enabled', 'info'),
     style: {
       width: 44,
       height: 24,
       borderRadius: 12,
-      background: cfg.adminCanDelete ? 'var(--green)' : 'var(--bg3)',
-      border: '1px solid ' + (cfg.adminCanDelete ? 'var(--green)' : 'var(--border2)'),
+      background: 'var(--green)',
+      border: '1px solid var(--green)',
       position: 'relative',
       padding: 0,
       flexShrink: 0
@@ -18313,7 +18913,7 @@ function App() {
     style: {
       position: 'absolute',
       top: 2,
-      left: cfg.adminCanDelete ? 22 : 2,
+      left: 22,
       width: 18,
       height: 18,
       borderRadius: 9,
@@ -23266,7 +23866,7 @@ WHERE p.id IS NULL;`;
       fontWeight: 800,
       color: '#c7d2fe'
     }
-  }, "Update available"), React.createElement("p", {
+    }, "New version ready. Refresh now."), React.createElement("p", {
     style: {
       margin: '2px 0 0',
       fontSize: 10,
@@ -23314,7 +23914,7 @@ WHERE p.id IS NULL;`;
       border: 'none',
       cursor: 'pointer'
     }
-  }, "\u21BB Reload now")), celebration && (() => {
+  }, "Refresh now")), celebration && (() => {
     var t = celebration.tier;
     var tierColors = ['', '#22c55e', '#10b981', '#06b6d4', '#3b82f6', '#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f59e0b'];
     var tierLabels = ['', 'Nice work!', 'Great close!', 'Awesome!', 'Stellar!', 'Brilliant!', 'Massive!', 'EPIC!', 'LEGENDARY!', 'MYTHIC!', 'GODLIKE!!'];
@@ -23607,6 +24207,252 @@ WHERE p.id IS NULL;`;
       marginTop: 4
     }
   }, "Skip \u2014 keep all as Pending"))), React.createElement(Modal, {
+    show: showActivityDrawer,
+    onClose: () => setShowActivityDrawer(false),
+    align: "stretch",
+    bg: ".55",
+    zIndex: 120
+  }, showActivityDrawer && React.createElement("div", {
+    style: {
+      width: 'min(420px,100vw)',
+      height: '100vh',
+      marginLeft: 'auto',
+      background: 'var(--bg2)',
+      borderLeft: '1px solid var(--border2)',
+      padding: 18,
+      overflowY: 'auto'
+    }
+  }, React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 12
+    }
+  }, React.createElement("div", null, React.createElement("h3", {
+    style: {
+      margin: 0,
+      fontSize: 18,
+      fontWeight: 900,
+      color: '#f1f5f9'
+    }
+  }, "Activity"), React.createElement("p", {
+    style: {
+      margin: '3px 0 0',
+      fontSize: 11,
+      color: 'var(--text3)'
+    }
+  }, "Undo, sync and import events")), React.createElement("button", {
+    onClick: () => setShowActivityDrawer(false),
+    style: {
+      width: 34,
+      height: 34,
+      padding: 0,
+      background: 'var(--bg3)',
+      color: 'var(--text3)',
+      border: '1px solid var(--border)'
+    }
+  }, "x")), undoInfo && React.createElement("div", {
+    className: "card",
+    style: {
+      marginBottom: 10,
+      borderColor: 'rgba(240,180,41,.32)',
+      background: 'var(--amdim)'
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: '0 0 8px',
+      fontSize: 12,
+      fontWeight: 800,
+      color: 'var(--amber)'
+    }
+  }, "Undo available"), React.createElement("p", {
+    style: {
+      margin: '0 0 10px',
+      fontSize: 11,
+      color: 'var(--text2)'
+    }
+  }, undoInfo.status.toUpperCase(), " reverted candidate: ", undoInfo.name), React.createElement("button", {
+    onClick: doUndo,
+    style: {
+      width: '100%',
+      padding: 12,
+      background: 'var(--amdim)',
+      color: 'var(--amber)',
+      border: '1px solid rgba(240,180,41,.3)',
+      fontWeight: 800
+    }
+  }, "Undo now")), importReview && React.createElement("div", {
+    className: "card",
+    style: {
+      marginBottom: 10,
+      borderColor: 'rgba(210,153,34,.28)'
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: '0 0 4px',
+      fontSize: 12,
+      fontWeight: 800,
+      color: 'var(--amber)'
+    }
+  }, "Import waiting for review"), React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: 'var(--text3)'
+    }
+  }, importReview.count, " rows staged | ", importReview.questionable.length, " need attention")), syncTrail.length === 0 && !undoInfo && !importReview && React.createElement("div", {
+    className: "card",
+    style: {
+      textAlign: 'center',
+      color: 'var(--text3)'
+    }
+  }, "No recent activity yet"), syncTrail.map(item => React.createElement("div", {
+    key: item.id,
+    className: "card",
+    style: {
+      marginBottom: 10
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: '0 0 4px',
+      fontSize: 12,
+      fontWeight: 800,
+      color: 'var(--accent2)'
+    }
+  }, item.title), React.createElement("p", {
+    style: {
+      margin: '0 0 8px',
+      fontSize: 10,
+      color: 'var(--text3)'
+    }
+  }, new Date(item.ts).toLocaleTimeString()), (item.steps || []).map((s, idx) => React.createElement("p", {
+    key: idx,
+    style: {
+      margin: '3px 0',
+      fontSize: 11,
+      color: s.ok ? 'var(--green)' : 'var(--amber)'
+    }
+  }, s.ok ? 'OK ' : 'Check ', s.label, s.msg ? ': ' + s.msg : ''))))), React.createElement(Modal, {
+    show: importReview,
+    onClose: () => setImportReview(null),
+    align: "center",
+    bg: ".88",
+    zIndex: 130
+  }, importReview && React.createElement("div", {
+    style: {
+      width: '100%',
+      maxWidth: 480,
+      maxHeight: '85vh',
+      overflow: 'auto',
+      background: 'var(--bg2)',
+      borderRadius: 20,
+      padding: '20px 16px',
+      border: '1px solid var(--border2)'
+    }
+  }, React.createElement("h3", {
+    style: {
+      margin: '0 0 4px',
+      fontSize: 17,
+      fontWeight: 900,
+      color: '#f1f5f9'
+    }
+  }, "AI Import Review"), React.createElement("p", {
+    style: {
+      margin: '0 0 12px',
+      fontSize: 11,
+      color: 'var(--text3)'
+    }
+  }, importReview.meta?.source || 'Import', " | ", importReview.count, " leads staged before accepting"), importReview.lowCols.length > 0 && React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 6,
+      flexWrap: 'wrap',
+      marginBottom: 10
+    }
+  }, importReview.lowCols.map(c => React.createElement("span", {
+    key: c.key,
+    className: "pill",
+    style: {
+      background: 'var(--amdim)',
+      color: 'var(--amber)'
+    }
+  }, c.key, " ", c.score, "%"))), React.createElement("div", {
+    style: {
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 8,
+      marginBottom: 12
+    }
+  }, importReview.questionable.slice(0, 8).map((l, i) => React.createElement("div", {
+    key: l.id || i,
+    style: {
+      padding: '9px 10px',
+      borderRadius: 10,
+      background: 'var(--bg)',
+      border: '1px solid var(--border)'
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 12,
+      fontWeight: 800,
+      color: '#f1f5f9'
+    }
+  }, l.name || '(missing name)'), React.createElement("p", {
+    style: {
+      margin: '3px 0 0',
+      fontSize: 10,
+      color: 'var(--text3)'
+    }
+  }, l.phone || '(missing phone)', " | status ", (l.status || 'pending').toUpperCase(), l.needsReview ? ' | note needs review' : ''))), importReview.questionable.length === 0 && React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: 'var(--green)'
+    }
+  }, "No questionable rows. Only column confidence needs confirmation.")), React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap: 8
+    }
+  }, React.createElement("button", {
+    onClick: () => {
+      setLeads(importReview.leads || []);
+      if (importReview.meta?.colMap) setDetectedColMap(importReview.meta.colMap);
+      setImportReview(null);
+      toast('Import accepted: ' + (importReview.leads || []).length + ' leads');
+    },
+    style: {
+      padding: 13,
+      background: 'var(--gdim)',
+      color: 'var(--green)',
+      fontWeight: 900,
+      border: '1px solid rgba(63,185,80,.25)'
+    }
+  }, "Accept import"), React.createElement("button", {
+    onClick: () => {
+      setImportReview(null);
+      if (rawSheet) setShowColMap(true);
+    },
+    style: {
+      padding: 13,
+      background: 'var(--adim)',
+      color: 'var(--accent2)',
+      fontWeight: 900,
+      border: '1px solid rgba(99,102,241,.25)'
+    }
+  }, "Fix columns"), React.createElement("button", {
+    onClick: () => setImportReview(null),
+    style: {
+      gridColumn: '1 / -1',
+      padding: 11,
+      background: 'transparent',
+      color: 'var(--text3)',
+      border: '1px solid var(--border)'
+    }
+  }, "Cancel")))), React.createElement(Modal, {
     show: showColMap && rawSheet,
     onClose: () => setShowColMap(false),
     align: "center",
@@ -23828,7 +24674,12 @@ WHERE p.id IS NULL;`;
             sheetValue: map.status >= 0 ? statusText : rmk
           });
         }
-        setLeads(newLeads);
+        stageLeadImport(newLeads, {
+          source: 'Column mapping',
+          colMap: map,
+          headers: h2,
+          rows: r2
+        });
         setShowColMap(false);
         var ni = newLeads.filter(l => l.status === 'ni').length;
         var pend = newLeads.filter(l => l.status === 'pending').length;
@@ -25963,7 +26814,7 @@ WHERE p.id IS NULL;`;
     style: scriptOpen ? {
       display: 'none'
     } : {}
-  }, "'\uD83D\uDCCB'"));
+  }, "'\uD83D\uDCCB'")));
 }
 class ErrorBoundary extends React.Component {
   constructor(p) {
