@@ -175,6 +175,11 @@ button:active{transform:scale(.97)}
 .script-read b{font-weight:800;color:#fff}
 .script-read [style*="font-weight:700"]{display:block;margin:16px 0 6px;padding-top:10px;border-top:1px solid var(--border)}
 .script-token{display:inline-block;padding:0 4px;border-radius:5px;background:rgba(99,102,241,.16);color:var(--accent3);font-weight:800;line-height:1.45}
+.ob-bank{margin:0 0 12px;padding:10px;border-radius:12px;background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.22)}
+.ob-chip-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ob-chip{padding:7px 10px;border-radius:999px;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);font-size:11px;font-weight:800;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob-chip.active{background:var(--adim);border-color:rgba(99,102,241,.5);color:var(--accent2)}
+.ob-pop{margin-top:9px;padding:12px;border-radius:12px;background:#0f141d;border:1px solid rgba(99,102,241,.4);box-shadow:0 12px 30px rgba(0,0,0,.3)}
 .script-panel.ref-collapsed .sp-ref-col{display:none}
 .script-panel.ref-collapsed .sp-col{max-width:760px;margin:0 auto}
 .mode-banner{margin:0 14px 10px;padding:10px 12px;border-radius:12px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg2)}
@@ -308,7 +313,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0005';
+window.APP_VERSION='2026.04.29.0006';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1915,6 +1920,22 @@ function _sanitizeRichHtml(html) {
   walk(template.content);
   return template.innerHTML;
 }
+function _plainText(v, max) {
+  return String(v || '').replace(/[<>]/g, '').replace(/\s+\n/g, '\n').trim().slice(0, max || 2000);
+}
+function _normalizeObjections(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map(function (o, i) {
+    var title = _plainText(o?.title || o?.label || '', 80);
+    return {
+      id: String(o?.id || 'obj_' + i + '_' + title.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 32)),
+      title,
+      answer: _plainText(o?.answer || o?.response || '', 2000)
+    };
+  }).filter(function (o) {
+    return o.title && o.answer;
+  }).slice(0, 30);
+}
 function _sanitizeCfgRichText(cfg) {
   if (!cfg || typeof cfg !== 'object') return cfg;
   var next = {
@@ -1923,6 +1944,7 @@ function _sanitizeCfgRichText(cfg) {
   delete next.sharedClaudeKey;
   if (typeof next.callingScript === 'string') next.callingScript = _sanitizeRichHtml(next.callingScript);
   if (typeof next.refNotes === 'string') next.refNotes = _sanitizeRichHtml(next.refNotes);
+  if (next.objections !== undefined) next.objections = _normalizeObjections(next.objections);
   return next;
 }
 var _cloudDebounceTimers = {};
@@ -3898,7 +3920,8 @@ function App() {
     metIncentive: 10,
     npMax: 5,
     cpl: 0,
-    adminCanDelete: false
+    adminCanDelete: false,
+    objections: []
   }));
   var [adminConfigs, setAdminConfigs] = useState(() => _sanitizeAdminCfgs(load('acfg')));
   var [isOffline, setIsOffline] = useState(!navigator.onLine);
@@ -4863,6 +4886,8 @@ function App() {
   var [refEditing, setRefEditing] = useState(false);
   var [showRefNotes, setShowRefNotes] = useState(load('showRefNotes') ?? true);
   var [scriptVersions, setScriptVersions] = useState(() => Array.isArray(cfg.scriptVersions) ? cfg.scriptVersions : []);
+  var [activeObjectionId, setActiveObjectionId] = useState('');
+  var scriptObjections = _normalizeObjections(cfg.objections);
   useEffect(() => {
     save('scriptOpen', scriptOpen);
   }, [scriptOpen]);
@@ -5209,6 +5234,48 @@ function App() {
     });
     toast('Restored ' + (v.name || 'script version'));
   }, [scriptVersions]);
+  var saveObjections = useCallback(next => {
+    var clean = _normalizeObjections(next);
+    setCfg(s => ({
+      ...s,
+      objections: clean
+    }));
+    if (activeObjectionId && !clean.some(o => o.id === activeObjectionId)) setActiveObjectionId('');
+    return clean;
+  }, [activeObjectionId]);
+  var addObjection = useCallback(() => {
+    var title = prompt('Objection title (e.g. I already have an agent)');
+    if (!title) return;
+    var answer = prompt('Suggested answer / talk track');
+    if (!answer) return;
+    var item = {
+      id: 'obj_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+      title,
+      answer
+    };
+    saveObjections([...(cfg.objections || []), item]);
+    setActiveObjectionId(item.id);
+    toast('Objection added');
+  }, [cfg.objections, saveObjections]);
+  var editObjection = useCallback(item => {
+    if (!item) return;
+    var title = prompt('Objection title', item.title || '');
+    if (!title) return;
+    var answer = prompt('Suggested answer / talk track', item.answer || '');
+    if (!answer) return;
+    saveObjections((cfg.objections || []).map(o => o.id === item.id ? {
+      ...o,
+      title,
+      answer
+    } : o));
+    setActiveObjectionId(item.id);
+    toast('Objection updated');
+  }, [cfg.objections, saveObjections]);
+  var removeObjection = useCallback(item => {
+    if (!item || !confirm('Remove objection "' + item.title + '"?')) return;
+    saveObjections((cfg.objections || []).filter(o => o.id !== item.id));
+    toast('Objection removed');
+  }, [cfg.objections, saveObjections]);
   var mergeDuplicatePhone = useCallback(ph => {
     setLeads(prev => {
       var statusRank = {
@@ -5278,6 +5345,7 @@ function App() {
     var payload = {
       html: _sanitizeRichHtml(cfg.callingScript || ''),
       notes: _sanitizeRichHtml(cfg.refNotes || ''),
+      objections: _normalizeObjections(cfg.objections),
       versions: (scriptVersions || []).slice(0, 10),
       ts: Date.now()
     };
@@ -5289,7 +5357,7 @@ function App() {
     }).then(() => DBG('[AutoDial] Published calling script to all admins')).catch(function (e) {
       console.warn('[AutoDial] script publish failed', e?.message || e);
     });
-  }, [cfg.callingScript, cfg.refNotes, scriptVersions, role]);
+  }, [cfg.callingScript, cfg.refNotes, cfg.objections, scriptVersions, role]);
   useEffect(() => {
     if (role === 'admin' && myCfg.timesheetId && myCfg.sheetTab && gOk && leads.length === 0 && !appStateRef.current._autoFetched) {
       appStateRef.current._autoFetched = true;
@@ -5767,7 +5835,7 @@ function App() {
               if (gr.data && gr.data.biz_name) {
                 try {
                   var globalCfg = _sanitizeCfgRichText(JSON.parse(gr.data.biz_name));
-                  var GLOBAL_OVERWRITE = ['sharedGeminiKey', 'payRates', 'tierMins', 'sessionDur', 'mThresh', 'nThresh', 'bonusMult', 'metIncentive', 'starThresholds', 'npMax', 'cpl', 'delay', 'callingScript', 'refNotes'];
+                  var GLOBAL_OVERWRITE = ['sharedGeminiKey', 'payRates', 'tierMins', 'sessionDur', 'mThresh', 'nThresh', 'bonusMult', 'metIncentive', 'starThresholds', 'npMax', 'cpl', 'delay', 'callingScript', 'refNotes', 'objections'];
                   setCfg(p => {
                     var merged = {
                       ...p
@@ -5797,6 +5865,7 @@ function App() {
                     ...p,
                     callingScript: _sanitizeRichHtml(s.html),
                     refNotes: _sanitizeRichHtml(s.notes || p.refNotes || ''),
+                    objections: _normalizeObjections(s.objections || p.objections || []),
                     scriptVersions: sv
                   }));
                   setScriptVersions(sv);
@@ -27265,6 +27334,15 @@ WHERE p.id IS NULL;`;
       fontWeight: 800,
       fontSize: 14
     }
+  }, "A"), React.createElement("button", {
+    onClick: () => document.execCommand('foreColor', false, '#000000'),
+    title: "Black",
+    style: {
+      color: '#000',
+      background: '#f8fafc',
+      fontWeight: 900,
+      fontSize: 14
+    }
   }, "A"), React.createElement("div", {
     className: "sep"
   }), React.createElement("button", {
@@ -27413,7 +27491,113 @@ WHERE p.id IS NULL;`;
     }
   }, "Save") : React.createElement("span", {
     onClick: () => setRefEditing(true)
-  }, "Edit")), refEditing ? React.createElement("div", {
+  }, "Edit")), (scriptObjections.length > 0 || refEditing) && React.createElement("div", {
+    className: "ob-bank"
+  }, React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 8
+    }
+  }, React.createElement("span", {
+    style: {
+      color: 'var(--accent2)',
+      fontSize: 11,
+      fontWeight: 900,
+      letterSpacing: '.06em'
+    }
+  }, "OBJECTION HANDLES"), refEditing && React.createElement("button", {
+    onClick: addObjection,
+    style: {
+      padding: '4px 8px',
+      borderRadius: 8,
+      background: 'var(--adim)',
+      color: 'var(--accent2)',
+      fontSize: 10,
+      fontWeight: 800
+    }
+  }, "+ Add")), scriptObjections.length ? React.createElement("div", {
+    className: "ob-chip-row"
+  }, scriptObjections.map(o => React.createElement("button", {
+    key: o.id,
+    className: 'ob-chip' + (activeObjectionId === o.id ? ' active' : ''),
+    onClick: () => setActiveObjectionId(p => p === o.id ? '' : o.id),
+    title: o.answer
+  }, o.title))) : React.createElement("p", {
+    style: {
+      margin: 0,
+      color: 'var(--text3)',
+      fontSize: 11,
+      lineHeight: 1.4
+    }
+  }, "Add quick objection answers here for callers."), (() => {
+    var ob = scriptObjections.find(o => o.id === activeObjectionId);
+    if (!ob) return null;
+    return React.createElement("div", {
+      className: "ob-pop"
+    }, React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+        marginBottom: 8
+      }
+    }, React.createElement("strong", {
+      style: {
+        color: '#f1f5f9',
+        fontSize: 13
+      }
+    }, ob.title), React.createElement("button", {
+      onClick: () => setActiveObjectionId(''),
+      style: {
+        width: 24,
+        height: 24,
+        borderRadius: 8,
+        background: 'var(--bg3)',
+        color: 'var(--text3)',
+        padding: 0
+      }
+    }, "x")), React.createElement("p", {
+      style: {
+        margin: 0,
+        color: 'var(--text)',
+        fontSize: 13,
+        lineHeight: 1.6,
+        whiteSpace: 'pre-wrap'
+      }
+    }, ob.answer), refEditing && React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 6,
+        marginTop: 10
+      }
+    }, React.createElement("button", {
+      onClick: () => editObjection(ob),
+      style: {
+        flex: 1,
+        padding: '6px 8px',
+        borderRadius: 8,
+        background: 'var(--bg3)',
+        color: 'var(--accent2)',
+        fontSize: 10,
+        fontWeight: 800
+      }
+    }, "Edit"), React.createElement("button", {
+      onClick: () => removeObjection(ob),
+      style: {
+        flex: 1,
+        padding: '6px 8px',
+        borderRadius: 8,
+        background: 'var(--rdim)',
+        color: 'var(--red)',
+        fontSize: 10,
+        fontWeight: 800
+      }
+    }, "Remove")));
+  })()), refEditing ? React.createElement("div", {
     className: "sp-edit sp-ref-edit",
     contentEditable: true,
     suppressContentEditableWarning: true,
