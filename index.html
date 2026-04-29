@@ -86,7 +86,8 @@ if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.
 --blue:#58a6ff;--bdim:rgba(88,166,255,.1);
 --amber:#d29922;--amdim:rgba(210,153,34,.1);
 --gold:#f0b429;--golddim:rgba(240,180,41,.1);
---glass:rgba(13,17,23,.7);--glow:0 0 30px rgba(99,102,241,.15)
+--glass:rgba(13,17,23,.7);--glow:0 0 30px rgba(99,102,241,.15);
+--left-pane-w:min(100vw,540px);--app-side-margin:0px
 }
 html,body{height:100%;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden}
 ::-webkit-scrollbar{width:0}
@@ -140,11 +141,12 @@ button:active{transform:scale(.97)}
 /* Desktop split layout with script panel */
 .desktop-wrap{display:flex;min-height:100vh;min-height:100dvh;justify-content:center;width:100%;max-width:100vw;overflow:hidden}
 @media(min-width:960px){
+  :root{--left-pane-w:clamp(460px,38vw,760px);--app-side-margin:max(calc((100vw - 1920px)/2),0px)}
   .desktop-wrap{gap:0;align-items:stretch}
-  .desktop-wrap .app-shell{margin:0 auto;border-radius:0;flex:1 1 auto;width:100%;max-width:1920px;height:100vh;height:100dvh;overflow-y:auto;overscroll-behavior:contain;display:grid;grid-template-columns:clamp(420px,34vw,680px) minmax(520px,1fr);align-items:start;scrollbar-width:none}
+  .desktop-wrap .app-shell{margin:0 auto;border-radius:0;flex:1 1 auto;width:100%;max-width:1920px;height:100vh;height:100dvh;overflow-y:auto;overscroll-behavior:contain;display:grid;grid-template-columns:var(--left-pane-w) minmax(480px,1fr);align-items:start;scrollbar-width:none}
   .desktop-wrap .app-shell::-webkit-scrollbar{display:none}
   .desktop-wrap .app-shell>:not(.script-panel):not(.script-toggle){grid-column:1;min-width:0}
-  .script-panel{grid-column:2;grid-row:1 / span 999;align-self:start;width:100%;min-width:520px;max-width:none;min-height:100vh;min-height:100dvh;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden}
+  .script-panel{grid-column:2;grid-row:1 / span 999;align-self:start;width:100%;min-width:480px;max-width:none;min-height:100vh;min-height:100dvh;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden}
   .script-panel .sp-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
   .script-panel .sp-body{flex:1;overflow-y:auto;padding:16px}
   .script-panel .sp-lead{padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0}
@@ -322,7 +324,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0016';
+window.APP_VERSION='2026.04.29.0017';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -2532,7 +2534,8 @@ function Modal({
   align = 'center',
   bg = '.85',
   zIndex = 100,
-  padding = 16
+  padding = 16,
+  scope = 'window'
 }) {
   React.useEffect(() => {
     if (!show) return;
@@ -2549,17 +2552,25 @@ function Modal({
   }, [show, onClose]);
   if (!show) return null;
   var _ai = align === 'bottom' ? 'flex-end' : align === 'stretch' ? 'stretch' : 'center';
+  var _pane = scope === 'pane' && typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(min-width:960px)').matches;
+  var _alignItems = _pane && align === 'bottom' ? 'flex-start' : _ai;
+  var _justifyContent = _pane && align === 'bottom' ? 'flex-end' : 'center';
+  var _padding = _pane && align === 'bottom' ? '136px 14px 0' : align === 'stretch' ? 0 : padding;
   return React.createElement("div", {
     onClick: onClose,
     style: {
       position: 'fixed',
-      inset: 0,
+      inset: _pane ? undefined : 0,
+      top: _pane ? 0 : undefined,
+      bottom: _pane ? 0 : undefined,
+      left: _pane ? 'var(--app-side-margin)' : undefined,
+      width: _pane ? 'var(--left-pane-w)' : undefined,
       background: 'rgba(0,0,0,' + bg + ')',
       zIndex,
       display: 'flex',
-      alignItems: _ai,
-      justifyContent: 'center',
-      padding: align === 'stretch' ? 0 : padding
+      alignItems: _alignItems,
+      justifyContent: _justifyContent,
+      padding: _padding
     }
   }, React.createElement("div", {
     onClick: e => e.stopPropagation(),
@@ -23511,16 +23522,17 @@ function App() {
     onClose: () => setShowMoreMenu(false),
     align: "bottom",
     bg: ".75",
-    padding: 0
+    padding: 16,
+    scope: "pane"
   }, React.createElement("div", {
     style: {
       width: '100%',
       maxWidth: 500,
       background: 'var(--bg2)',
-      borderRadius: '20px 20px 0 0',
-      padding: '20px 18px 28px',
+      borderRadius: 16,
+      padding: '14px',
       border: '1px solid var(--border2)',
-      borderBottom: 'none'
+      boxShadow: '0 16px 40px rgba(0,0,0,.55)'
     }
   }, React.createElement("div", {
     style: {
