@@ -11365,7 +11365,7 @@ function App() {
     style: {
       paddingBottom: 20
     }
-  }, React.createElement("div", {
+  }, !running && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 10,
@@ -11554,7 +11554,36 @@ function App() {
       border: '1px solid rgba(255,255,255,.06)',
       opacity: s === 'set' && (setDone || showPostCall?.status === 'set') ? .5 : 1
     }
-  }, label))), React.createElement("div", {
+  }, label))), session && !session.ended && React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(5,1fr)',
+      gap: 6,
+      marginBottom: 8
+    }
+  }, [['D', session.dialed, 'var(--text2)'], ['Set', session.sets, 'var(--green)'], ['NP', session.np, 'var(--amber)'], ['CB', session.cb, 'var(--blue)'], ['NI', session.ni, 'var(--red)']].map(([l, v, c]) => React.createElement("div", {
+    key: l,
+    style: {
+      textAlign: 'center',
+      padding: '7px 0',
+      borderRadius: 10,
+      background: 'var(--bg)',
+      border: '1px solid var(--border)'
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 14,
+      fontWeight: 900,
+      color: c
+    }
+  }, v), React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 9,
+      color: 'var(--text3)'
+    }
+  }, l)))), React.createElement("div", {
     style: {
       display: 'grid',
       gridTemplateColumns: '1fr 1fr',
@@ -11689,7 +11718,7 @@ function App() {
       fontWeight: 900,
       border: '1px solid rgba(240,180,41,.25)'
     }
-  }, "Undo"))), React.createElement("div", {
+  }, "Undo"))), !running && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 10,
@@ -11746,7 +11775,7 @@ function App() {
       fontWeight: 800,
       border: '1px solid ' + (leadFocusMode === mode ? 'rgba(99,102,241,.35)' : 'var(--border)')
     }
-  }, label)))), priorityCallbacks.length > 0 && React.createElement("div", {
+  }, label)))), !running && priorityCallbacks.length > 0 && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 10,
@@ -11798,7 +11827,7 @@ function App() {
       fontSize: 10,
       color: c.scheduled_date < todayKey ? 'var(--red)' : 'var(--text3)'
     }
-  }, c.scheduled_date < todayKey ? 'overdue' : c.scheduled_time || 'today')))), session && !session.ended && React.createElement("div", {
+  }, c.scheduled_date < todayKey ? 'overdue' : c.scheduled_time || 'today')))), session && !session.ended && !running && React.createElement("div", {
     className: "card glow-border",
     style: {
       marginBottom: 10
@@ -12402,7 +12431,7 @@ function App() {
       background: 'linear-gradient(90deg,' + rank.color + ',' + nextRank.color + ')',
       transition: 'width .5s'
     }
-  })))), React.createElement("div", {
+  })))), !running && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 12,
@@ -13145,7 +13174,7 @@ function App() {
     style: {
       height: 80
     }
-  })), tab === 'dial' && isCallMode && cbQueue.filter(cb => cb.status !== 'called').length > 0 && React.createElement("div", {
+  })), tab === 'dial' && isCallMode && !running && cbQueue.filter(cb => cb.status !== 'called').length > 0 && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 12
