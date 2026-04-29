@@ -138,17 +138,22 @@ button:active{transform:scale(.97)}
 .app-shell{min-height:100vh;min-height:100dvh;background:var(--bg);width:100%;max-width:540px;margin:0 auto;position:relative;background-image:radial-gradient(ellipse at 50% 0%,rgba(99,102,241,.04),transparent 60%)}
 @media(min-width:600px){.app-shell{border-left:1px solid var(--border);border-right:1px solid var(--border)}}
 /* Desktop split layout with script panel */
-.desktop-wrap{display:flex;min-height:100vh;min-height:100dvh;justify-content:center}
+.desktop-wrap{display:flex;min-height:100vh;min-height:100dvh;justify-content:center;width:100%;max-width:100vw;overflow:hidden}
 @media(min-width:960px){
-  .desktop-wrap{gap:0}
-  .desktop-wrap .app-shell{margin:0;border-radius:0;flex-shrink:0}
-  .script-panel{flex:1;min-width:400px;max-width:900px;min-height:100vh;min-height:100dvh;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden}
+  .desktop-wrap{gap:0;align-items:stretch}
+  .desktop-wrap .app-shell{margin:0 auto;border-radius:0;flex:1 1 auto;max-width:1440px;display:grid;grid-template-columns:minmax(360px,540px) minmax(360px,900px);align-items:start}
+  .desktop-wrap .app-shell>:not(.script-panel):not(.script-toggle){grid-column:1;min-width:0}
+  .script-panel{grid-column:2;grid-row:1 / span 999;align-self:start;width:100%;min-width:360px;max-width:900px;min-height:100vh;min-height:100dvh;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden}
   .script-panel .sp-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
   .script-panel .sp-body{flex:1;overflow-y:auto;padding:16px}
   .script-panel .sp-lead{padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0}
   .script-toggle{position:fixed;right:max(calc(50% - 480px - 44px),8px);top:14px;z-index:50;width:36px;height:36px;border-radius:10px;background:var(--bg3);border:1px solid var(--border2);color:var(--accent2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:all .2s}
   .script-toggle:hover{background:var(--adim);border-color:var(--accent)}
   .script-toggle.open{background:var(--adim);border-color:var(--accent);box-shadow:0 0 12px rgba(99,102,241,.2)}
+}
+@media(min-width:960px) and (max-width:1180px){
+  .script-panel .sp-ref-col{display:none}
+  .script-panel .sp-col{max-width:760px;margin:0 auto}
 }
 .sp-toolbar{display:flex;gap:3px;padding:8px 16px;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;align-items:center}
 .sp-toolbar button{width:28px;height:28px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text2);display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;padding:0;transition:all .15s}
@@ -303,7 +308,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0001';
+window.APP_VERSION='2026.04.29.0002';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
