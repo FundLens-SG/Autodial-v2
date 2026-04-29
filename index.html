@@ -19196,21 +19196,21 @@ function App() {
   }, settingsShowAll ? 'Role View' : 'Show All')), React.createElement("div", {
     style: {
       display: 'flex',
+      flexWrap: 'wrap',
       gap: 6,
       marginBottom: 14,
       background: 'var(--bg2)',
       padding: 5,
       borderRadius: 14,
       border: '1px solid var(--border)',
-      overflowX: 'auto',
-      WebkitOverflowScrolling: 'touch'
+      overflow: 'visible'
     }
   }, settingsRoleTabs.map(([_k, _lbl]) => React.createElement("button", {
     key: _k,
     onClick: () => setSettingsSubtab(_k),
     style: {
-      flex: '0 0 auto',
-      minWidth: 74,
+      flex: '1 1 82px',
+      minWidth: 82,
       padding: '9px 12px',
       borderRadius: 10,
       background: settingsSubtab === _k ? 'var(--adim)' : 'var(--bg)',
