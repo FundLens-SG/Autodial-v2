@@ -10583,8 +10583,8 @@ function App() {
   var guidedSetupItems = buildGuidedSetupItems();
   var guidedDoneCount = guidedSetupItems.filter(x => x.done).length;
   var guidedSetupComplete = guidedDoneCount === guidedSetupItems.length;
-  var settingsAllTabs = [['setup', 'Setup'], ['prefs', 'Calling'], ['integr', role === 'admin' ? 'Linked' : 'Connect'], ['ai', 'AI Import'], ['data', 'Sync'], ...(isManageMode ? [['team', 'Team']] : []), ...(isCreatorUser ? [['owner', 'Owner']] : [])];
-  var settingsRoleTabs = settingsShowAll ? settingsAllTabs : role === 'admin' ? [['setup', 'Setup'], ['integr', 'Linked'], ['prefs', 'Calling'], ['ai', 'AI Import']] : isManageMode ? [['setup', 'Setup'], ['team', 'Team'], ['integr', 'Connect'], ['ai', 'AI Import'], ['data', 'Sync'], ...(isCreatorUser ? [['owner', 'Owner']] : [])] : [['setup', 'Setup'], ['prefs', 'Calling'], ['integr', 'Connect'], ['ai', 'AI Import'], ['data', 'Sync']];
+  var settingsAllTabs = [['setup', 'Setup'], ['prefs', 'Calling'], ['integr', role === 'admin' ? 'Linked' : 'Connect'], ['data', 'Sync'], ...(isManageMode ? [['team', 'Team']] : []), ...(isCreatorUser ? [['owner', 'Owner']] : [])];
+  var settingsRoleTabs = settingsShowAll ? settingsAllTabs : role === 'admin' ? [['setup', 'Setup'], ['integr', 'Linked'], ['prefs', 'Calling']] : isManageMode ? [['setup', 'Setup'], ['team', 'Team'], ['integr', 'Connect'], ['data', 'Sync'], ...(isCreatorUser ? [['owner', 'Owner']] : [])] : [['setup', 'Setup'], ['prefs', 'Calling'], ['integr', 'Connect'], ['data', 'Sync']];
   useEffect(() => {
     if (tab !== 'settings') return;
     if (settingsRoleTabs.some(([k]) => k === settingsSubtab)) return;
@@ -19424,7 +19424,7 @@ function App() {
       fontSize: 11,
       color: 'var(--text3)'
     }
-  }, "Quick jump"), [['setup', 'Setup checklist'], ['integr', role === 'admin' ? 'Synced workspace' : 'Google, sheets, calendar'], ['ai', 'AI import review'], ['data', 'Sync diagnostics'], ['team', 'Admins and pay'], ['prefs', 'Calling preferences'], ['owner', 'Owner controls']].filter(([k, label]) => label.toLowerCase().includes(settingsSearch.toLowerCase()) && settingsAllTabs.some(([tabKey]) => tabKey === k)).map(([k, label]) => React.createElement("button", {
+  }, "Quick jump"), [['setup', 'Setup checklist'], ['integr', role === 'admin' ? 'Synced workspace' : 'Google, sheets, calendar'], ['data', 'Sync diagnostics'], ['team', 'Admins and pay'], ['prefs', 'Calling preferences'], ['owner', 'Owner controls']].filter(([k, label]) => label.toLowerCase().includes(settingsSearch.toLowerCase()) && settingsAllTabs.some(([tabKey]) => tabKey === k)).map(([k, label]) => React.createElement("button", {
     key: k,
     onClick: () => {
       setSettingsSubtab(k);
@@ -27142,7 +27142,7 @@ WHERE p.id IS NULL;`;
       fontWeight: 900,
       color: '#f1f5f9'
     }
-  }, "AI Import Review"), React.createElement("p", {
+  }, "Lead Import Review"), React.createElement("p", {
     style: {
       margin: '0 0 12px',
       fontSize: 11,
