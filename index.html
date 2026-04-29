@@ -10936,7 +10936,7 @@ function App() {
         setTab(k);
       }
     }, v);
-  })), React.createElement("div", {
+  })), !isCallMode && React.createElement("div", {
     className: "mode-banner",
     style: {
       borderColor: isCallMode ? 'rgba(63,185,80,.22)' : 'rgba(88,166,255,.22)'
@@ -11510,7 +11510,7 @@ function App() {
     style: {
       paddingBottom: 20
     }
-  }, !running && React.createElement("div", {
+  }, false && !running && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 10,
