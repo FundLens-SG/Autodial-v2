@@ -331,7 +331,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.30.0001';
+window.APP_VERSION='2026.04.30.0002';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1748,6 +1748,14 @@ function _formatSlotMinutes(mins){
   }
   return total+'m';
 }
+function _slotBookableWindow(slot,beforeMin,afterMin){
+  var before=_slotMinutes(beforeMin,0,0,1440);
+  var after=_slotMinutes(afterMin,0,0,1440);
+  var start=new Date(slot.start.getTime()+before*60000);
+  var end=new Date(slot.end.getTime()-after*60000);
+  var mins=Math.max(0,Math.round((end-start)/60000));
+  return {start:start,end:end,mins:mins,hours:mins/60};
+}
 
 // ══════════════════════════════════════════════════════
 //  CLOUD SYNC — Cross-device persistence via Supabase
@@ -2182,28 +2190,57 @@ function _sanitizeCfgRichText(cfg) {
   if (next.objections !== undefined) next.objections = _normalizeObjections(next.objections);
   return next;
 }
-function _scriptSharePayload(ownerCfg, versions) {
-  var activeVersion = (versions || []).find(function (v) {
+function _cleanScriptVersion(v) {
+  if (!v || typeof v !== 'object') return null;
+  return {
+    id: String(v.id || 'sv_' + (v.ts || Date.now())),
+    name: String(v.name || 'Saved script'),
+    html: _sanitizeRichHtml(v.html || ''),
+    notes: _sanitizeRichHtml(v.notes || ''),
+    objections: _normalizeObjections(v.objections || []),
+    author: v.author || '',
+    ts: v.ts || Date.now()
+  };
+}
+function _scriptSharePayload(ownerCfg, versions, versionId) {
+  var list = Array.isArray(versions) ? versions.map(_cleanScriptVersion).filter(Boolean) : [];
+  var selected = list.find(function (v) {
+    return v && v.id && v.id === versionId;
+  }) || list.find(function (v) {
     return v && v.id && v.id === ownerCfg?.scriptVersionId;
-  });
+  }) || null;
+  if (selected) return {
+    html: selected.html,
+    notes: selected.notes,
+    objections: _normalizeObjections(selected.objections || []),
+    versions: [selected],
+    versionId: selected.id,
+    name: selected.name || 'Saved script',
+    ts: Date.now()
+  };
   return {
     html: _sanitizeRichHtml(ownerCfg?.callingScript || ''),
     notes: _sanitizeRichHtml(ownerCfg?.refNotes || ''),
     objections: _normalizeObjections(ownerCfg?.objections || []),
-    versions: (versions || []).slice(0, 10),
-    versionId: ownerCfg?.scriptVersionId || '',
-    name: activeVersion?.name || 'Current script',
+    versions: [],
+    versionId: '',
+    name: 'Current visible script',
     ts: Date.now()
   };
 }
 function publishAdminScripts(configs, ownerCfg, versions) {
   if (!_SB) return;
-  var payload = _scriptSharePayload(ownerCfg || {}, versions || []);
   Object.entries(configs || {}).forEach(function (entry) {
     var email = (entry[0] || '').toLowerCase();
     var ac = entry[1] || {};
     if (!email || email.indexOf('@') < 0) return;
-    var row = ac.shareScript ? payload : {
+    var versionList = Array.isArray(versions) ? versions : [];
+    var selectedVersionId = ac.scriptShareVersionId || '';
+    var hasSelectedVersion = !!selectedVersionId && versionList.some(function (v) {
+      return v && v.id === selectedVersionId;
+    });
+    var payload = hasSelectedVersion ? _scriptSharePayload(ownerCfg || {}, versionList, selectedVersionId) : null;
+    var row = ac.shareScript && payload ? payload : {
       _disabled: true,
       ts: Date.now()
     };
@@ -5306,6 +5343,7 @@ function App() {
   var [showRefNotes, setShowRefNotes] = useState(load('showRefNotes') ?? true);
   var [scriptVersions, setScriptVersions] = useState(() => Array.isArray(cfg.scriptVersions) ? cfg.scriptVersions : []);
   var [showScriptShareModal, setShowScriptShareModal] = useState(false);
+  var [shareScriptVersionId, setShareScriptVersionId] = useState(() => cfg.scriptVersionId || (Array.isArray(cfg.scriptVersions) && cfg.scriptVersions[0]?.id) || '');
   var [activeObjectionId, setActiveObjectionId] = useState('');
   var scriptObjections = _normalizeObjections(cfg.objections);
   useEffect(() => {
@@ -5314,6 +5352,13 @@ function App() {
   useEffect(() => {
     save('showRefNotes', showRefNotes);
   }, [showRefNotes]);
+  useEffect(() => {
+    if (!scriptVersions.length) {
+      if (shareScriptVersionId) setShareScriptVersionId('');
+      return;
+    }
+    if (!shareScriptVersionId || !scriptVersions.some(v => v.id === shareScriptVersionId)) setShareScriptVersionId(cfg.scriptVersionId && scriptVersions.some(v => v.id === cfg.scriptVersionId) ? cfg.scriptVersionId : scriptVersions[0].id);
+  }, [scriptVersions, cfg.scriptVersionId, shareScriptVersionId]);
   var getCurrentScriptHtml = () => _sanitizeRichHtml(scriptEditing ? scriptContent : scriptContent || cfg.callingScript || '');
   var getCurrentRefNotesHtml = () => _sanitizeRichHtml(refEditing ? refNotes : refNotes || cfg.refNotes || '');
   var fillScript = (text, lead) => {
@@ -5697,31 +5742,38 @@ function App() {
       return def;
     }
   };
-  var slotBeforeMin = _slotMinutes(apptTravelBefore, 0, 0, 240);
-  var apptCoreMin = _slotMinutes(apptDuration, 60, 15, 480);
-  var slotAfterMin = _slotMinutes(apptTravelAfter, 0, 0, 240);
+  var calendarDefaultsLocked = role === 'admin';
+  var effectiveApptTravelBefore = role === 'admin' && adminOwnedCfg?.apptTravelBefore !== undefined ? adminOwnedCfg.apptTravelBefore : apptTravelBefore;
+  var effectiveApptDuration = role === 'admin' && adminOwnedCfg?.apptDur !== undefined ? adminOwnedCfg.apptDur : apptDuration;
+  var effectiveApptTravelAfter = role === 'admin' && adminOwnedCfg?.apptTravelAfter !== undefined ? adminOwnedCfg.apptTravelAfter : apptTravelAfter;
+  var slotBeforeMin = _slotMinutes(effectiveApptTravelBefore, 0, 0, 240);
+  var apptCoreMin = _slotMinutes(effectiveApptDuration, 60, 15, 480);
+  var slotAfterMin = _slotMinutes(effectiveApptTravelAfter, 0, 0, 240);
   var slotFootprintMin = slotBeforeMin + apptCoreMin + slotAfterMin;
   var slotTimingFields = [{
     key: 'before',
     label: 'Inbound Travel Buffer',
     hint: 'Time protected after the previous event',
-    value: apptTravelBefore,
-    set: setApptTravelBefore,
-    min: 0
+    value: slotBeforeMin,
+    set: calendarDefaultsLocked ? () => {} : setApptTravelBefore,
+    min: 0,
+    disabled: calendarDefaultsLocked
   }, {
     key: 'core',
     label: 'Core Appointment Time',
     hint: 'Client-facing meeting duration',
-    value: apptDuration,
-    set: setApptDuration,
-    min: 15
+    value: apptCoreMin,
+    set: calendarDefaultsLocked ? () => {} : setApptDuration,
+    min: 15,
+    disabled: calendarDefaultsLocked
   }, {
     key: 'after',
     label: 'Outbound Travel Buffer',
     hint: 'Time protected before the next event',
-    value: apptTravelAfter,
-    set: setApptTravelAfter,
-    min: 0
+    value: slotAfterMin,
+    set: calendarDefaultsLocked ? () => {} : setApptTravelAfter,
+    min: 0,
+    disabled: calendarDefaultsLocked
   }];
   useEffect(() => {
     save('leadFocusMode', leadFocusMode);
@@ -5833,6 +5885,7 @@ function App() {
     };
     var next = [version, ...scriptVersions.filter(v => v.id !== version.id)].slice(0, 20);
     setScriptVersions(next);
+    setShareScriptVersionId(version.id);
     setCfg(s => ({
       ...s,
       callingScript: html,
@@ -5865,6 +5918,38 @@ function App() {
     });
     toast('Restored ' + (v.name || 'script version'));
   }, [scriptVersions]);
+  var renameScriptVersion = useCallback(async id => {
+    var v = scriptVersions.find(x => x.id === id);
+    if (!v) return;
+    var nextName = await promptAsync('Rename saved script version', v.name || 'Saved script', {
+      title: 'Rename script version',
+      placeholder: 'DBS retirement promo'
+    });
+    if (!nextName) return;
+    var next = scriptVersions.map(x => x.id === id ? {
+      ...x,
+      name: nextName.trim() || x.name || 'Saved script'
+    } : x);
+    setScriptVersions(next);
+    setCfg(s => ({
+      ...s,
+      scriptVersions: next,
+      scriptLocalEditedAt: Date.now()
+    }));
+    setAdminConfigs(prev => {
+      var renamed = {
+        ...prev
+      };
+      Object.entries(renamed).forEach(([em, ac]) => {
+        if (ac?.scriptShareVersionId === id) renamed[em] = {
+          ...ac,
+          scriptShareName: nextName.trim() || ac.scriptShareName || 'Saved script'
+        };
+      });
+      return renamed;
+    });
+    toast('Renamed script version');
+  }, [scriptVersions, promptAsync]);
   var deleteScriptVersion = useCallback(async id => {
     var v = scriptVersions.find(x => x.id === id);
     if (!v) return;
@@ -5883,31 +5968,24 @@ function App() {
     }));
     toast('Deleted saved version');
   }, [scriptVersions, confirmAsync]);
-  var makeCurrentScriptSharePayload = useCallback((override = {}) => {
-    var html = getCurrentScriptHtml();
-    var notes = getCurrentRefNotesHtml();
-    var activeVersion = scriptVersions.find(v => v.id === cfg.scriptVersionId);
+  var makeScriptSharePayload = useCallback((versionId, override = {}) => {
+    var payload = _scriptSharePayload({
+      ...cfg,
+      callingScript: getCurrentScriptHtml(),
+      refNotes: getCurrentRefNotesHtml()
+    }, scriptVersions || [], versionId || cfg.scriptVersionId || '');
     return {
-      html,
-      notes,
-      objections: _normalizeObjections(cfg.objections || []),
-      versions: (scriptVersions || []).slice(0, 10),
-      versionId: cfg.scriptVersionId || '',
-      name: activeVersion?.name || 'Current script',
+      ...payload,
       sharedBy: myEmail,
       ts: Date.now(),
       ...override
     };
   }, [scriptContent, refNotes, cfg.callingScript, cfg.refNotes, cfg.objections, cfg.scriptVersionId, scriptVersions, myEmail, scriptEditing, refEditing]);
-  var shareExactScriptToAdmins = useCallback(async emails => {
+  var shareExactScriptToAdmins = useCallback(async (emails, versionId = shareScriptVersionId) => {
     var targets = (emails || []).map(e => (e || '').toLowerCase()).filter(e => e && e.includes('@'));
     if (!targets.length) return toast('Choose at least one admin to share with', 'err');
-    var saved = saveCurrentScriptDraft('');
-    var payload = makeCurrentScriptSharePayload({
-      html: saved?.html ?? getCurrentScriptHtml(),
-      notes: saved?.notes ?? getCurrentRefNotesHtml(),
-      ts: Date.now()
-    });
+    if (!versionId || !scriptVersions.some(v => v.id === versionId)) return toast('Save and choose a script version first', 'err');
+    var payload = makeScriptSharePayload(versionId);
     setAdminConfigs(prev => {
       var next = {
         ...prev
@@ -5918,7 +5996,7 @@ function App() {
           shareScript: true,
           scriptShareUpdatedAt: payload.ts,
           scriptShareVersionId: payload.versionId || '',
-          scriptShareName: payload.name || 'Current script'
+          scriptShareName: payload.name || 'Saved script'
         };
       });
       return next;
@@ -5934,7 +6012,7 @@ function App() {
       }, {
         onConflict: 'admin_email'
       })));
-      toast('Shared exact script with ' + targets.length + ' admin' + (targets.length === 1 ? '' : 's'));
+      toast('Shared selected script with ' + targets.length + ' admin' + (targets.length === 1 ? '' : 's'));
       setShowScriptShareModal(false);
       try {
         window._bumpSyncVer && window._bumpSyncVer();
@@ -5942,7 +6020,7 @@ function App() {
     } catch (e) {
       toast('Share failed: ' + (e?.message || e), 'err');
     }
-  }, [saveCurrentScriptDraft, makeCurrentScriptSharePayload, scriptContent, refNotes, cfg.callingScript, cfg.refNotes, scriptEditing, refEditing]);
+  }, [makeScriptSharePayload, scriptVersions, shareScriptVersionId]);
   var stopScriptShareForAdmins = useCallback(async emails => {
     var targets = (emails || []).map(e => (e || '').toLowerCase()).filter(e => e && e.includes('@'));
     if (!targets.length) return;
@@ -6494,9 +6572,9 @@ function App() {
     }
   }, [incentives, myEmail]);
   useEffect(() => {
-    save('apptDur', apptDuration);
-    save('apptTravelBefore', apptTravelBefore);
-    save('apptTravelAfter', apptTravelAfter);
+    save('apptDur', apptCoreMin);
+    save('apptTravelBefore', slotBeforeMin);
+    save('apptTravelAfter', slotAfterMin);
     cloudSave('apptDur', apptCoreMin);
     cloudSave('apptTravelBefore', slotBeforeMin);
     cloudSave('apptTravelAfter', slotAfterMin);
@@ -6512,7 +6590,7 @@ function App() {
     }, {
       onConflict: 'admin_email'
     }).catch(function () {});
-  }, [apptDuration, apptTravelBefore, apptTravelAfter, apptCoreMin, slotBeforeMin, slotAfterMin, slotFootprintMin]);
+  }, [apptCoreMin, slotBeforeMin, slotAfterMin, slotFootprintMin]);
   useEffect(() => {
     save('calvm', calViewMode);
   }, [calViewMode]);
@@ -14795,20 +14873,22 @@ function App() {
             borderTop: '1px solid var(--border)'
           }
         })), _freeSlots.map((s, si) => {
-          var sh = s.start.getHours() + s.start.getMinutes() / 60;
-          var eh = s.end.getHours() + s.end.getMinutes() / 60;
+          var win = _slotBookableWindow(s, slotBeforeMin, slotAfterMin);
+          if (win.mins < apptCoreMin) return null;
+          var sh = win.start.getHours() + win.start.getMinutes() / 60;
+          var eh = win.end.getHours() + win.end.getMinutes() / 60;
           if (eh <= HR_START || sh >= HR_END) return null;
-          var _isBig = s.hours * 60 >= _minMin;
+          var _isBig = win.mins >= apptCoreMin;
           if (!_isBig) return null;
           var top = Math.max(0, (sh - HR_START) * HOUR_PX);
           var height = Math.max(20, (Math.min(eh, HR_END) - Math.max(sh, HR_START)) * HOUR_PX - 2);
-          var hrsLabel = s.hours >= 1 ? s.hours.toFixed(s.hours % 1 === 0 ? 0 : 1) + 'h' : Math.round(s.hours * 60) + 'm';
+          var hrsLabel = _formatSlotMinutes(win.mins);
           return React.createElement("div", {
             key: 'fs-' + si,
             className: "free-slot",
             title: 'Free · ' + hrsLabel + ' · click to book',
             onClick: gOk ? async () => {
-              var _bookStart = new Date(s.start.getTime() + slotBeforeMin * 60000);
+              var _bookStart = win.start;
               var title = await promptAsync('New event title for ' + fmtDayMonth(d.date) + ' ' + _bookStart.toLocaleTimeString('en-SG', {
                 hour: '2-digit',
                 minute: '2-digit',
@@ -14820,7 +14900,7 @@ function App() {
               if (!title) return;
               try {
                 toast('Creating event…', 'info');
-                var _dur = Math.min(apptCoreMin, Math.max(15, Math.round(s.hours * 60) - slotBeforeMin - slotAfterMin));
+                var _dur = Math.min(apptCoreMin, win.mins);
                 var _end = new Date(_bookStart.getTime() + _dur * 60000);
                 var evt = await gCal.create(title, 'Created from AutoDial free slot', _bookStart.toISOString(), _end.toISOString(), [], myCfg.targetCalendarId || 'primary');
                 if (evt?.id) {
@@ -14950,8 +15030,8 @@ function App() {
         end: new Date(ev.end?.dateTime || ev.start.dateTime)
       }));
       var freeSlots = isPast ? [] : findFreeSlots(d.date, _evWithTimes, BIZ_START, BIZ_END);
-      var bigSlots = freeSlots.filter(s => s.hours * 60 >= slotFootprintMin);
-      var totalFreeHrs = freeSlots.reduce((a, s) => a + s.hours, 0);
+      var bigSlots = freeSlots.filter(s => _slotBookableWindow(s, slotBeforeMin, slotAfterMin).mins >= apptCoreMin);
+      var totalFreeHrs = bigSlots.reduce((a, s) => a + _slotBookableWindow(s, slotBeforeMin, slotAfterMin).hours, 0);
       return React.createElement("div", {
         key: d.key,
         className: "card",
@@ -15007,10 +15087,13 @@ function App() {
           });
         });
         freeSlots.forEach(s => {
+          var win = _slotBookableWindow(s, slotBeforeMin, slotAfterMin);
+          if (win.mins <= 0) return;
           timeline.push({
             _type: 'slot',
             slot: s,
-            sortKey: s.start.getTime()
+            win,
+            sortKey: win.start.getTime()
           });
         });
         timeline.sort((a, b) => a.sortKey - b.sortKey);
@@ -15099,17 +15182,18 @@ function App() {
             }, "\uD83D\uDCC1 ", ev._calName)));
           }
           var s = item.slot;
-          var isBig = s.hours * 60 >= slotFootprintMin;
-          var timeStr = s.start.toLocaleTimeString('en-SG', {
+          var win = item.win || _slotBookableWindow(s, slotBeforeMin, slotAfterMin);
+          var isBig = win.mins >= apptCoreMin;
+          var timeStr = win.start.toLocaleTimeString('en-SG', {
             hour: '2-digit',
             minute: '2-digit',
             hour12: true
-          }) + ' – ' + s.end.toLocaleTimeString('en-SG', {
+          }) + ' – ' + win.end.toLocaleTimeString('en-SG', {
             hour: '2-digit',
             minute: '2-digit',
             hour12: true
           });
-          var hrsLabel = s.hours >= 1 ? s.hours.toFixed(s.hours % 1 === 0 ? 0 : 1) + 'h' : Math.round(s.hours * 60) + 'm';
+          var hrsLabel = _formatSlotMinutes(win.mins);
           return React.createElement("div", {
             key: 's' + i,
             className: isBig ? 'free-slot' : undefined,
@@ -15162,7 +15246,7 @@ function App() {
               if (!title) return;
               try {
                 toast('Creating event…', 'info');
-                var _bookStart = new Date(s.start.getTime() + slotBeforeMin * 60000);
+                var _bookStart = win.start;
                 var _bookEnd = new Date(_bookStart.getTime() + apptCoreMin * 60000);
                 var evt = await gCal.create(title, 'Created from AutoDial free slot', _bookStart.toISOString(), _bookEnd.toISOString(), [], myCfg.targetCalendarId || 'primary');
                 if (evt?.id) {
@@ -20267,6 +20351,9 @@ function App() {
           bonusMult: cfg.bonusMult || 1.5,
           tierMins: [...(cfg.tierMins || DEF_TIER_MINS)],
           metIncentive: cfg.metIncentive || 10,
+          apptTravelBefore: slotBeforeMin,
+          apptDur: apptCoreMin,
+          apptTravelAfter: slotAfterMin,
           rankEnabled: true,
           bizName: '',
           payNow: '',
@@ -20768,7 +20855,112 @@ function App() {
       fontSize: 9,
       color: 'var(--text3)'
     }
-  }, "Auto-NI after N No Picks. Blank = use default (", cfg.npMax || 5, ")")), React.createElement("div", {
+  }, "Auto-NI after N No Picks. Blank = use default (", cfg.npMax || 5, ")")), (() => {
+    var _adminBefore = _slotMinutes(ac.apptTravelBefore, slotBeforeMin, 0, 240);
+    var _adminCore = _slotMinutes(ac.apptDur, apptCoreMin, 15, 480);
+    var _adminAfter = _slotMinutes(ac.apptTravelAfter, slotAfterMin, 0, 240);
+    var _adminSlotFields = [{
+      key: 'apptTravelBefore',
+      label: 'Inbound Travel Buffer',
+      hint: 'Protects travel time after the previous event',
+      value: _adminBefore,
+      min: 0
+    }, {
+      key: 'apptDur',
+      label: 'Core Appointment Time',
+      hint: 'Client-facing appointment duration',
+      value: _adminCore,
+      min: 15
+    }, {
+      key: 'apptTravelAfter',
+      label: 'Outbound Travel Buffer',
+      hint: 'Protects travel time before the next event',
+      value: _adminAfter,
+      min: 0
+    }];
+    return React.createElement("div", {
+      style: {
+        marginBottom: 8,
+        padding: 10,
+        borderRadius: 10,
+        background: 'var(--bg)',
+        border: '1px solid rgba(66,133,244,.22)'
+      }
+    }, React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
+        marginBottom: 6
+      }
+    }, React.createElement("div", null, React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 11,
+        color: '#4285f4',
+        fontWeight: 900
+      }
+    }, "\uD83D\uDCC5 Calendar Defaults"), React.createElement("p", {
+      style: {
+        margin: '2px 0 0',
+        fontSize: 9,
+        color: 'var(--text3)',
+        lineHeight: 1.35
+      }
+    }, "Main-controlled smart-slot settings. Admins can see these but cannot edit them.")), React.createElement("span", {
+      className: "mono",
+      style: {
+        fontSize: 10,
+        color: 'var(--green)',
+        fontWeight: 900,
+        whiteSpace: 'nowrap'
+      }
+    }, _formatSlotMinutes(_adminBefore + _adminCore + _adminAfter))), React.createElement("div", {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit,minmax(135px,1fr))',
+        gap: 8
+      }
+    }, _adminSlotFields.map(f => React.createElement("div", {
+      key: f.key
+    }, React.createElement("label", {
+      style: {
+        fontSize: 9,
+        color: 'var(--text3)',
+        fontWeight: 800,
+        display: 'block',
+        marginBottom: 2
+      }
+    }, f.label, " (mins)"), React.createElement("input", {
+      type: "number",
+      min: String(f.min),
+      max: f.key === 'apptDur' ? "480" : "240",
+      step: "15",
+      value: f.value,
+      onChange: e => setAdminConfigs(p => ({
+        ...p,
+        [em]: {
+          ...p[em],
+          [f.key]: e.target.value === '' ? '' : +e.target.value
+        }
+      })),
+      style: {
+        fontSize: 12,
+        textAlign: 'center',
+        padding: '8px',
+        width: '100%',
+        fontWeight: 800
+      }
+    }), React.createElement("p", {
+      style: {
+        margin: '3px 0 0',
+        fontSize: 8,
+        color: 'var(--text3)',
+        lineHeight: 1.3
+      }
+    }, f.hint)))));
+  })(), React.createElement("div", {
     style: {
       marginBottom: 8,
       padding: 10,
@@ -20790,11 +20982,17 @@ function App() {
     type: "checkbox",
     checked: !!ac.shareScript,
     onChange: e => {
+      if (e.target.checked && !scriptVersions.length) {
+        e.target.checked = false;
+        return toast('Save a script version before sharing', 'err');
+      }
       var next = {
         ...adminConfigs,
         [em]: {
           ...adminConfigs[em],
           shareScript: e.target.checked,
+          scriptShareVersionId: e.target.checked ? adminConfigs[em]?.scriptShareVersionId || shareScriptVersionId || cfg.scriptVersionId || scriptVersions[0]?.id || '' : adminConfigs[em]?.scriptShareVersionId || '',
+          scriptShareName: e.target.checked ? (scriptVersions.find(v => v.id === (adminConfigs[em]?.scriptShareVersionId || shareScriptVersionId || cfg.scriptVersionId || scriptVersions[0]?.id || ''))?.name || 'Saved script') : adminConfigs[em]?.scriptShareName || '',
           scriptShareUpdatedAt: Date.now()
         }
       };
@@ -20802,14 +21000,49 @@ function App() {
       publishAdminScripts(next, cfg, scriptVersions);
       toast(e.target.checked ? 'Script shared with ' + (ac.bizName || em) : 'Script sharing stopped for ' + (ac.bizName || em));
     }
-  }), React.createElement("span", null, "\uD83D\uDCCB Share owner script")), React.createElement("p", {
+  }), React.createElement("span", null, "\uD83D\uDCCB Share saved script")), scriptVersions.length > 0 && React.createElement("select", {
+    value: ac.scriptShareVersionId || shareScriptVersionId || cfg.scriptVersionId || scriptVersions[0]?.id || '',
+    onChange: e => {
+      var chosen = scriptVersions.find(v => v.id === e.target.value);
+      var next = {
+        ...adminConfigs,
+        [em]: {
+          ...adminConfigs[em],
+          shareScript: true,
+          scriptShareVersionId: e.target.value,
+          scriptShareName: chosen?.name || 'Saved script',
+          scriptShareUpdatedAt: Date.now()
+        }
+      };
+      setAdminConfigs(next);
+      publishAdminScripts(next, cfg, scriptVersions);
+      toast('Sharing "' + (chosen?.name || 'saved script') + '" with ' + (ac.bizName || em));
+    },
+    style: {
+      width: '100%',
+      marginTop: 8,
+      padding: '7px 8px',
+      borderRadius: 8,
+      fontSize: 11
+    }
+  }, scriptVersions.map(v => React.createElement("option", {
+    key: v.id,
+    value: v.id
+  }, v.name || 'Saved script'))), !scriptVersions.length && React.createElement("p", {
+    style: {
+      margin: '6px 0 0 22px',
+      fontSize: 9,
+      color: 'var(--amber)',
+      lineHeight: 1.35
+    }
+  }, "Save a script version before sharing."), React.createElement("p", {
     style: {
       margin: '5px 0 0 22px',
       fontSize: 9,
       color: 'var(--text3)',
       lineHeight: 1.35
     }
-  }, "Shares the saved calling script, reference notes, and objection handles with this admin only.")), React.createElement("div", {
+  }, ac.shareScript ? 'Sharing: ' + (ac.scriptShareName || 'selected saved script') : "Pick one saved script version to share with this admin.")), React.createElement("div", {
     style: {
       marginBottom: 8
     }
@@ -23118,7 +23351,7 @@ function App() {
       color: 'var(--green)',
       margin: '4px 0 0'
     }
-  }, "\u2713 Using shared Claude key from manager"))), isManageMode && React.createElement("div", {
+  }, "\u2713 Using shared Claude key from manager"))), (role === 'main' || role === 'admin') && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 12
@@ -23136,7 +23369,9 @@ function App() {
       color: 'var(--text3)',
       marginBottom: 8
     }
-  }, "Calendar sharing is configured per-admin in ", React.createElement("b", null, "Admin Pay (Per-Person)"), " above. Each admin can be given access to specific calendars, with the option to hide event details (show as \"Busy\" only)."), React.createElement("div", {
+  }, role === 'admin' ? "These defaults are controlled by Main and used by your calendar and AI slot finder." : ["Calendar sharing is configured per-admin in ", React.createElement("b", {
+    key: "admin-pay"
+  }, "Admin Pay (Per-Person)"), " above. Each admin can be given access to specific calendars, with the option to hide event details (show as \"Busy\" only)."]), React.createElement("div", {
     style: {
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))',
@@ -23158,11 +23393,14 @@ function App() {
     max: f.key === 'core' ? "480" : "240",
     step: "15",
     value: f.value,
+    disabled: !!f.disabled,
     onChange: e => f.set(e.target.value === '' ? '' : +e.target.value),
     style: {
       textAlign: 'center',
       width: '100%',
-      fontWeight: 800
+      fontWeight: 800,
+      opacity: f.disabled ? .72 : 1,
+      cursor: f.disabled ? 'not-allowed' : 'text'
     }
   }), React.createElement("p", {
     style: {
@@ -25636,13 +25874,15 @@ WHERE p.id IS NULL;`;
             height: HOUR_PX,
             borderTop: '1px solid var(--border)'
           }
-        })), freeSlots.filter(s => s.hours >= MIN_HRS).map((s, si) => {
-          var sh = s.start.getHours() + s.start.getMinutes() / 60;
-          var eh = s.end.getHours() + s.end.getMinutes() / 60;
+        })), freeSlots.map((s, si) => {
+          var win = _slotBookableWindow(s, slotBeforeMin, slotAfterMin);
+          if (win.mins < apptCoreMin) return null;
+          var sh = win.start.getHours() + win.start.getMinutes() / 60;
+          var eh = win.end.getHours() + win.end.getMinutes() / 60;
           if (eh <= HR_START || sh >= HR_END) return null;
           var top = Math.max(0, (sh - HR_START) * HOUR_PX);
           var height = Math.max(16, (Math.min(eh, HR_END) - Math.max(sh, HR_START)) * HOUR_PX - 1);
-          var bookStart = new Date(s.start.getTime() + slotBeforeMin * 60000);
+          var bookStart = win.start;
           var hh = String(bookStart.getHours()).padStart(2, '0');
           var mm = String(bookStart.getMinutes()).padStart(2, '0');
           var isSelectedSlot = selectedOnDay && apptTime === hh + ':' + mm;
@@ -25691,7 +25931,7 @@ WHERE p.id IS NULL;`;
               fontSize: 7,
               opacity: .85
             }
-          }, s.hours.toFixed(1), "h"));
+          }, _formatSlotMinutes(win.mins)));
         }), shakyOnDay.filter(sa => sa.apptTime).map((sa, si) => {
           var sh = new Date(d.key + 'T' + sa.apptTime);
           var dur = sa.duration || 90;
@@ -25839,7 +26079,7 @@ WHERE p.id IS NULL;`;
       });
       var allBusy = [...nonShakyBusy, ...cbBusy];
       var freeSlots = isPast ? [] : findFreeSlots(d.date, allBusy, BIZ_START, BIZ_END);
-      var bigSlots = freeSlots.filter(s => s.hours >= MIN_HRS);
+      var bigSlots = freeSlots.filter(s => _slotBookableWindow(s, slotBeforeMin, slotAfterMin).mins >= apptCoreMin);
       var shakySlots = shakyOnDay.filter(sa => sa.apptTime).map(sa => {
         var sh = new Date(d.key + 'T' + sa.apptTime);
         var dur = sa.duration || 90;
@@ -25925,7 +26165,8 @@ WHERE p.id IS NULL;`;
           paddingTop: 6
         }
       }, "Past"), bigSlots.map((s, si) => {
-        var bookStart = new Date(s.start.getTime() + slotBeforeMin * 60000);
+        var win = _slotBookableWindow(s, slotBeforeMin, slotAfterMin);
+        var bookStart = win.start;
         var bookEnd = new Date(bookStart.getTime() + apptCoreMin * 60000);
         var hh = String(bookStart.getHours()).padStart(2, '0');
         var mm = String(bookStart.getMinutes()).padStart(2, '0');
@@ -25965,7 +26206,7 @@ WHERE p.id IS NULL;`;
             opacity: .85,
             marginTop: 1
           }
-        }, s.hours.toFixed(1), "h"));
+        }, _formatSlotMinutes(win.mins)));
       }), shakySlots.map((s, si) => {
         var hh = String(s.start.getHours()).padStart(2, '0');
         var mm = String(s.start.getMinutes()).padStart(2, '0');
@@ -26249,12 +26490,15 @@ WHERE p.id IS NULL;`;
     max: f.key === 'core' ? "480" : "240",
     step: "15",
     value: f.value,
+    disabled: !!f.disabled,
     onChange: ev => f.set(ev.target.value === '' ? '' : +ev.target.value),
     style: {
       fontSize: 12,
       textAlign: 'center',
       padding: '8px',
-      width: '100%'
+      width: '100%',
+      opacity: f.disabled ? .72 : 1,
+      cursor: f.disabled ? 'not-allowed' : 'text'
     }
   })))), React.createElement("p", {
     style: {
@@ -29545,6 +29789,18 @@ WHERE p.id IS NULL;`;
     key: v.id,
     value: v.id
   }, v.name || new Date(v.ts || Date.now()).toLocaleDateString('en-SG')))), scriptVersions.length > 0 && cfg.scriptVersionId && React.createElement("button", {
+    onClick: () => renameScriptVersion(cfg.scriptVersionId),
+    title: "Rename the selected saved version",
+    style: {
+      padding: '5px 10px',
+      borderRadius: 8,
+      background: 'var(--bg3)',
+      color: 'var(--text2)',
+      fontSize: 11,
+      fontWeight: 700,
+      border: '1px solid var(--border)'
+    }
+  }, "Rename"), scriptVersions.length > 0 && cfg.scriptVersionId && React.createElement("button", {
     onClick: () => deleteScriptVersion(cfg.scriptVersionId),
     title: "Delete the selected saved version",
     style: {
@@ -29558,7 +29814,7 @@ WHERE p.id IS NULL;`;
     }
   }, "Delete"), role === 'main' && React.createElement("button", {
     onClick: () => setShowScriptShareModal(true),
-    title: "Share this exact script, notes, and objection handles to admins",
+    title: "Share one saved script version with admins",
     style: {
       padding: '5px 10px',
       borderRadius: 8,
@@ -30293,9 +30549,9 @@ WHERE p.id IS NULL;`;
   }, showScriptShareModal && (() => {
     var admins = Object.entries(adminConfigs || {}).filter(([em]) => em && em.includes('@') && em.toLowerCase() !== myEmail.toLowerCase());
     var enabled = admins.filter(([, ac]) => ac?.shareScript).map(([em]) => em);
-    var activeVersion = scriptVersions.find(v => v.id === cfg.scriptVersionId);
-    var visibleName = activeVersion?.name || 'Current visible script';
-    var hasCurrent = !!(getCurrentScriptHtml() || getCurrentRefNotesHtml());
+    var selectedShareVersion = scriptVersions.find(v => v.id === shareScriptVersionId) || scriptVersions.find(v => v.id === cfg.scriptVersionId) || scriptVersions[0];
+    var selectedShareName = selectedShareVersion?.name || 'Choose a saved script';
+    var hasShareVersion = !!selectedShareVersion;
     return React.createElement("div", {
       style: {
         width: '100%',
@@ -30323,14 +30579,14 @@ WHERE p.id IS NULL;`;
         fontWeight: 900,
         color: '#f1f5f9'
       }
-    }, "\uD83D\uDCE4 Share Exact Script"), React.createElement("p", {
+    }, "\uD83D\uDCE4 Share Saved Script"), React.createElement("p", {
       style: {
         margin: '4px 0 0',
         fontSize: 11,
         color: 'var(--text3)',
         lineHeight: 1.45
       }
-    }, "Sharing sends the current calling script, reference notes, and objection handles exactly as shown now.")), React.createElement("button", {
+    }, "Choose one saved script version to send. Admins receive only that selected script, not your whole saved-script library.")), React.createElement("button", {
       onClick: () => setShowScriptShareModal(false),
       style: {
         width: 30,
@@ -30357,14 +30613,35 @@ WHERE p.id IS NULL;`;
         textTransform: 'uppercase',
         letterSpacing: '.06em'
       }
-    }, "Version to share"), React.createElement("p", {
+    }, "Version to share"), scriptVersions.length > 0 ? React.createElement("select", {
+      value: selectedShareVersion?.id || '',
+      onChange: e => setShareScriptVersionId(e.target.value),
+      style: {
+        width: '100%',
+        marginTop: 6,
+        padding: '9px 10px',
+        borderRadius: 9,
+        fontSize: 12,
+        fontWeight: 800
+      }
+    }, scriptVersions.map(v => React.createElement("option", {
+      key: v.id,
+      value: v.id
+    }, v.name || 'Saved script'))) : React.createElement("p", {
       style: {
         margin: '3px 0 0',
         fontSize: 13,
-        color: hasCurrent ? '#f1f5f9' : 'var(--red)',
+        color: 'var(--red)',
         fontWeight: 800
       }
-    }, hasCurrent ? visibleName : 'No script or notes to share yet')), admins.length === 0 ? React.createElement("div", {
+    }, "No saved scripts yet. Use Save Version first."), hasShareVersion && React.createElement("p", {
+      style: {
+        margin: '5px 0 0',
+        fontSize: 10,
+        color: 'var(--text3)',
+        lineHeight: 1.35
+      }
+    }, "Selected: ", selectedShareName)), admins.length === 0 ? React.createElement("div", {
       className: "card",
       style: {
         textAlign: 'center',
@@ -30377,21 +30654,21 @@ WHERE p.id IS NULL;`;
         color: 'var(--text3)'
       }
     }, "No admins configured yet. Add an admin first, then share a script here.")) : React.createElement(React.Fragment, null, enabled.length > 0 && React.createElement("button", {
-      onClick: () => shareExactScriptToAdmins(enabled),
-      disabled: !hasCurrent,
+      onClick: () => shareExactScriptToAdmins(enabled, selectedShareVersion?.id),
+      disabled: !hasShareVersion,
       style: {
         width: '100%',
         padding: '11px',
         borderRadius: 12,
-        background: hasCurrent ? 'var(--adim)' : 'var(--bg3)',
-        color: hasCurrent ? 'var(--accent2)' : 'var(--text3)',
+        background: hasShareVersion ? 'var(--adim)' : 'var(--bg3)',
+        color: hasShareVersion ? 'var(--accent2)' : 'var(--text3)',
         fontSize: 12,
         fontWeight: 900,
         border: '1px solid rgba(99,102,241,.28)',
         marginBottom: 10,
-        opacity: hasCurrent ? 1 : .55
+        opacity: hasShareVersion ? 1 : .55
       }
-    }, "Share exact script to ", enabled.length, " enabled admin", enabled.length === 1 ? '' : 's'), admins.map(([em, ac]) => React.createElement("div", {
+    }, "Share selected script to ", enabled.length, " enabled admin", enabled.length === 1 ? '' : 's'), admins.map(([em, ac]) => React.createElement("div", {
       key: em,
       style: {
         display: 'flex',
@@ -30427,20 +30704,20 @@ WHERE p.id IS NULL;`;
         textOverflow: 'ellipsis',
         whiteSpace: 'nowrap'
       }
-    }, ac.shareScript ? 'Sharing: ' + (ac.scriptShareName || 'owner script') : 'Not receiving owner script')), React.createElement("button", {
-      onClick: () => shareExactScriptToAdmins([em]),
-      disabled: !hasCurrent,
+    }, ac.shareScript ? 'Sharing: ' + (ac.scriptShareName || 'selected saved script') : 'Not receiving a saved script')), React.createElement("button", {
+      onClick: () => shareExactScriptToAdmins([em], selectedShareVersion?.id),
+      disabled: !hasShareVersion,
       style: {
         padding: '7px 10px',
         borderRadius: 9,
-        background: hasCurrent ? 'var(--gdim)' : 'var(--bg3)',
-        color: hasCurrent ? 'var(--green)' : 'var(--text3)',
+        background: hasShareVersion ? 'var(--gdim)' : 'var(--bg3)',
+        color: hasShareVersion ? 'var(--green)' : 'var(--text3)',
         fontSize: 10,
         fontWeight: 900,
         border: '1px solid rgba(63,185,80,.25)',
-        opacity: hasCurrent ? 1 : .55
+        opacity: hasShareVersion ? 1 : .55
       }
-    }, "Share Exact"), ac.shareScript && React.createElement("button", {
+    }, "Share Selected"), ac.shareScript && React.createElement("button", {
       onClick: () => stopScriptShareForAdmins([em]),
       style: {
         padding: '7px 10px',
