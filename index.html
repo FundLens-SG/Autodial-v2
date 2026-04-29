@@ -313,7 +313,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0006';
+window.APP_VERSION='2026.04.29.0007';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1624,8 +1624,47 @@ window.DB={
 window.waLink=function(phone,message){
   var p=phone.replace(/[^+\d]/g,'');if(!p.startsWith('+'))p='+65'+p;
   return'https://wa.me/'+p.replace('+','')+'?text='+encodeURIComponent(message)};
+window.waShortDate=function(dateVal){
+  if(!dateVal)return'';
+  var d=null;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(String(dateVal))){
+    var parts=String(dateVal).split('-').map(Number);
+    d=new Date(parts[0],parts[1]-1,parts[2]);
+  }else d=new Date(dateVal);
+  if(!d||isNaN(d))return String(dateVal||'');
+  return d.toLocaleDateString('en-SG',{day:'numeric',month:'short'});
+};
+window.waDay=function(dateVal){
+  if(!dateVal)return'';
+  var d=null;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(String(dateVal))){
+    var parts=String(dateVal).split('-').map(Number);
+    d=new Date(parts[0],parts[1]-1,parts[2]);
+  }else d=new Date(dateVal);
+  if(!d||isNaN(d))return'';
+  return d.toLocaleDateString('en-SG',{weekday:'long'});
+};
+window.waShortTime=function(timeVal){
+  var raw=String(timeVal||'').trim();
+  if(!raw)return'';
+  var m=raw.match(/^(\d{1,2})(?::(\d{2}))?\s*([ap]m)?$/i);
+  if(!m)return raw;
+  var h=parseInt(m[1],10),mi=parseInt(m[2]||'0',10),suffix=(m[3]||'').toLowerCase();
+  if(suffix==='pm'&&h<12)h+=12;
+  if(suffix==='am'&&h===12)h=0;
+  var ampm=h>=12?'pm':'am';
+  var display=h%12||12;
+  return display+(mi?':'+String(mi).padStart(2,'0'):'')+ampm;
+};
+window.waTemplateData=function(data){
+  data=data||{};
+  var dateRaw=data.apptDate||data.date||'';
+  var timeRaw=data.apptTime||data.time||'';
+  return{...data,day:data.day||window.waDay(dateRaw),date:data.dateText||window.waShortDate(dateRaw),time:data.timeText||window.waShortTime(timeRaw),location:data.location||''};
+};
 window.waFill=function(template,data){
-  return template.replace(/\{\{(\w+)\}\}/g,function(_,k){return data[k]||''})};
+  var filled=window.waTemplateData(data||{});
+  return template.replace(/\{\{(\w+)\}\}/g,function(_,k){return filled[k]||''})};
 
 // ══════ CALENDAR SHARING (Google Calendar ACL) ══════
 window.gCalShare={
@@ -7862,7 +7901,13 @@ function App() {
     try {
       var qs = new URLSearchParams(location.search);
       if (qs.get('autodialFocus') === 'dial') {
+        var leadIdx = parseInt(qs.get('lead') || '-1', 10);
         setTab('dial');
+        if (leadIdx >= 0) {
+          setCurIdx(leadIdx);
+          setRunning(true);
+          setPhase('calling');
+        }
         qs.delete('autodialFocus');
         qs.delete('lead');
         var nextUrl = location.pathname + (qs.toString() ? '?' + qs.toString() : '') + location.hash;
@@ -7957,6 +8002,22 @@ function App() {
   }, [callAssist, running, phase, requestWakeLock, releaseWakeLock]);
   useEffect(() => {
     var unsub = onSync(d => {
+      var applyDialState = () => {
+        if (d.leads && Array.isArray(d.leads)) setLeads(d.leads);
+        var idx = typeof d.curIdx === 'number' ? d.curIdx : -1;
+        if (idx < 0 && d.phone) {
+          var clean = phoneDigits(d.phone);
+          idx = leadsRef.current.findIndex(l => phoneDigits(l.phone) === clean);
+        }
+        if (idx >= 0) setCurIdx(idx);
+        if (d.session) setSession(d.session);
+        setRunning(d.running === false ? false : true);
+        setPhase(d.phase || 'calling');
+        setShowNextPreview(false);
+        setShowPostCall(null);
+        setTab('dial');
+      };
+      if (d.type === 'dial' || d.type === 'dial_ready') applyDialState();
       if (d.type === 'dial' && isMob) setTimeout(() => {
         if (callAssist && document.visibilityState !== 'visible') {
           showNextLeadNotification({
@@ -7974,6 +8035,8 @@ function App() {
         setPhase('calling');
         setSession(d.session);
         setTab('dial');
+        setShowNextPreview(false);
+        setShowPostCall(null);
         if (isMob && d.phone) setTimeout(() => {
           if (callAssist && document.visibilityState !== 'visible') {
             showNextLeadNotification({
@@ -8138,28 +8201,36 @@ function App() {
     return false;
   }, []);
   var dial = useCallback(ph => {
+    var clean = phoneDigits(ph);
+    var idx = (leadsRef.current || []).findIndex(l => phoneDigits(l.phone) === clean);
+    var lead = idx >= 0 ? leadsRef.current[idx] : null;
+    var dialPayload = {
+      phone: ph,
+      curIdx: idx,
+      name: lead?.name || 'Next lead',
+      phase: 'calling',
+      running: true,
+      session: session || null
+    };
     if (callAssist && document.visibilityState !== 'visible') {
-      var clean = phoneDigits(ph);
-      var idx = leadsRef.current.findIndex(l => phoneDigits(l.phone) === clean);
-      showNextLeadNotification(idx >= 0 ? leadsRef.current[idx] : {
+      showNextLeadNotification(lead || {
         name: 'Next lead',
         phone: ph
       }, idx);
       syncSend('dial_ready', {
-        phone: ph,
-        curIdx: idx
+        ...dialPayload
       });
       return;
     }
+    syncSend('dial', dialPayload);
     if (isMob) {
-      window.location.href = 'tel:' + ph.replace(/[^+\d]/g, '');
+      setTimeout(() => {
+        window.location.href = 'tel:' + ph.replace(/[^+\d]/g, '');
+      }, 80);
     } else {
       toast('📱 Dial sent → open AutoDial on phone', 'info');
     }
-    syncSend('dial', {
-      phone: ph
-    });
-  }, [isMob, callAssist, showNextLeadNotification]);
+  }, [isMob, callAssist, showNextLeadNotification, session]);
   var sheetQueueRef = useRef([]);
   var sheetFlushTimer = useRef(null);
   var flushSheetQueue = useCallback(async () => {
@@ -8950,6 +9021,7 @@ function App() {
       phase: 'calling',
       session: startedSession,
       phone: leads[f].phone,
+      name: leads[f].name,
       leads
     };
     syncSend('start', startPayload);
@@ -20937,7 +21009,7 @@ function App() {
       color: 'var(--text3)',
       marginBottom: 10
     }
-  }, "Message templates for WhatsApp. Placeholders: ", '{{name}}, {{date}}, {{time}}, {{admin}}, {{company}}'), waTemplates.map((t, i) => React.createElement("div", {
+  }, "Message templates for WhatsApp. Placeholders: ", '{{name}}, {{day}}, {{date}}, {{time}}, {{location}}, {{admin}}, {{company}}'), waTemplates.map((t, i) => React.createElement("div", {
     key: t.id || i,
     style: {
       display: 'flex',
@@ -21074,7 +21146,7 @@ function App() {
       ...p,
       template: e.target.value
     })),
-    placeholder: "Hi {{name}}, confirming our meeting on {{date}}\u2026",
+    placeholder: "Hi {{name}}, see you {{day}}, {{date}} {{time}} at {{location}}\u2026",
     rows: 3,
     style: {
       width: '100%',
@@ -24247,7 +24319,8 @@ WHERE p.id IS NULL;`;
           name: lead?.name,
           phone: lead?.phone,
           date: apptDate,
-          time: apptTime
+          time: apptTime,
+          location: apptLocation
         });
         toast('Event created!');
         var apptSheetId = myCfg.timesheetId || cfg.sheetId;
@@ -24747,6 +24820,7 @@ WHERE p.id IS NULL;`;
         name: showWA.name,
         date: showWA.date || '',
         time: showWA.time || '',
+        location: showWA.location || '',
         admin: userName,
         company: 'PolicyLens'
       });
