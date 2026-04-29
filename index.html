@@ -316,7 +316,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0011';
+window.APP_VERSION='2026.04.29.0012';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -5353,6 +5353,44 @@ function App() {
     ...cfg,
     npMax: cfg.mainNpMax && +cfg.mainNpMax > 0 ? +cfg.mainNpMax : cfg.npMax || 5
   };
+  var selectedLeadSourceKey = role === 'admin' ? (adminLeadLinked ? (myCfg.timesheetId || myCfg.sheetId || '') + '::' + (myCfg.sheetTab || '') : '') : (cfg.sheetId || '') + '::' + (cfg.sheetTab || '');
+  useEffect(() => {
+    var clearLoadedLeadState = msg => {
+      setLeads([]);
+      setRawSheet(null);
+      setImportReview(null);
+      setRunning(false);
+      setPhase('idle');
+      setCurIdx(-1);
+      setSession(null);
+      setShowNextPreview(false);
+      save('activeSession', null);
+      save('curIdx', -1);
+      toast(msg || 'Lead source changed - old loaded leads cleared', 'info');
+    };
+    var savedLeadSourceMismatch = () => {
+      if (role === 'admin' && !adminLeadLinked && leads.length) return true;
+      if (!selectedLeadSourceKey || !leads.length) return false;
+      var probe = leads.find(l => l && (l._sourceSheetId || l._sourceSheetTab));
+      if (!probe) return true;
+      return (probe._sourceSheetId || '') + '::' + (probe._sourceSheetTab || '') !== selectedLeadSourceKey;
+    };
+    var prev = appStateRef.current.leadSourceKey;
+    if (prev === undefined) {
+      appStateRef.current.leadSourceKey = selectedLeadSourceKey;
+      if (savedLeadSourceMismatch()) clearLoadedLeadState('Loaded leads do not match selected sheet - fetch again');
+      return;
+    }
+    if (prev === selectedLeadSourceKey) return;
+    appStateRef.current.leadSourceKey = selectedLeadSourceKey;
+    appStateRef.current._autoFetched = false;
+    try {
+      _liveSyncRef.current.suppressNextPush = true;
+    } catch (_e) {}
+    if (leads.length || running || phase !== 'idle' || curIdx !== -1) {
+      clearLoadedLeadState('Lead source changed - old loaded leads cleared');
+    }
+  }, [selectedLeadSourceKey, leads.length, running, phase, curIdx]);
   useEffect(() => {
     if (role !== 'admin' || !adminCfgVerified) return;
     if (adminLeadLinked) {
@@ -5712,7 +5750,7 @@ function App() {
     DBG('[AutoDial] Script share synced to selected admins');
   }, [cfg.callingScript, cfg.refNotes, cfg.objections, scriptVersions, role, adminConfigs]);
   useEffect(() => {
-    if (role === 'admin' && adminLeadLinked && myCfg.timesheetId && myCfg.sheetTab && gOk && leads.length === 0 && !appStateRef.current._autoFetched) {
+    if (role === 'admin' && adminLeadLinked && myCfg.timesheetId && myCfg.sheetTab && leads.length === 0 && !appStateRef.current._autoFetched) {
       appStateRef.current._autoFetched = true;
       setCfg(s => ({
         ...s,
@@ -5721,7 +5759,7 @@ function App() {
       }));
       setTimeout(() => fetchLeads(), 500);
     }
-    if (appStateRef.current._needsRefetch && (role !== 'admin' || adminLeadLinked) && cfg.sheetId && cfg.sheetTab && gOk) {
+    if (appStateRef.current._needsRefetch && (role !== 'admin' || adminLeadLinked) && cfg.sheetId && cfg.sheetTab && (gOk || role === 'admin')) {
       appStateRef.current._needsRefetch = false;
       DBG('[AutoDial] Auto re-fetching stale leads...');
       setTimeout(() => fetchLeads(), 1000);
@@ -5800,6 +5838,22 @@ function App() {
     cloudSave('acfg', adminConfigs);
     if (role !== 'admin') publishAdminConfigs(adminConfigs);
   }, [adminConfigs]);
+  useEffect(() => {
+    if (role === 'admin' || !_SB || !_user || !window._cloudReady) return;
+    if (!leads.length || !cfg.sheetId || !cfg.sheetTab) return;
+    var t = setTimeout(() => {
+      publishAssignedLeadsToAdmins(adminConfigs, {
+        leads,
+        sourceSheetId: cfg.sheetId,
+        sourceSheetTab: cfg.sheetTab,
+        sourceSheetName: cfg._sheetName || '',
+        onlyMatching: true
+      }).then(res => {
+        if (res.count) DBG('[AutoDial] Synced current lead source to ' + res.count + ' admin(s)');
+      });
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [role, leads, cfg.sheetId, cfg.sheetTab, adminConfigs]);
   useEffect(() => {
     save('payh', paymentHistory);
     cloudSave('payh', paymentHistory);
@@ -9655,15 +9709,172 @@ function App() {
     };
   };
   var stageLeadImport = (nextLeads, meta = {}) => {
-    var review = buildImportReview(nextLeads, meta);
+    var tagged = tagLeadsWithSource(nextLeads, meta);
+    var review = buildImportReview(tagged, meta);
     if (review.lowCols.length || review.questionable.length) {
       setImportReview(review);
       toast('Review import before accepting: ' + review.questionable.length + ' questionable rows', 'info');
       return false;
     }
-    setLeads(nextLeads || []);
+    setLeads(tagged || []);
     setImportReview(null);
     return true;
+  };
+  var tagLeadsWithSource = (list, meta = {}) => {
+    var sourceSheetId = meta.sourceSheetId || meta.sheetId || '';
+    var sourceSheetTab = meta.sourceSheetTab || meta.sheetTab || '';
+    var sourceSheetName = meta.sourceSheetName || meta.sheetName || '';
+    return (list || []).map(l => ({
+      ...l,
+      _sourceSheetId: sourceSheetId,
+      _sourceSheetTab: sourceSheetTab,
+      _sourceSheetName: sourceSheetName,
+      source: l.source || sourceSheetTab || sourceSheetName || meta.source || 'Google Sheet'
+    }));
+  };
+  var parseFetchedLeadValues = async (v, sourceMeta = {}) => {
+    if (!v || v.length < 2) throw new Error('Empty');
+    var h = v[0].map(String),
+      r = v.slice(1);
+    var multiBatch = parseSheetMultiBatch(h, r);
+    if (multiBatch && multiBatch.leads.length) {
+      var validated = validateStatuses(multiBatch.leads, r, -1);
+      var finalLeads = await claudePipeline(validated, h, r, multiBatch._colMap || null);
+      var ni = finalLeads.filter(l => l.status === 'ni').length,
+        pend = finalLeads.filter(l => l.status === 'pending').length;
+      return {
+        leads: finalLeads,
+        headers: h,
+        rows: r,
+        colMap: multiBatch._colMap || null,
+        source: 'Google Sheet',
+        message: '🔀 ' + multiBatch.batches + ' batches | ' + finalLeads.length + ' leads | ' + pend + ' callable, ' + ni + ' NI'
+      };
+    }
+    var rmkCol = h.findIndex(x => /^(remarks?|notes?|comments?|result|outcome)$/i.test(x.trim()));
+    if (rmkCol === -1) rmkCol = h.findIndex(x => /^status$/i.test(x.trim()));
+    if (rmkCol === -1) rmkCol = h.findIndex(x => x.trim().length < 12 && /remarks|notes|comment/i.test(x.trim()));
+    var ai = await aiParse(r, h);
+    if (ai?.leads.length) {
+      var validatedAi = validateStatuses(ai.leads, r, rmkCol);
+      var finalAi = await claudePipeline(validatedAi, h, r, ai.colMap || null);
+      var niAi = finalAi.filter(l => l.status === 'ni').length,
+        pendAi = finalAi.filter(l => l.status === 'pending').length;
+      return {
+        leads: finalAi,
+        headers: h,
+        rows: r,
+        colMap: ai.colMap || null,
+        source: 'Google Sheet + AI',
+        message: '✨ ' + finalAi.length + ' leads | ' + pendAi + ' callable, ' + niAi + ' NI'
+      };
+    }
+    var res = parseSheet(r, h);
+    if (res.error) throw new Error(res.error);
+    var validated = validateStatuses(res.leads, r, rmkCol);
+    var final = await claudePipeline(validated, h, r, res.colMap || null);
+    var ni2 = final.filter(l => l.status === 'ni').length,
+      pend2 = final.filter(l => l.status === 'pending').length;
+    return {
+      leads: final,
+      headers: h,
+      rows: r,
+      colMap: res.colMap || null,
+      source: 'Google Sheet',
+      message: final.length + ' leads | ' + pend2 + ' callable, ' + ni2 + ' NI'
+    };
+  };
+  var pushAssignedLeadsToAdmin = async (adminEmail, leadList, meta = {}) => {
+    if (!_SB || !adminEmail) return false;
+    var clean = tagLeadsWithSource(leadList || [], meta);
+    await _SB.from('autodial_admin_config').upsert({
+      admin_email: 'leads_' + adminEmail.toLowerCase(),
+      biz_name: JSON.stringify({
+        leads: clean.slice(0, 5000),
+        hash: _hashLeads(clean),
+        count: clean.length,
+        sheetId: meta.sourceSheetId || meta.sheetId || '',
+        sheetTab: meta.sourceSheetTab || meta.sheetTab || '',
+        sheetName: meta.sourceSheetName || meta.sheetName || '',
+        ts: Date.now(),
+        devId: window._devId,
+        publishedBy: myEmail
+      })
+    }, {
+      onConflict: 'admin_email'
+    });
+    return true;
+  };
+  var publishAssignedLeadsToAdmins = async (configs, opts = {}) => {
+    if (role === 'admin' || !_SB) return {
+      count: 0,
+      failed: 0
+    };
+    var entries = Object.entries(configs || {}).filter(([em, ac]) => em.includes('@') && _adminLeadAccessLinked(ac));
+    var count = 0,
+      failed = 0;
+    for (var i = 0; i < entries.length; i++) {
+      var [em, ac] = entries[i];
+      var meta = {
+        sourceSheetId: ac.timesheetId || '',
+        sourceSheetTab: ac.sheetTab || '',
+        sourceSheetName: ac._tsName || ''
+      };
+      try {
+        var sourceMatches = opts.leads && opts.sourceSheetId === meta.sourceSheetId && opts.sourceSheetTab === meta.sourceSheetTab;
+        if (opts.onlyMatching && !sourceMatches) continue;
+        var list = sourceMatches ? opts.leads : null;
+        if (!list) {
+          if (!localStorage.getItem('ad_gt')) continue;
+          var vals = await gSheets.vals(meta.sourceSheetId, meta.sourceSheetTab);
+          var parsed = await parseFetchedLeadValues(vals, meta);
+          list = parsed.leads || [];
+        }
+        await pushAssignedLeadsToAdmin(em, list, meta);
+        count++;
+      } catch (e) {
+        failed++;
+        console.warn('[Admin leads publish]', em, e?.message || e);
+      }
+    }
+    return {
+      count,
+      failed
+    };
+  };
+  var loadAssignedLeadsFromCloud = async (manual = false) => {
+    if (!_SB || !myEmail) return false;
+    var expectedId = adminOwnedCfg?.timesheetId || myCfg.timesheetId || '';
+    var expectedTab = adminOwnedCfg?.sheetTab || myCfg.sheetTab || '';
+    try {
+      var r = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'leads_' + myEmail).maybeSingle();
+      if (!r.data?.biz_name) return false;
+      var p = JSON.parse(r.data.biz_name);
+      if (!p || !Array.isArray(p.leads)) return false;
+      if (expectedId && p.sheetId && p.sheetId !== expectedId || expectedTab && p.sheetTab && p.sheetTab !== expectedTab) {
+        if (manual) toast('Main has synced a different sheet/tab. Ask Main to tap Sync All after choosing the new tab.', 'err');
+        return false;
+      }
+      var meta = {
+        sourceSheetId: expectedId || p.sheetId || '',
+        sourceSheetTab: expectedTab || p.sheetTab || '',
+        sourceSheetName: myCfg._tsName || p.sheetName || ''
+      };
+      var pulled = tagLeadsWithSource(validateStatuses(p.leads || []), meta);
+      setLeads(pulled);
+      setRawSheet(null);
+      setImportReview(null);
+      setCfg(s => ({
+        ...s,
+        sheetId: meta.sourceSheetId,
+        sheetTab: meta.sourceSheetTab
+      }));
+      toast('Loaded ' + pulled.length + ' synced leads from Main');
+      return true;
+    } catch (e) {
+      console.warn('[Admin shared leads]', e?.message || e);
+      return false;
+    }
   };
   var reanalyzeWithAI = async (headers, rows) => {
     if (!headers || !rows) return;
@@ -9685,6 +9896,9 @@ function App() {
         var rv = validateStatuses(ai.leads, _rr, _ri);
         stageLeadImport(rv, {
           source: 'AI re-analysis',
+          sourceSheetId: leads[0]?._sourceSheetId || (role === 'admin' ? myCfg.timesheetId || myCfg.sheetId || '' : cfg.sheetId || ''),
+          sourceSheetTab: leads[0]?._sourceSheetTab || (role === 'admin' ? myCfg.sheetTab || '' : cfg.sheetTab || ''),
+          sourceSheetName: leads[0]?._sourceSheetName || (role === 'admin' ? myCfg._tsName || '' : cfg._sheetName || ''),
           colMap: ai.colMap || detectedColMap || null,
           headers,
           rows
@@ -9722,10 +9936,17 @@ function App() {
       setLeads([]);
       return;
     }
-    var sourceSheetId = role === 'admin' ? adminOwnedCfg?.timesheetId || '' : cfg.sheetId;
-    var sourceSheetTab = role === 'admin' ? adminOwnedCfg?.sheetTab || '' : cfg.sheetTab;
+    var sourceSheetId = role === 'admin' ? adminOwnedCfg?.timesheetId || myCfg.timesheetId || '' : cfg.sheetId;
+    var sourceSheetTab = role === 'admin' ? adminOwnedCfg?.sheetTab || myCfg.sheetTab || '' : cfg.sheetTab;
+    var sourceSheetName = role === 'admin' ? myCfg._tsName || '' : cfg._sheetName || '';
     if (!sourceSheetId || !sourceSheetTab) return;
     setSLoad(true);
+    if (role === 'admin' && !localStorage.getItem('ad_gt')) {
+      var loaded = await loadAssignedLeadsFromCloud(true);
+      if (!loaded) toast('No synced leads yet. Main should tap Sync All after linking this tab.', 'err');
+      setSLoad(false);
+      return;
+    }
     toast('Analyzing…', 'info');
     try {
       var v = await gSheets.vals(sourceSheetId, sourceSheetTab);
@@ -9746,6 +9967,9 @@ function App() {
         var _final2 = await claudePipeline(validated, h, r, multiBatch._colMap || null);
         stageLeadImport(_final2, {
           source: 'Google Sheet',
+          sourceSheetId,
+          sourceSheetTab,
+          sourceSheetName,
           colMap: multiBatch._colMap || null,
           headers: h,
           rows: r
@@ -9766,6 +9990,9 @@ function App() {
         var _final3 = await claudePipeline(_validated, h, r, ai.colMap || null);
         stageLeadImport(_final3, {
           source: 'Google Sheet + AI',
+          sourceSheetId,
+          sourceSheetTab,
+          sourceSheetName,
           colMap: ai.colMap || null,
           headers: h,
           rows: r
@@ -9787,6 +10014,9 @@ function App() {
       var final = await claudePipeline(validated2, h, r, res.colMap || null);
       stageLeadImport(final, {
         source: 'Google Sheet',
+        sourceSheetId,
+        sourceSheetTab,
+        sourceSheetName,
         colMap: res.colMap || null,
         headers: h,
         rows: r
@@ -9796,6 +10026,10 @@ function App() {
       toast(final.length + ' leads | ' + pend2 + ' callable, ' + ni2 + ' NI');
       if (!geminiKey() && !WORKER_URL) toast('Add AI for smarter analysis', 'info');
     } catch (e) {
+      if (role === 'admin' && await loadAssignedLeadsFromCloud(true)) {
+        setSLoad(false);
+        return;
+      }
       toast(e.message, 'err');
     }
     setSLoad(false);
@@ -16514,7 +16748,7 @@ function App() {
     })());
   })(), tab === 'leads' && React.createElement("div", {
     className: "content-pad"
-  }, leads.length === 0 && !sLoad && React.createElement("div", {
+  }, role !== 'admin' && leads.length === 0 && !sLoad && React.createElement("div", {
     style: {
       textAlign: 'center',
       padding: '40px 20px'
@@ -16575,7 +16809,7 @@ function App() {
       color: 'var(--text3)',
       margin: '0 0 16px'
     }
-  }, "Fetch leads from your Google Sheet to start calling"), cfg.sheetId && React.createElement("button", {
+  }, "Fetch leads from your assigned sheet to start calling"), (myCfg.timesheetId || cfg.sheetId) && React.createElement("button", {
     onClick: fetchLeads,
     style: {
       padding: '12px 24px',
@@ -16585,12 +16819,12 @@ function App() {
       fontSize: 14,
       fontWeight: 700
     }
-  }, "Fetch Leads"), !cfg.sheetId && React.createElement("p", {
+  }, "Fetch Leads"), !(myCfg.timesheetId || cfg.sheetId) && React.createElement("p", {
     style: {
       fontSize: 11,
       color: 'var(--amber)'
     }
-  }, "Link a Google Sheet in Settings first")), myCfg.timesheetId ? React.createElement(React.Fragment, null, React.createElement("div", {
+  }, "Main has not linked a leads sheet yet")), myCfg.timesheetId ? React.createElement(React.Fragment, null, React.createElement("div", {
     style: {
       display: 'flex',
       alignItems: 'center',
@@ -16607,23 +16841,17 @@ function App() {
   }, "\uD83D\uDCCB ", myCfg._tsName || 'Shared Sheet'), React.createElement("span", {
     className: "pill",
     style: {
-      background: gOk ? 'var(--gdim)' : 'var(--rdim)',
-      color: gOk ? 'var(--green)' : 'var(--red)'
+      background: adminLeadLinked ? 'var(--gdim)' : 'var(--rdim)',
+      color: adminLeadLinked ? 'var(--green)' : 'var(--red)'
     }
-  }, gOk ? 'Ready' : 'No access')), myCfg.sheetTab && React.createElement("p", {
+  }, adminLeadLinked ? 'Synced' : 'Not linked')), myCfg.sheetTab && React.createElement("p", {
     style: {
       fontSize: 11,
       color: 'var(--accent2)',
       margin: '0 0 8px'
     }
   }, "Tab: ", React.createElement("b", null, myCfg.sheetTab)), React.createElement("button", {
-    onClick: () => {
-      if (!gOk) {
-        toast('Waiting for Google access from manager', 'err');
-        return;
-      }
-      fetchLeads();
-    },
+    onClick: () => fetchLeads(),
     disabled: sLoad,
     style: {
       width: '100%',
@@ -20167,9 +20395,25 @@ function App() {
         }, {
           onConflict: 'admin_email'
         });
+        var repairedTabs = 0;
+        if (localStorage.getItem('ad_gt')) {
+          var adminSheetIds = [...new Set(Object.values(adminConfigs || {}).map(ac => ac?.timesheetId).filter(Boolean))];
+          for (var i = 0; i < adminSheetIds.length; i++) {
+            try {
+              await gSheets.ensureTabs(adminSheetIds[i], ['Timesheet', 'Appointments Set', 'Pay']);
+              repairedTabs++;
+            } catch (_e) {}
+          }
+        }
         publishAdminConfigs(adminConfigs);
         publishAdminScripts(adminConfigs, cfg, scriptVersions);
-        toast('☁️ All configs synced to admins!');
+        var leadSync = await publishAssignedLeadsToAdmins(adminConfigs, {
+          leads,
+          sourceSheetId: cfg.sheetId || '',
+          sourceSheetTab: cfg.sheetTab || '',
+          sourceSheetName: cfg._sheetName || ''
+        });
+        toast('Cloud sync complete' + (repairedTabs ? ' - tracking tabs checked for ' + repairedTabs + ' sheet' + (repairedTabs === 1 ? '' : 's') : '') + (leadSync.count ? ' - leads cached for ' + leadSync.count + ' admin' + (leadSync.count === 1 ? '' : 's') : '') + (leadSync.failed ? ' - ' + leadSync.failed + ' lead cache failed' : ''));
       } catch (e) {
         toast('Sync failed', 'err');
       }
@@ -26171,6 +26415,9 @@ WHERE p.id IS NULL;`;
         }
         stageLeadImport(newLeads, {
           source: 'Column mapping',
+          sourceSheetId: leads[0]?._sourceSheetId || (role === 'admin' ? myCfg.timesheetId || myCfg.sheetId || '' : cfg.sheetId || ''),
+          sourceSheetTab: leads[0]?._sourceSheetTab || (role === 'admin' ? myCfg.sheetTab || '' : cfg.sheetTab || ''),
+          sourceSheetName: leads[0]?._sourceSheetName || (role === 'admin' ? myCfg._tsName || '' : cfg._sheetName || ''),
           colMap: map,
           headers: h2,
           rows: r2
