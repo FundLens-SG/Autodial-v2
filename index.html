@@ -123,7 +123,7 @@ button:active{transform:scale(.97)}
 .fi{animation:fadeIn .3s ease-out}
 
 /* Toggle Switch — wider with clear labels */
-.mode-switch{display:flex;align-items:center;gap:8;flex-shrink:0}
+.mode-switch{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .mode-switch .sw-label{font-size:10px;font-weight:700;letter-spacing:.03em;transition:color .3s;text-transform:uppercase}
 .mode-switch .sw-label.active{color:#fff}
 .mode-switch .sw-label.dim{color:var(--text3)}
@@ -188,7 +188,7 @@ button:active{transform:scale(.97)}
 .ob-answer div:last-child{margin-bottom:0}
 .script-panel.ref-collapsed .sp-ref-col{display:none}
 .script-panel.ref-collapsed .sp-col{max-width:760px;margin:0 auto}
-.mode-banner{margin:0 14px 10px;padding:10px 12px;border-radius:12px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg2)}
+.mode-banner{position:relative;z-index:1;margin:0 14px 10px;padding:10px 12px;border-radius:12px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg2)}
 .mode-banner strong{font-size:12px;color:#f1f5f9}
 .mode-banner span{font-size:10px;color:var(--text3)}
 .readiness-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:10px}
@@ -208,8 +208,8 @@ button:active{transform:scale(.97)}
 .hdr-row1{display:flex;align-items:center;gap:8px;padding:14px 14px 0;flex-wrap:wrap}
 .hdr-row1>button{flex-shrink:0}
 .hdr-row1>.pill{flex-shrink:0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hdr-row2{display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px;gap:10}
-.app-tabs{display:flex;padding:6px 10px 8px;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:1px solid var(--border)}
+.hdr-row2{position:relative;z-index:4;display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px;gap:10px}
+.app-tabs{position:relative;z-index:5;display:flex;padding:6px 10px 10px;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:1px solid var(--border);background:var(--bg);margin-bottom:8px}
 .app-tabs::-webkit-scrollbar{display:none}
 .app-tabs button{flex:1 1 auto;min-width:72px;padding:14px 10px;border-radius:12px;font-size:13px;font-weight:700;white-space:nowrap;background:transparent;color:var(--text3)}
 .app-tabs button.active{background:var(--adim);color:var(--accent2)}
@@ -10996,7 +10996,7 @@ function App() {
         setTab(k);
       }
     }, v);
-  })), !isCallMode && React.createElement("div", {
+  })), false && !isCallMode && React.createElement("div", {
     className: "mode-banner",
     style: {
       borderColor: isCallMode ? 'rgba(63,185,80,.22)' : 'rgba(88,166,255,.22)'
