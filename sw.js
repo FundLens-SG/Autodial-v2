@@ -1,4 +1,4 @@
-const APP_VERSION = '2026.04.29.0007';
+const APP_VERSION = '2026.04.29.0008';
 const CACHE_NAME = `autodial-v2-${APP_VERSION}`;
 const ASSETS = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png'];
 
@@ -15,14 +15,17 @@ self.addEventListener('activate', e => {
 self.addEventListener('notificationclick', e => {
   const data = e.notification && e.notification.data || {};
   const targetUrl = data.url || './?autodialFocus=dial';
+  const phone = String(data.phone || '').replace(/[^+\d]/g, '');
   e.notification.close();
   e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
     const sameApp = list.find(c => c.url && c.url.indexOf(self.registration.scope) === 0);
     if (sameApp) {
-      if (sameApp.navigate) return sameApp.navigate(targetUrl).then(c => c ? c.focus() : sameApp.focus());
-      return sameApp.focus();
+      const focused = sameApp.navigate ? sameApp.navigate(targetUrl).then(c => c ? c.focus() : sameApp.focus()) : sameApp.focus();
+      return focused.then(() => phone && clients.openWindow ? clients.openWindow('tel:' + phone).catch(() => {}) : null);
     }
-    if (clients.openWindow) return clients.openWindow(targetUrl);
+    if (clients.openWindow) {
+      return clients.openWindow(targetUrl).then(() => phone ? clients.openWindow('tel:' + phone).catch(() => {}) : null);
+    }
   }));
 });
 

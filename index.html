@@ -313,7 +313,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0007';
+window.APP_VERSION='2026.04.29.0008';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -7893,10 +7893,107 @@ function App() {
   }, [leads]);
   var [callAssist, setCallAssist] = useState(() => load('callAssist') ?? true);
   var [callAssistStatus, setCallAssistStatus] = useState('');
+  var lastPhoneDialIdRef = useRef(localStorage.getItem('ad_lastPhoneDialId') || '');
   var wakeLockRef = useRef(null);
   useEffect(() => {
     save('callAssist', callAssist);
   }, [callAssist]);
+  var applyDialState = useCallback(d => {
+    if (!d) return {
+      idx: -1,
+      lead: null
+    };
+    if (d.leads && Array.isArray(d.leads)) {
+      leadsRef.current = d.leads;
+      setLeads(d.leads);
+    }
+    var idx = typeof d.curIdx === 'number' ? d.curIdx : -1;
+    var clean = phoneDigits(d.phone || '');
+    if (idx >= 0 && clean && leadsRef.current[idx] && phoneDigits(leadsRef.current[idx].phone) !== clean) idx = -1;
+    if (idx < 0 && clean) idx = leadsRef.current.findIndex(l => phoneDigits(l.phone) === clean);
+    if (idx >= 0) setCurIdx(idx);
+    if (d.session) setSession(d.session);
+    setRunning(d.running === false ? false : true);
+    setPhase(d.phase || 'calling');
+    setShowNextPreview(false);
+    setShowPostCall(null);
+    setTab('dial');
+    return {
+      idx,
+      lead: idx >= 0 ? leadsRef.current[idx] : null
+    };
+  }, []);
+  var markPhoneDialHandled = useCallback(d => {
+    if (!_SB || !_user || !myEmail || !d?.id) return;
+    try {
+      _SB.from('autodial_admin_config').upsert({
+        admin_email: 'phonedial_' + myEmail,
+        biz_name: JSON.stringify({
+          ...d,
+          handledBy: window._devId,
+          handledAt: Date.now()
+        })
+      }, {
+        onConflict: 'admin_email'
+      }).catch(() => {});
+    } catch (e) {}
+  }, [myEmail]);
+  var handlePhoneDialRequest = useCallback(async (d, opts = {}) => {
+    if (!d || !d.phone) return false;
+    var id = d.id || 'dial_' + (d.ts || '') + '_' + phoneDigits(d.phone);
+    if (lastPhoneDialIdRef.current === id) return false;
+    lastPhoneDialIdRef.current = id;
+    try {
+      localStorage.setItem('ad_lastPhoneDialId', id);
+    } catch (e) {}
+    var applied = applyDialState(d);
+    if (isMob) {
+      if (callAssist && document.visibilityState !== 'visible') {
+        var notified = await showNextLeadNotification(applied.lead || {
+          name: d.name || 'Next lead',
+          phone: d.phone
+        }, applied.idx ?? d.curIdx ?? -1);
+        if (!notified) {
+          lastPhoneDialIdRef.current = '';
+          try {
+            localStorage.removeItem('ad_lastPhoneDialId');
+          } catch (e) {}
+          return false;
+        }
+      } else {
+        setTimeout(() => {
+          window.location.href = 'tel:' + d.phone.replace(/[^+\d]/g, '');
+        }, opts.delay || 120);
+      }
+    }
+    markPhoneDialHandled({
+      ...d,
+      id
+    });
+    return true;
+  }, [applyDialState, isMob, callAssist, showNextLeadNotification, markPhoneDialHandled]);
+  var writePhoneDialRequest = useCallback(req => {
+    if (!_SB || !_user || !myEmail || !req?.phone) return;
+    try {
+      var payload = {
+        ...req,
+        id: req.id || 'dial_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        targetEmail: myEmail,
+        devId: window._devId,
+        ts: Date.now(),
+        handledBy: '',
+        handledAt: 0
+      };
+      _SB.from('autodial_admin_config').upsert({
+        admin_email: 'phonedial_' + myEmail,
+        biz_name: JSON.stringify(payload)
+      }, {
+        onConflict: 'admin_email'
+      }).catch(e => console.warn('[PhoneDial pending]', e?.message || e));
+    } catch (e) {
+      console.warn('[PhoneDial pending]', e?.message || e);
+    }
+  }, [myEmail]);
   useEffect(() => {
     try {
       var qs = new URLSearchParams(location.search);
@@ -7908,8 +8005,16 @@ function App() {
           setRunning(true);
           setPhase('calling');
         }
+        var focusPhone = qs.get('phone') || '';
+        if (focusPhone && isMob) {
+          setTimeout(() => {
+            window.location.href = 'tel:' + focusPhone.replace(/[^+\d]/g, '');
+          }, 250);
+        }
         qs.delete('autodialFocus');
         qs.delete('lead');
+        qs.delete('phone');
+        qs.delete('autodialDial');
         var nextUrl = location.pathname + (qs.toString() ? '?' + qs.toString() : '') + location.hash;
         history.replaceState(null, '', nextUrl);
       }
@@ -7954,6 +8059,10 @@ function App() {
       var url = new URL(location.href);
       url.searchParams.set('autodialFocus', 'dial');
       if (idx >= 0) url.searchParams.set('lead', String(idx));
+      if (lead.phone) {
+        url.searchParams.set('phone', lead.phone);
+        url.searchParams.set('autodialDial', '1');
+      }
       var title = 'Next lead ready';
       var body = (lead.name || 'Lead') + (lead.phone ? ' - ' + lead.phone : '');
       var opts = {
@@ -8002,32 +8111,12 @@ function App() {
   }, [callAssist, running, phase, requestWakeLock, releaseWakeLock]);
   useEffect(() => {
     var unsub = onSync(d => {
-      var applyDialState = () => {
-        if (d.leads && Array.isArray(d.leads)) setLeads(d.leads);
-        var idx = typeof d.curIdx === 'number' ? d.curIdx : -1;
-        if (idx < 0 && d.phone) {
-          var clean = phoneDigits(d.phone);
-          idx = leadsRef.current.findIndex(l => phoneDigits(l.phone) === clean);
-        }
-        if (idx >= 0) setCurIdx(idx);
-        if (d.session) setSession(d.session);
-        setRunning(d.running === false ? false : true);
-        setPhase(d.phase || 'calling');
-        setShowNextPreview(false);
-        setShowPostCall(null);
-        setTab('dial');
-      };
-      if (d.type === 'dial' || d.type === 'dial_ready') applyDialState();
-      if (d.type === 'dial' && isMob) setTimeout(() => {
-        if (callAssist && document.visibilityState !== 'visible') {
-          showNextLeadNotification({
-            name: d.name || 'Next lead',
-            phone: d.phone
-          }, d.curIdx ?? -1);
-          return;
-        }
-        window.location.href = 'tel:' + d.phone.replace(/[^+\d]/g, '');
-      }, 500);
+      if (d.type === 'dial' || d.type === 'dial_ready') {
+        if (isMob) handlePhoneDialRequest(d, {
+          source: 'realtime'
+        });else applyDialState(d);
+        return;
+      }
       if (d.type === 'start') {
         if (d.leads) setLeads(d.leads);
         setCurIdx(d.curIdx);
@@ -8088,7 +8177,72 @@ function App() {
       }
     });
     return unsub;
-  }, [role, isMob, callAssist, showNextLeadNotification, adminConfigs, myCfg, cfg.sheetId, userName]);
+  }, [role, isMob, handlePhoneDialRequest, applyDialState, adminConfigs, myCfg, cfg.sheetId, userName]);
+  useEffect(() => {
+    if (!isMob || !_SB || !_user || !myEmail) return;
+    var stopped = false;
+    var key = 'phonedial_' + myEmail;
+    var checkPendingDial = async reason => {
+      if (stopped) return;
+      try {
+        var r = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', key).maybeSingle();
+        if (!r.data?.biz_name) return;
+        var d = JSON.parse(r.data.biz_name);
+        if (!d || !d.phone || d.devId === window._devId) return;
+        if (d.ts && Date.now() - d.ts > 20 * 60000) return;
+        await handlePhoneDialRequest(d, {
+          source: reason
+        });
+      } catch (e) {
+        console.warn('[PhoneDial poll]', e?.message || e);
+      }
+    };
+    checkPendingDial('mount');
+    var onVis = () => {
+      if (document.visibilityState === 'visible') checkPendingDial('visible');
+    };
+    var onFocus = () => checkPendingDial('focus');
+    var onOnline = () => checkPendingDial('online');
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onOnline);
+    var pollId = setInterval(() => {
+      if (document.visibilityState === 'visible') checkPendingDial('poll');
+    }, 2500);
+    var ch = null;
+    try {
+      ch = _SB.channel('phonedial-' + myEmail).on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'autodial_admin_config',
+        filter: 'admin_email=eq.' + key
+      }, payload => {
+        try {
+          var row = payload.new || payload.record;
+          if (!row?.biz_name) return;
+          var d = JSON.parse(row.biz_name);
+          if (!d || d.devId === window._devId) return;
+          handlePhoneDialRequest(d, {
+            source: 'postgres'
+          });
+        } catch (e) {}
+      }).subscribe();
+    } catch (e) {
+      console.warn('[PhoneDial realtime]', e?.message || e);
+    }
+    return () => {
+      stopped = true;
+      clearInterval(pollId);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('online', onOnline);
+      if (ch) {
+        try {
+          _SB.removeChannel(ch);
+        } catch (e) {}
+      }
+    };
+  }, [isMob, myEmail, handlePhoneDialRequest]);
   useEffect(() => {
     var _start = session?.startTime;
     if (!_start || session?.ended) return;
@@ -8205,6 +8359,7 @@ function App() {
     var idx = (leadsRef.current || []).findIndex(l => phoneDigits(l.phone) === clean);
     var lead = idx >= 0 ? leadsRef.current[idx] : null;
     var dialPayload = {
+      id: 'dial_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       phone: ph,
       curIdx: idx,
       name: lead?.name || 'Next lead',
@@ -8222,6 +8377,7 @@ function App() {
       });
       return;
     }
+    if (!isMob) writePhoneDialRequest(dialPayload);
     syncSend('dial', dialPayload);
     if (isMob) {
       setTimeout(() => {
@@ -8230,7 +8386,7 @@ function App() {
     } else {
       toast('📱 Dial sent → open AutoDial on phone', 'info');
     }
-  }, [isMob, callAssist, showNextLeadNotification, session]);
+  }, [isMob, callAssist, showNextLeadNotification, session, writePhoneDialRequest]);
   var sheetQueueRef = useRef([]);
   var sheetFlushTimer = useRef(null);
   var flushSheetQueue = useCallback(async () => {
