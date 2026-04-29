@@ -330,7 +330,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0018';
+window.APP_VERSION='2026.04.29.0019';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -11904,12 +11904,7 @@ function App() {
       border: '1px solid rgba(210,153,34,.25)'
     }
   }, "Pause"), running && React.createElement("button", {
-    onClick: async () => {
-      if (await confirmAsync('End this session?', {
-        title: 'End session',
-        confirmLabel: 'End'
-      })) endSession();
-    },
+    onClick: endSession,
     style: {
       padding: '10px',
       borderRadius: 12,
@@ -12252,12 +12247,7 @@ function App() {
       fontSize: 10
     }
   }, n(session.selectedSlot.hours, 5), "h \uD83C\uDFAF", n(session.selectedSlot.apptsBar, 2)), React.createElement("button", {
-    onClick: async () => {
-      if (await confirmAsync('End session?', {
-        title: 'End session',
-        confirmLabel: 'End'
-      })) endSession();
-    },
+    onClick: endSession,
     style: {
       padding: '5px 10px',
       borderRadius: 8,
@@ -13539,12 +13529,7 @@ function App() {
       boxShadow: '0 6px 24px rgba(245,158,11,.3)'
     }
   }, "\u23F8 Pause"), React.createElement("button", {
-    onClick: async () => {
-      if (await confirmAsync('End this session?', {
-        title: 'End session',
-        confirmLabel: 'End'
-      })) endSession();
-    },
+    onClick: endSession,
     style: {
       width: '100%',
       padding: '16px',
