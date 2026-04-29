@@ -186,14 +186,15 @@ button:active{transform:scale(.97)}
 .script-read div,.script-read p{border-top:0!important}
 .script-read hr{display:none}
 .script-token{display:inline-block;padding:0 4px;border-radius:5px;background:rgba(99,102,241,.16);color:var(--accent3);font-weight:800;line-height:1.45}
-.ob-bank{margin:0 0 12px;padding:10px;border-radius:12px;background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.22);min-width:0;max-width:100%;overflow:hidden}
-.ob-chip-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-width:0}
-.ob-chip{padding:7px 10px;border-radius:999px;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);font-size:11px;font-weight:800;cursor:pointer;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ob-bank{margin:0;padding:12px;border-radius:12px;background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.22);min-width:0;max-width:100%;min-height:calc(100vh - 150px);overflow:hidden}
+.ob-chip-row{display:flex;flex-direction:column;gap:6px;align-items:stretch;min-width:0}
+.ob-chip{display:block;width:100%;padding:8px 10px;border-radius:10px;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);font-size:11px;font-weight:800;cursor:pointer;min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 .ob-chip.active{background:var(--adim);border-color:rgba(99,102,241,.5);color:var(--accent2)}
 .ob-pop{margin-top:9px;padding:12px;border-radius:12px;background:#0f141d;border:1px solid rgba(99,102,241,.4);box-shadow:0 12px 30px rgba(0,0,0,.3)}
 .ob-answer{margin:0;color:var(--text);font-size:13px;line-height:1.6;white-space:normal}
 .ob-answer div{margin:0 0 8px}
 .ob-answer div:last-child{margin-bottom:0}
+.sp-ref-col>.script-read,.sp-ref-col>.sp-ref-edit{display:none}
 .script-panel.ref-collapsed .sp-ref-col{display:none}
 .script-panel.ref-collapsed .sp-col{width:100%;max-width:760px;margin:0 auto}
 .mode-banner{position:relative;z-index:1;margin:0 14px 10px;padding:10px 12px;border-radius:12px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg2)}
@@ -330,7 +331,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0021';
+window.APP_VERSION='2026.04.29.0022';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -2036,6 +2037,29 @@ function _htmlToPlain(html, max) {
   template.innerHTML = _sanitizeRichHtml(String(html || ''));
   return _plainText(template.content.textContent || template.innerText || '', max || 4000);
 }
+var OBJECTION_CATEGORIES = [{
+  key: 'common',
+  label: 'Common',
+  color: '#60a5fa'
+}, {
+  key: 'uncommon',
+  label: 'Uncommon',
+  color: '#f59e0b'
+}, {
+  key: 'rare',
+  label: 'Rare',
+  color: '#c084fc'
+}];
+function _normalizeObjectionCategory(value, title, id) {
+  var key = String(value || '').toLowerCase();
+  if (OBJECTION_CATEGORIES.some(function (c) {
+    return c.key === key;
+  })) return key;
+  var text = String((id || '') + ' ' + (title || '')).toLowerCase();
+  if (/get_number|second_attempt|underlying|what_is_manulife|how did you get|2nd attempt|underlying investments|what is manulife/.test(text)) return 'rare';
+  if (/lock_in|returns_guaranteed|more_details|minimum_sum|capital_guaranteed|product_name|lock-in|guaranteed|minimum sum|capital guaranteed|name of the product|what product/.test(text)) return 'uncommon';
+  return 'common';
+}
 function _normalizeObjections(list) {
   if (!Array.isArray(list)) return [];
   return list.map(function (o, i) {
@@ -2045,7 +2069,8 @@ function _normalizeObjections(list) {
     return {
       id: String(o?.id || 'obj_' + i + '_' + title.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 32)),
       title,
-      answer
+      answer,
+      category: _normalizeObjectionCategory(o?.category || o?.group || o?.tier, title, o?.id)
     };
   }).filter(function (o) {
     return o.title && _htmlToPlain(o.answer, 20);
@@ -5972,7 +5997,8 @@ function App() {
     var item = {
       id: 'obj_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
       title,
-      answer
+      answer,
+      category: 'common'
     };
     saveObjections([...(cfg.objections || []), item]);
     setActiveObjectionId(item.id);
@@ -6009,11 +6035,25 @@ function App() {
     if (!item) return;
     var list = _normalizeObjections(cfg.objections || []);
     var idx = list.findIndex(o => o.id === item.id);
-    var nextIdx = idx + dir;
-    if (idx < 0 || nextIdx < 0 || nextIdx >= list.length) return;
+    if (idx < 0) return;
+    var cat = _normalizeObjectionCategory(list[idx].category, list[idx].title, list[idx].id);
+    var same = list.map((o, i) => _normalizeObjectionCategory(o.category, o.title, o.id) === cat ? i : -1).filter(i => i >= 0);
+    var pos = same.indexOf(idx);
+    var nextIdx = same[pos + dir];
+    if (pos < 0 || nextIdx == null) return;
     [list[idx], list[nextIdx]] = [list[nextIdx], list[idx]];
     saveObjections(list);
     setActiveObjectionId(item.id);
+  }, [cfg.objections, saveObjections]);
+  var setObjectionCategory = useCallback((id, category) => {
+    if (!id) return;
+    var cat = _normalizeObjectionCategory(category);
+    saveObjections((cfg.objections || []).map(o => o.id === id ? {
+      ...o,
+      category: cat
+    } : o));
+    setActiveObjectionId(id);
+    toast('Moved to ' + (OBJECTION_CATEGORIES.find(c => c.key === cat)?.label || cat));
   }, [cfg.objections, saveObjections]);
   var dropObjection = useCallback((fromId, toId) => {
     if (!fromId || !toId || fromId === toId) return;
@@ -6021,7 +6061,9 @@ function App() {
     var from = list.findIndex(o => o.id === fromId);
     var to = list.findIndex(o => o.id === toId);
     if (from < 0 || to < 0) return;
+    var targetCat = _normalizeObjectionCategory(list[to].category, list[to].title, list[to].id);
     var moved = list.splice(from, 1)[0];
+    moved.category = targetCat;
     list.splice(to, 0, moved);
     saveObjections(list);
     setActiveObjectionId(fromId);
@@ -29871,8 +29913,55 @@ WHERE p.id IS NULL;`;
       fontWeight: 800
     }
   }, "+ Add")), scriptObjections.length ? React.createElement("div", {
-    className: "ob-chip-row"
-  }, scriptObjections.map((o, i) => React.createElement("div", {
+    style: {
+      display: 'grid',
+      gap: 10
+    }
+  }, OBJECTION_CATEGORIES.map(cat => {
+    var items = scriptObjections.filter(o => _normalizeObjectionCategory(o.category, o.title, o.id) === cat.key);
+    return React.createElement("div", {
+      key: cat.key,
+      onDragOver: e => {
+        if (refEditing) e.preventDefault();
+      },
+      onDrop: e => {
+        if (!refEditing) return;
+        e.preventDefault();
+        setObjectionCategory(e.dataTransfer.getData('text/plain'), cat.key);
+      },
+      style: {
+        display: 'grid',
+        gap: 7,
+        padding: 10,
+        borderRadius: 10,
+        background: 'rgba(7,8,13,.42)',
+        border: '1px solid rgba(255,255,255,.06)',
+        minWidth: 0
+      }
+    }, React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8
+      }
+    }, React.createElement("span", {
+      style: {
+        color: cat.color,
+        fontSize: 11,
+        fontWeight: 900,
+        letterSpacing: '.06em',
+        textTransform: 'uppercase'
+      }
+    }, cat.label), React.createElement("span", {
+      style: {
+        color: 'var(--text3)',
+        fontSize: 10,
+        fontWeight: 800
+      }
+    }, items.length)), items.length ? React.createElement("div", {
+      className: "ob-chip-row"
+    }, items.map((o, i) => React.createElement("div", {
     key: o.id,
     draggable: !!refEditing,
     onDragStart: e => {
@@ -29888,9 +29977,11 @@ WHERE p.id IS NULL;`;
       dropObjection(e.dataTransfer.getData('text/plain'), o.id);
     },
     style: {
-      display: 'flex',
+      display: 'grid',
+      gridTemplateColumns: refEditing ? '22px minmax(0,1fr) 22px' : 'minmax(0,1fr)',
       alignItems: 'center',
-      gap: 3
+      gap: 4,
+      minWidth: 0
     }
   }, refEditing && React.createElement("button", {
     onClick: () => moveObjection(o, -1),
@@ -29903,19 +29994,50 @@ WHERE p.id IS NULL;`;
   }, "↑"), React.createElement("button", {
     className: 'ob-chip' + (activeObjectionId === o.id ? ' active' : ''),
     onClick: () => setActiveObjectionId(p => p === o.id ? '' : o.id),
-    title: (refEditing ? 'Drag to reorder. ' : '') + _htmlToPlain(o.answer, 220),
+    title: (refEditing ? 'Drag between categories. ' : '') + _htmlToPlain(o.answer, 220),
     style: refEditing ? {
       cursor: 'grab'
     } : {}
   }, o.title), refEditing && React.createElement("button", {
     onClick: () => moveObjection(o, 1),
-    disabled: i === scriptObjections.length - 1,
+    disabled: i === items.length - 1,
     title: "Move down",
     style: {
       ...obMoveBtnStyle,
-      opacity: i === scriptObjections.length - 1 ? .35 : 1
+      opacity: i === items.length - 1 ? .35 : 1
     }
-  }, "↓")))) : React.createElement("p", {
+  }, "↓"), refEditing && React.createElement("div", {
+    style: {
+      gridColumn: '1 / -1',
+      display: 'flex',
+      flexWrap: 'wrap',
+      gap: 4,
+      paddingLeft: 26
+    }
+  }, OBJECTION_CATEGORIES.map(c => React.createElement("button", {
+    key: c.key,
+    onClick: () => setObjectionCategory(o.id, c.key),
+    title: 'Move to ' + c.label,
+    style: {
+      padding: '3px 6px',
+      borderRadius: 7,
+      background: c.key === cat.key ? 'rgba(99,102,241,.22)' : 'rgba(255,255,255,.05)',
+      border: '1px solid ' + (c.key === cat.key ? 'rgba(99,102,241,.45)' : 'rgba(255,255,255,.08)'),
+      color: c.key === cat.key ? 'var(--accent2)' : 'var(--text3)',
+      fontSize: 9,
+      fontWeight: 800
+    }
+  }, c.label)))))) : React.createElement("div", {
+    style: {
+      padding: '8px 10px',
+      borderRadius: 9,
+      background: 'rgba(255,255,255,.03)',
+      color: 'var(--text3)',
+      fontSize: 11,
+      fontWeight: 700
+    }
+  }, refEditing ? "Drop handles here." : "No handles in this category."));
+  })) : React.createElement("p", {
     style: {
       margin: 0,
       color: 'var(--text3)',
