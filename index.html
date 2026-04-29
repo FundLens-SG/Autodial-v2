@@ -330,7 +330,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0020';
+window.APP_VERSION='2026.04.29.0021';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -14613,16 +14613,17 @@ function App() {
         className: "card",
         style: {
           padding: '10px 8px 14px',
-          overflowX: 'auto',
+          overflowX: 'hidden',
           overscrollBehaviorX: 'contain',
           WebkitOverflowScrolling: 'touch'
         }
       }, React.createElement("div", {
         style: {
           display: 'grid',
-          gridTemplateColumns: '40px repeat(7,minmax(88px,1fr))',
+          gridTemplateColumns: '34px repeat(7,minmax(0,1fr))',
           gap: 1,
-          minWidth: 'max(700px,100%)'
+          width: '100%',
+          minWidth: 0
         }
       }, React.createElement("div", null), days.map(d => {
         var isToday = d.key === todayKey;
@@ -25418,14 +25419,15 @@ WHERE p.id IS NULL;`;
       for (var h = HR_START; h < HR_END; h++) hours.push(h);
       return React.createElement("div", {
         style: {
-          overflowX: 'auto'
+          overflowX: 'hidden'
         }
       }, React.createElement("div", {
         style: {
           display: 'grid',
-          gridTemplateColumns: '38px repeat(7,minmax(78px,1fr))',
+          gridTemplateColumns: '34px repeat(7,minmax(0,1fr))',
           gap: 1,
-          minWidth: 620
+          width: '100%',
+          minWidth: 0
         }
       }, React.createElement("div", null), visibleDays.map(d => {
         var isToday = d.key === todayKey;
