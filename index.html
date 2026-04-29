@@ -319,7 +319,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0014';
+window.APP_VERSION='2026.04.29.0015';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -2128,11 +2128,16 @@ function _sanitizeCfgRichText(cfg) {
   return next;
 }
 function _scriptSharePayload(ownerCfg, versions) {
+  var activeVersion = (versions || []).find(function (v) {
+    return v && v.id && v.id === ownerCfg?.scriptVersionId;
+  });
   return {
     html: _sanitizeRichHtml(ownerCfg?.callingScript || ''),
     notes: _sanitizeRichHtml(ownerCfg?.refNotes || ''),
     objections: _normalizeObjections(ownerCfg?.objections || []),
     versions: (versions || []).slice(0, 10),
+    versionId: ownerCfg?.scriptVersionId || '',
+    name: activeVersion?.name || 'Current script',
     ts: Date.now()
   };
 }
@@ -5231,6 +5236,7 @@ function App() {
   var [refEditing, setRefEditing] = useState(false);
   var [showRefNotes, setShowRefNotes] = useState(load('showRefNotes') ?? true);
   var [scriptVersions, setScriptVersions] = useState(() => Array.isArray(cfg.scriptVersions) ? cfg.scriptVersions : []);
+  var [showScriptShareModal, setShowScriptShareModal] = useState(false);
   var [activeObjectionId, setActiveObjectionId] = useState('');
   var scriptObjections = _normalizeObjections(cfg.objections);
   useEffect(() => {
@@ -5239,6 +5245,8 @@ function App() {
   useEffect(() => {
     save('showRefNotes', showRefNotes);
   }, [showRefNotes]);
+  var getCurrentScriptHtml = () => _sanitizeRichHtml(scriptEditing ? scriptContent : scriptContent || cfg.callingScript || '');
+  var getCurrentRefNotesHtml = () => _sanitizeRichHtml(refEditing ? refNotes : refNotes || cfg.refNotes || '');
   var fillScript = (text, lead) => {
     if (!text || !lead) return _sanitizeRichHtml(text || '');
     var clean = _sanitizeRichHtml(text);
@@ -5679,21 +5687,52 @@ function App() {
     if (soft.length) toast('Pre-call warning: ' + soft.map(x => x.label).join(', '), 'info');
     return false;
   };
-  var snapshotScriptVersion = useCallback(() => {
-    var html = _sanitizeRichHtml(scriptContent || cfg.callingScript || '');
-    var notes = _sanitizeRichHtml(refNotes || cfg.refNotes || '');
-    if (!html && !notes) return toast('Nothing to snapshot yet', 'err');
+  var saveCurrentScriptDraft = useCallback((toastMsg = 'Script saved') => {
+    var html = getCurrentScriptHtml();
+    var notes = getCurrentRefNotesHtml();
     var editedAt = Date.now();
-    var version = {
-      id: 'sv_' + editedAt,
-      name: 'Script ' + new Date().toLocaleString('en-SG', {
-        day: '2-digit',
-        month: 'short',
-        hour: '2-digit',
-        minute: '2-digit'
-      }),
+    setScriptContent(html);
+    setRefNotes(notes);
+    setCfg(s => ({
+      ...s,
+      callingScript: html,
+      refNotes: notes,
+      scriptLocalEditedAt: editedAt
+    }));
+    setScriptEditing(false);
+    setRefEditing(false);
+    document.querySelectorAll('.sp-edit').forEach(el => {
+      el._init = false;
+    });
+    if (toastMsg) toast(toastMsg);
+    return {
       html,
       notes,
+      editedAt
+    };
+  }, [scriptContent, refNotes, cfg.callingScript, cfg.refNotes, scriptEditing, refEditing]);
+  var snapshotScriptVersion = useCallback(async () => {
+    var html = getCurrentScriptHtml();
+    var notes = getCurrentRefNotesHtml();
+    if (!html && !notes) return toast('Nothing to save yet', 'err');
+    var editedAt = Date.now();
+    var defaultName = 'Script ' + new Date().toLocaleString('en-SG', {
+      day: '2-digit',
+      month: 'short',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    var pickedName = await promptAsync('Name this saved script version', defaultName, {
+      title: 'Save script version',
+      placeholder: 'DBS retirement promo'
+    });
+    if (!pickedName) return;
+    var version = {
+      id: 'sv_' + editedAt,
+      name: pickedName.trim() || defaultName,
+      html,
+      notes,
+      objections: _normalizeObjections(cfg.objections || []),
       author: myEmail,
       ts: Date.now()
     };
@@ -5707,8 +5746,10 @@ function App() {
       scriptVersions: next,
       scriptLocalEditedAt: editedAt
     }));
-    toast('Script version saved');
-  }, [scriptContent, refNotes, cfg.callingScript, cfg.refNotes, myEmail, scriptVersions]);
+    setScriptEditing(false);
+    setRefEditing(false);
+    toast('Saved version: ' + version.name);
+  }, [scriptContent, refNotes, cfg.callingScript, cfg.refNotes, cfg.objections, myEmail, scriptVersions, promptAsync, scriptEditing, refEditing]);
   var restoreScriptVersion = useCallback(id => {
     var v = scriptVersions.find(x => x.id === id);
     if (!v) return;
@@ -5720,6 +5761,7 @@ function App() {
       ...s,
       callingScript: html,
       refNotes: notes,
+      objections: v.objections ? _normalizeObjections(v.objections) : s.objections,
       scriptVersionId: v.id,
       scriptLocalEditedAt: Date.now()
     }));
@@ -5728,6 +5770,113 @@ function App() {
     });
     toast('Restored ' + (v.name || 'script version'));
   }, [scriptVersions]);
+  var deleteScriptVersion = useCallback(async id => {
+    var v = scriptVersions.find(x => x.id === id);
+    if (!v) return;
+    if (!(await confirmAsync('Delete saved script version "' + (v.name || 'Untitled') + '"?\n\nThis only removes the saved version. Your current visible script stays as-is.', {
+      title: 'Delete saved version',
+      confirmLabel: 'Delete',
+      danger: true
+    }))) return;
+    var next = scriptVersions.filter(x => x.id !== id);
+    setScriptVersions(next);
+    setCfg(s => ({
+      ...s,
+      scriptVersions: next,
+      scriptVersionId: s.scriptVersionId === id ? '' : s.scriptVersionId,
+      scriptLocalEditedAt: Date.now()
+    }));
+    toast('Deleted saved version');
+  }, [scriptVersions, confirmAsync]);
+  var makeCurrentScriptSharePayload = useCallback((override = {}) => {
+    var html = getCurrentScriptHtml();
+    var notes = getCurrentRefNotesHtml();
+    var activeVersion = scriptVersions.find(v => v.id === cfg.scriptVersionId);
+    return {
+      html,
+      notes,
+      objections: _normalizeObjections(cfg.objections || []),
+      versions: (scriptVersions || []).slice(0, 10),
+      versionId: cfg.scriptVersionId || '',
+      name: activeVersion?.name || 'Current script',
+      sharedBy: myEmail,
+      ts: Date.now(),
+      ...override
+    };
+  }, [scriptContent, refNotes, cfg.callingScript, cfg.refNotes, cfg.objections, cfg.scriptVersionId, scriptVersions, myEmail, scriptEditing, refEditing]);
+  var shareExactScriptToAdmins = useCallback(async emails => {
+    var targets = (emails || []).map(e => (e || '').toLowerCase()).filter(e => e && e.includes('@'));
+    if (!targets.length) return toast('Choose at least one admin to share with', 'err');
+    var saved = saveCurrentScriptDraft('');
+    var payload = makeCurrentScriptSharePayload({
+      html: saved?.html ?? getCurrentScriptHtml(),
+      notes: saved?.notes ?? getCurrentRefNotesHtml(),
+      ts: Date.now()
+    });
+    setAdminConfigs(prev => {
+      var next = {
+        ...prev
+      };
+      targets.forEach(em => {
+        next[em] = {
+          ...(next[em] || {}),
+          shareScript: true,
+          scriptShareUpdatedAt: payload.ts,
+          scriptShareVersionId: payload.versionId || '',
+          scriptShareName: payload.name || 'Current script'
+        };
+      });
+      return next;
+    });
+    if (!_SB) {
+      toast('Saved locally. Cloud is not ready yet.', 'err');
+      return;
+    }
+    try {
+      await Promise.all(targets.map(em => _SB.from('autodial_admin_config').upsert({
+        admin_email: 'shared_script_' + em,
+        biz_name: JSON.stringify(payload)
+      }, {
+        onConflict: 'admin_email'
+      })));
+      toast('Shared exact script with ' + targets.length + ' admin' + (targets.length === 1 ? '' : 's'));
+      setShowScriptShareModal(false);
+      try {
+        window._bumpSyncVer && window._bumpSyncVer();
+      } catch (_e) {}
+    } catch (e) {
+      toast('Share failed: ' + (e?.message || e), 'err');
+    }
+  }, [saveCurrentScriptDraft, makeCurrentScriptSharePayload, scriptContent, refNotes, cfg.callingScript, cfg.refNotes, scriptEditing, refEditing]);
+  var stopScriptShareForAdmins = useCallback(async emails => {
+    var targets = (emails || []).map(e => (e || '').toLowerCase()).filter(e => e && e.includes('@'));
+    if (!targets.length) return;
+    setAdminConfigs(prev => {
+      var next = {
+        ...prev
+      };
+      targets.forEach(em => {
+        next[em] = {
+          ...(next[em] || {}),
+          shareScript: false,
+          scriptShareUpdatedAt: Date.now()
+        };
+      });
+      return next;
+    });
+    if (_SB) {
+      await Promise.all(targets.map(em => _SB.from('autodial_admin_config').upsert({
+        admin_email: 'shared_script_' + em,
+        biz_name: JSON.stringify({
+          _disabled: true,
+          ts: Date.now()
+        })
+      }, {
+        onConflict: 'admin_email'
+      }).catch(() => {})));
+    }
+    toast('Stopped script sharing for ' + targets.length + ' admin' + (targets.length === 1 ? '' : 's'));
+  }, []);
   var applySharedScriptPayload = useCallback(s => {
     if (!s) return;
     if (s._disabled) {
@@ -5766,6 +5915,8 @@ function App() {
       refNotes: notes || p.refNotes || '',
       objections: _normalizeObjections(s.objections || p.objections || []),
       scriptVersions: sv,
+      scriptVersionId: s.versionId || p.scriptVersionId || '',
+      sharedScriptName: s.name || '',
       ownerScriptShareTs: sharedTs || Date.now(),
       scriptLocalEditedAt: 0
     }));
@@ -29174,7 +29325,9 @@ WHERE p.id IS NULL;`;
     style: {
       display: 'flex',
       gap: 6,
-      alignItems: 'center'
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      justifyContent: 'flex-end'
     }
   }, scriptEditing ? React.createElement("button", {
     onClick: () => {
@@ -29216,7 +29369,7 @@ WHERE p.id IS NULL;`;
     }
   }, "Edit"), React.createElement("button", {
     onClick: snapshotScriptVersion,
-    title: "Save a script version",
+    title: "Save the current script and notes as a named version",
     style: {
       padding: '5px 10px',
       borderRadius: 8,
@@ -29225,22 +29378,48 @@ WHERE p.id IS NULL;`;
       fontSize: 11,
       fontWeight: 700
     }
-  }, "Snapshot"), scriptVersions.length > 0 && React.createElement("select", {
+  }, "Save Version"), scriptVersions.length > 0 && React.createElement("select", {
     value: cfg.scriptVersionId || '',
-    onChange: e => restoreScriptVersion(e.target.value),
-    title: "Restore script version",
+    onChange: e => {
+      if (e.target.value) restoreScriptVersion(e.target.value);
+    },
+    title: "Load a saved script version",
     style: {
-      width: 120,
+      width: 160,
       padding: '5px 8px',
       borderRadius: 8,
       fontSize: 11
     }
   }, React.createElement("option", {
     value: ""
-  }, "Versions"), scriptVersions.map(v => React.createElement("option", {
+  }, "Load saved..."), scriptVersions.map(v => React.createElement("option", {
     key: v.id,
     value: v.id
-  }, v.name || new Date(v.ts || Date.now()).toLocaleDateString('en-SG')))), React.createElement("button", {
+  }, v.name || new Date(v.ts || Date.now()).toLocaleDateString('en-SG')))), scriptVersions.length > 0 && cfg.scriptVersionId && React.createElement("button", {
+    onClick: () => deleteScriptVersion(cfg.scriptVersionId),
+    title: "Delete the selected saved version",
+    style: {
+      padding: '5px 10px',
+      borderRadius: 8,
+      background: 'var(--rdim)',
+      color: 'var(--red)',
+      fontSize: 11,
+      fontWeight: 700,
+      border: '1px solid rgba(248,81,73,.22)'
+    }
+  }, "Delete"), role === 'main' && React.createElement("button", {
+    onClick: () => setShowScriptShareModal(true),
+    title: "Share this exact script, notes, and objection handles to admins",
+    style: {
+      padding: '5px 10px',
+      borderRadius: 8,
+      background: 'var(--adim)',
+      color: 'var(--accent2)',
+      fontSize: 11,
+      fontWeight: 800,
+      border: '1px solid rgba(99,102,241,.24)'
+    }
+  }, "Share"), React.createElement("button", {
     onClick: () => setShowRefNotes(p => !p),
     title: "Toggle reference notes",
     style: {
@@ -29877,6 +30056,174 @@ WHERE p.id IS NULL;`;
       border: '1px solid rgba(210,153,34,.2)'
     }
   }, "+ Add Reference Notes")))))), React.createElement(Modal, {
+    show: showScriptShareModal,
+    onClose: () => setShowScriptShareModal(false),
+    align: "center",
+    bg: ".88",
+    zIndex: 330
+  }, showScriptShareModal && (() => {
+    var admins = Object.entries(adminConfigs || {}).filter(([em]) => em && em.includes('@') && em.toLowerCase() !== myEmail.toLowerCase());
+    var enabled = admins.filter(([, ac]) => ac?.shareScript).map(([em]) => em);
+    var activeVersion = scriptVersions.find(v => v.id === cfg.scriptVersionId);
+    var visibleName = activeVersion?.name || 'Current visible script';
+    var hasCurrent = !!(getCurrentScriptHtml() || getCurrentRefNotesHtml());
+    return React.createElement("div", {
+      style: {
+        width: '100%',
+        maxWidth: 520,
+        maxHeight: '86vh',
+        overflow: 'auto',
+        background: 'var(--bg2)',
+        border: '1px solid var(--border2)',
+        borderRadius: 20,
+        padding: 18,
+        boxShadow: '0 24px 80px rgba(0,0,0,.48)'
+      }
+    }, React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'flex-start',
+        justifyContent: 'space-between',
+        gap: 12,
+        marginBottom: 12
+      }
+    }, React.createElement("div", null, React.createElement("h3", {
+      style: {
+        margin: 0,
+        fontSize: 17,
+        fontWeight: 900,
+        color: '#f1f5f9'
+      }
+    }, "\uD83D\uDCE4 Share Exact Script"), React.createElement("p", {
+      style: {
+        margin: '4px 0 0',
+        fontSize: 11,
+        color: 'var(--text3)',
+        lineHeight: 1.45
+      }
+    }, "Sharing sends the current calling script, reference notes, and objection handles exactly as shown now.")), React.createElement("button", {
+      onClick: () => setShowScriptShareModal(false),
+      style: {
+        width: 30,
+        height: 30,
+        borderRadius: 10,
+        background: 'var(--bg3)',
+        color: 'var(--text3)',
+        padding: 0
+      }
+    }, "x")), React.createElement("div", {
+      style: {
+        padding: '10px 12px',
+        borderRadius: 12,
+        background: 'var(--bg)',
+        border: '1px solid var(--border)',
+        marginBottom: 12
+      }
+    }, React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 11,
+        color: 'var(--text3)',
+        fontWeight: 800,
+        textTransform: 'uppercase',
+        letterSpacing: '.06em'
+      }
+    }, "Version to share"), React.createElement("p", {
+      style: {
+        margin: '3px 0 0',
+        fontSize: 13,
+        color: hasCurrent ? '#f1f5f9' : 'var(--red)',
+        fontWeight: 800
+      }
+    }, hasCurrent ? visibleName : 'No script or notes to share yet')), admins.length === 0 ? React.createElement("div", {
+      className: "card",
+      style: {
+        textAlign: 'center',
+        padding: 22
+      }
+    }, React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 13,
+        color: 'var(--text3)'
+      }
+    }, "No admins configured yet. Add an admin first, then share a script here.")) : React.createElement(React.Fragment, null, enabled.length > 0 && React.createElement("button", {
+      onClick: () => shareExactScriptToAdmins(enabled),
+      disabled: !hasCurrent,
+      style: {
+        width: '100%',
+        padding: '11px',
+        borderRadius: 12,
+        background: hasCurrent ? 'var(--adim)' : 'var(--bg3)',
+        color: hasCurrent ? 'var(--accent2)' : 'var(--text3)',
+        fontSize: 12,
+        fontWeight: 900,
+        border: '1px solid rgba(99,102,241,.28)',
+        marginBottom: 10,
+        opacity: hasCurrent ? 1 : .55
+      }
+    }, "Share exact script to ", enabled.length, " enabled admin", enabled.length === 1 ? '' : 's'), admins.map(([em, ac]) => React.createElement("div", {
+      key: em,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '10px 12px',
+        borderRadius: 12,
+        background: ac.shareScript ? 'var(--adim)' : 'var(--bg)',
+        border: '1px solid ' + (ac.shareScript ? 'rgba(99,102,241,.32)' : 'var(--border)'),
+        marginBottom: 8
+      }
+    }, React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 13,
+        fontWeight: 900,
+        color: '#f1f5f9',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }
+    }, ac.bizName || em), React.createElement("p", {
+      style: {
+        margin: '2px 0 0',
+        fontSize: 10,
+        color: 'var(--text3)',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }
+    }, ac.shareScript ? 'Sharing: ' + (ac.scriptShareName || 'owner script') : 'Not receiving owner script')), React.createElement("button", {
+      onClick: () => shareExactScriptToAdmins([em]),
+      disabled: !hasCurrent,
+      style: {
+        padding: '7px 10px',
+        borderRadius: 9,
+        background: hasCurrent ? 'var(--gdim)' : 'var(--bg3)',
+        color: hasCurrent ? 'var(--green)' : 'var(--text3)',
+        fontSize: 10,
+        fontWeight: 900,
+        border: '1px solid rgba(63,185,80,.25)',
+        opacity: hasCurrent ? 1 : .55
+      }
+    }, "Share Exact"), ac.shareScript && React.createElement("button", {
+      onClick: () => stopScriptShareForAdmins([em]),
+      style: {
+        padding: '7px 10px',
+        borderRadius: 9,
+        background: 'var(--rdim)',
+        color: 'var(--red)',
+        fontSize: 10,
+        fontWeight: 900,
+        border: '1px solid rgba(248,81,73,.22)'
+      }
+    }, "Stop")))));
+  })()), React.createElement(Modal, {
     show: showSetupWizard && !guidedSetupComplete,
     onClose: () => setShowSetupWizard(false),
     align: "center",
