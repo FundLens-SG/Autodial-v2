@@ -313,7 +313,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0008';
+window.APP_VERSION='2026.04.29.0009';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1832,6 +1832,21 @@ function publishAdminConfigs(configs) {
       }).then(function () {}, function () {});
     } catch (e) {}
   });
+}
+function _normalizeSharedAdminCfg(raw) {
+  var clean = raw && typeof raw === 'object' && !Array.isArray(raw) ? Object.assign({}, raw) : {};
+  if (!clean.timesheetId || !clean.sheetTab) {
+    clean.timesheetId = '';
+    clean._tsName = '';
+    clean.sheetTab = '';
+    clean._sheetTabs = [];
+    clean._detectedTs = clean._detectedTs || null;
+    clean._detectedAppt = clean._detectedAppt || null;
+  }
+  return clean;
+}
+function _adminLeadAccessLinked(ac) {
+  return !!(ac && !ac._revoked && ac.timesheetId && ac.sheetTab);
 }
 function _sanitizeAdminCfgs(raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
@@ -3963,6 +3978,7 @@ function App() {
     objections: []
   }));
   var [adminConfigs, setAdminConfigs] = useState(() => _sanitizeAdminCfgs(load('acfg')));
+  var [adminCfgVerified, setAdminCfgVerified] = useState(role !== 'admin');
   var [isOffline, setIsOffline] = useState(!navigator.onLine);
   useEffect(() => {
     var on = () => setIsOffline(false);
@@ -5159,13 +5175,73 @@ function App() {
     count: 50
   });
   var myEmail = (window._prof?.email || window._user?.email || '').toLowerCase();
-  var myCfg = role === 'admin' ? adminConfigs[myEmail] ? {
+  var adminOwnedCfg = role === 'admin' ? _normalizeSharedAdminCfg(adminConfigs[myEmail] || {}) : null;
+  var adminLeadLinked = role !== 'admin' || adminCfgVerified && _adminLeadAccessLinked(adminOwnedCfg);
+  var myCfg = role === 'admin' ? {
     ...cfg,
-    ...adminConfigs[myEmail]
-  } : cfg : {
+    ...adminOwnedCfg,
+    sheetId: adminOwnedCfg?.timesheetId || '',
+    sheetTab: adminOwnedCfg?.sheetTab || ''
+  } : {
     ...cfg,
     npMax: cfg.mainNpMax && +cfg.mainNpMax > 0 ? +cfg.mainNpMax : cfg.npMax || 5
   };
+  useEffect(() => {
+    if (role !== 'admin' || !adminCfgVerified) return;
+    if (adminLeadLinked) {
+      if (adminOwnedCfg?.timesheetId && (cfg.sheetId !== adminOwnedCfg.timesheetId || cfg.sheetTab !== adminOwnedCfg.sheetTab)) {
+        setCfg(p => ({
+          ...p,
+          sheetId: adminOwnedCfg.timesheetId,
+          sheetTab: adminOwnedCfg.sheetTab || ''
+        }));
+      }
+      return;
+    }
+    var hadCallableState = leads.length || running || phase !== 'idle' || curIdx !== -1 || cfg.sheetId || cfg.sheetTab;
+    if (hadCallableState) toast('Manager unlinked your leads sheet - calling stopped', 'err');
+    setRunning(false);
+    setPhase('idle');
+    setCurIdx(-1);
+    setSession(null);
+    setLeads([]);
+    setShowNextPreview(false);
+    setShowPostCall(null);
+    setCfg(p => p.sheetId || p.sheetTab ? {
+      ...p,
+      sheetId: '',
+      sheetTab: '',
+      _sheetName: '',
+      _tabs: []
+    } : p);
+    save('curIdx', -1);
+    save('activeSession', null);
+    save('data', {
+      leads: [],
+      cfg: {
+        ..._sanitizeCfgRichText(cfg),
+        sheetId: '',
+        sheetTab: ''
+      },
+      _cfgTs: Date.now()
+    });
+    if (_SB && myEmail) {
+      try {
+        _SB.from('autodial_admin_config').upsert({
+          admin_email: 'leads_' + myEmail,
+          biz_name: JSON.stringify({
+            leads: [],
+            count: 0,
+            revoked: true,
+            ts: Date.now(),
+            devId: window._devId
+          })
+        }, {
+          onConflict: 'admin_email'
+        }).then(function () {}, function () {});
+      } catch (e) {}
+    }
+  }, [role, adminCfgVerified, adminLeadLinked, adminOwnedCfg?.timesheetId, adminOwnedCfg?.sheetTab, leads.length, running, phase, curIdx, cfg.sheetId, cfg.sheetTab, myEmail]);
   var n = (v, def) => {
     try {
       return v === '' || v === null || v === undefined || isNaN(+v) ? def : +v;
@@ -5198,6 +5274,11 @@ function App() {
       key: 'role',
       label: role === 'main' && mainMode === 'manage' ? 'Management mode' : 'Role ready',
       ok: role === 'admin' || role === 'main',
+      warn: false
+    }, {
+      key: 'managerSheet',
+      label: role === 'admin' && !adminCfgVerified ? 'Checking manager link' : role === 'admin' && !adminLeadLinked ? 'Manager linked leads' : 'Lead access ready',
+      ok: role !== 'admin' || adminLeadLinked,
       warn: false
     }, {
       key: 'phone',
@@ -5398,7 +5479,7 @@ function App() {
     });
   }, [cfg.callingScript, cfg.refNotes, cfg.objections, scriptVersions, role]);
   useEffect(() => {
-    if (role === 'admin' && myCfg.timesheetId && myCfg.sheetTab && gOk && leads.length === 0 && !appStateRef.current._autoFetched) {
+    if (role === 'admin' && adminLeadLinked && myCfg.timesheetId && myCfg.sheetTab && gOk && leads.length === 0 && !appStateRef.current._autoFetched) {
       appStateRef.current._autoFetched = true;
       setCfg(s => ({
         ...s,
@@ -5407,12 +5488,12 @@ function App() {
       }));
       setTimeout(() => fetchLeads(), 500);
     }
-    if (appStateRef.current._needsRefetch && cfg.sheetId && cfg.sheetTab && gOk) {
+    if (appStateRef.current._needsRefetch && (role !== 'admin' || adminLeadLinked) && cfg.sheetId && cfg.sheetTab && gOk) {
       appStateRef.current._needsRefetch = false;
       DBG('[AutoDial] Auto re-fetching stale leads...');
       setTimeout(() => fetchLeads(), 1000);
     }
-  }, [gOk]);
+  }, [gOk, role, adminLeadLinked, myCfg.timesheetId, myCfg.sheetTab, leads.length, cfg.sheetId, cfg.sheetTab]);
   useEffect(() => {
     if (!rawSheet || !leads.length) return;
     var h = rawSheet.headers,
@@ -5857,15 +5938,23 @@ function App() {
               var r = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'shared_admincfg_' + myEmail).maybeSingle();
               if (r.data && r.data.biz_name) {
                 try {
-                  var myCfgFromMain = JSON.parse(r.data.biz_name);
+                  var myCfgFromMain = _normalizeSharedAdminCfg(JSON.parse(r.data.biz_name));
+                  setAdminCfgVerified(true);
                   setAdminConfigs(p => ({
                     ...p,
                     [myEmail]: Object.assign({}, p[myEmail] || {}, myCfgFromMain)
                   }));
                   DBG('[AutoDial] Loaded config from Main:', Object.keys(myCfgFromMain));
                 } catch (pe) {}
+              } else {
+                setAdminCfgVerified(true);
+                setAdminConfigs(p => ({
+                  ...p,
+                  [myEmail]: _normalizeSharedAdminCfg({})
+                }));
               }
             } catch (e) {
+              setAdminCfgVerified(false);
               console.warn('[AdminCfg]', e.message || 'no personal config');
             }
           })(), (async () => {
@@ -6055,9 +6144,9 @@ function App() {
             } catch (e) {}
           })()]);
         }
-        if (adminConfigs[myEmail]) {
-          var ac = adminConfigs[myEmail];
-          if (ac.timesheetId) setCfg(p => ({
+        if (role === 'admin' && adminConfigs[myEmail]) {
+          var ac = _normalizeSharedAdminCfg(adminConfigs[myEmail]);
+          if (_adminLeadAccessLinked(ac)) setCfg(p => ({
             ...p,
             sheetId: ac.timesheetId,
             sheetTab: ac.sheetTab || p.sheetTab || ''
@@ -6935,7 +7024,23 @@ function App() {
     var liveKey = 'live_' + me;
     var leadsKey = 'leads_' + me;
     var apptsLiveKey = 'apptlive_' + me;
+    var sharedCfgKey = 'shared_admincfg_' + me;
     var _cancelled = false;
+    var applySharedAdminCfg = rawBizName => {
+      if (role !== 'admin' || _cancelled) return;
+      try {
+        var parsed = rawBizName ? JSON.parse(rawBizName) : {};
+        var clean = _normalizeSharedAdminCfg(parsed);
+        setAdminCfgVerified(true);
+        setAdminConfigs(p => ({
+          ...p,
+          [me]: Object.assign({}, p[me] || {}, clean)
+        }));
+        DBG('[AdminCfg] live shared config applied', _adminLeadAccessLinked(clean) ? 'linked' : 'unlinked');
+      } catch (e) {
+        console.warn('[AdminCfg live]', e?.message || e);
+      }
+    };
     var applyRemoteLive = remote => {
       if (_cancelled || !remote || !remote.ts) return;
       if (remote.devId === window._devId) return;
@@ -6944,6 +7049,16 @@ function App() {
       _liveSyncRef.current.suppressNextPush = true;
       setSyncStatus('synced');
       setLastSyncAt(Date.now());
+      if (role === 'admin' && !adminLeadLinked) {
+        setRunning(false);
+        setPhase('idle');
+        setCurIdx(-1);
+        if ('session' in remote && (remote.session === null || remote.session === undefined)) {
+          setSession(null);
+          save('activeSession', null);
+        }
+        return;
+      }
       if ('session' in remote) {
         if (remote.session === null || remote.session === undefined) {
           setSession(null);
@@ -7046,6 +7161,7 @@ function App() {
     };
     var pullLeads = async () => {
       if (_cancelled) return;
+      if (role === 'admin' && !adminLeadLinked) return;
       try {
         var r = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', leadsKey).maybeSingle();
         if (r.data && r.data.biz_name) {
@@ -7099,6 +7215,22 @@ function App() {
         }
       } catch (e) {
         console.warn('[LiveSync appts pull]', e?.message || e);
+      }
+    };
+    var pullSharedAdminCfg = async () => {
+      if (_cancelled || role !== 'admin') return;
+      try {
+        var r = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', sharedCfgKey).maybeSingle();
+        if (r.data && r.data.biz_name) applySharedAdminCfg(r.data.biz_name);else {
+          setAdminCfgVerified(true);
+          setAdminConfigs(p => ({
+            ...p,
+            [me]: _normalizeSharedAdminCfg({})
+          }));
+        }
+      } catch (e) {
+        setAdminCfgVerified(false);
+        console.warn('[AdminCfg pull]', e?.message || e);
       }
     };
     var _adminOnly = role === 'admin';
@@ -7255,13 +7387,16 @@ function App() {
     };
     window._liveSyncPull = () => {
       pullLive();
+      pullSharedAdminCfg();
       pullLeads();
       pullAppts();
       pullAllSynced();
     };
     pullLive();
+    pullSharedAdminCfg();
     var _initialDelay = setTimeout(() => {
       pullLive();
+      pullSharedAdminCfg();
       pullLeads();
       pullAppts();
       pullAllSynced();
@@ -7291,6 +7426,7 @@ function App() {
         filter: 'admin_email=eq.' + leadsKey
       }, payload => {
         try {
+          if (role === 'admin' && !adminLeadLinked) return;
           var row = payload.new || payload.record;
           if (row && row.biz_name) {
             var p = JSON.parse(row.biz_name);
@@ -7340,6 +7476,19 @@ function App() {
           }
         } catch (e) {}
       });
+      if (role === 'admin') {
+        _pgChannel = _pgChannel.on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'autodial_admin_config',
+          filter: 'admin_email=eq.' + sharedCfgKey
+        }, payload => {
+          try {
+            var row = payload.new || payload.record;
+            applySharedAdminCfg(row && row.biz_name ? row.biz_name : '{}');
+          } catch (e) {}
+        });
+      }
       SYNCED_PULL_CONFIGS.forEach(cfg => {
         if (cfg.enabled === false) return;
         _pgChannel = _pgChannel.on('postgres_changes', {
@@ -7387,11 +7536,15 @@ function App() {
       console.warn('[LiveSync pg subscribe]', e?.message || e);
     }
     var pollId = setInterval(() => {
-      if (document.visibilityState === 'visible') pullLive();
+      if (document.visibilityState === 'visible') {
+        pullLive();
+        pullSharedAdminCfg();
+      }
     }, 2000);
     var onVis = () => {
       if (document.visibilityState === 'visible') {
         pullLive();
+        pullSharedAdminCfg();
         pullLeads();
         pullAppts();
         pullAllSynced();
@@ -7399,11 +7552,13 @@ function App() {
     };
     var onFocus = () => {
       pullLive();
+      pullSharedAdminCfg();
       pullAppts();
       pullAllSynced();
     };
     var onOnline = () => {
       pullLive();
+      pullSharedAdminCfg();
       pullLeads();
       pullAppts();
       pullAllSynced();
@@ -7425,7 +7580,7 @@ function App() {
         } catch (e) {}
       }
     };
-  }, [_user?.id, role]);
+  }, [_user?.id, role, adminLeadLinked]);
   useEffect(() => {
     if (!_SB || !_user || !window._cloudReady) return;
     if (!pullGate) return;
@@ -7487,6 +7642,7 @@ function App() {
   useEffect(() => {
     if (!_SB || !_user || !window._cloudReady) return;
     if (!pullGate) return;
+    if (role === 'admin' && !adminLeadLinked) return;
     var newHash = _hashLeads(leads);
     if (newHash === _liveSyncRef.current.lastLeadsHash) return;
     if (_liveSyncRef.current.suppressNextPush) {
@@ -7518,7 +7674,7 @@ function App() {
       }
     }, 800);
     return () => clearTimeout(_liveSyncRef.current.leadsPushTimer);
-  }, [leads, pullGate]);
+  }, [leads, pullGate, role, adminLeadLinked]);
   useEffect(() => {
     if (!_SB || !_user || !window._cloudReady) return;
     if (!pullGate) return;
@@ -7903,6 +8059,15 @@ function App() {
       idx: -1,
       lead: null
     };
+    if (role === 'admin' && !adminLeadLinked) {
+      setRunning(false);
+      setPhase('idle');
+      setCurIdx(-1);
+      return {
+        idx: -1,
+        lead: null
+      };
+    }
     if (d.leads && Array.isArray(d.leads)) {
       leadsRef.current = d.leads;
       setLeads(d.leads);
@@ -7922,7 +8087,7 @@ function App() {
       idx,
       lead: idx >= 0 ? leadsRef.current[idx] : null
     };
-  }, []);
+  }, [role, adminLeadLinked]);
   var markPhoneDialHandled = useCallback(d => {
     if (!_SB || !_user || !myEmail || !d?.id) return;
     try {
@@ -7940,6 +8105,7 @@ function App() {
   }, [myEmail]);
   var handlePhoneDialRequest = useCallback(async (d, opts = {}) => {
     if (!d || !d.phone) return false;
+    if (role === 'admin' && !adminLeadLinked) return false;
     var id = d.id || 'dial_' + (d.ts || '') + '_' + phoneDigits(d.phone);
     if (lastPhoneDialIdRef.current === id) return false;
     lastPhoneDialIdRef.current = id;
@@ -7971,7 +8137,7 @@ function App() {
       id
     });
     return true;
-  }, [applyDialState, isMob, callAssist, showNextLeadNotification, markPhoneDialHandled]);
+  }, [applyDialState, isMob, callAssist, showNextLeadNotification, markPhoneDialHandled, role, adminLeadLinked]);
   var writePhoneDialRequest = useCallback(req => {
     if (!_SB || !_user || !myEmail || !req?.phone) return;
     try {
@@ -8112,12 +8278,14 @@ function App() {
   useEffect(() => {
     var unsub = onSync(d => {
       if (d.type === 'dial' || d.type === 'dial_ready') {
+        if (role === 'admin' && !adminLeadLinked) return;
         if (isMob) handlePhoneDialRequest(d, {
           source: 'realtime'
         });else applyDialState(d);
         return;
       }
       if (d.type === 'start') {
+        if (role === 'admin' && !adminLeadLinked) return;
         if (d.leads) setLeads(d.leads);
         setCurIdx(d.curIdx);
         setRunning(true);
@@ -8177,7 +8345,7 @@ function App() {
       }
     });
     return unsub;
-  }, [role, isMob, handlePhoneDialRequest, applyDialState, adminConfigs, myCfg, cfg.sheetId, userName]);
+  }, [role, isMob, handlePhoneDialRequest, applyDialState, adminLeadLinked, adminConfigs, myCfg, cfg.sheetId, userName]);
   useEffect(() => {
     if (!isMob || !_SB || !_user || !myEmail) return;
     var stopped = false;
@@ -8295,7 +8463,7 @@ function App() {
     }, 1200);
     return () => clearTimeout(t);
   }, [role, adminSessions, adminConfigs, myCfg, cfg.sheetId, userName]);
-  var pending = leads.filter(l => l.status === 'pending' || l.status === 'cb');
+  var pending = adminLeadLinked ? leads.filter(l => l.status === 'pending' || l.status === 'cb') : [];
   var cur = curIdx >= 0 && curIdx < leads.length ? leads[curIdx] : null;
   var nextLeadRef = useRef(-1);
   var progress = leads.length ? Math.round(leads.filter(l => l.status !== 'pending').length / leads.length * 100) : 0;
@@ -8355,6 +8523,10 @@ function App() {
     return false;
   }, []);
   var dial = useCallback(ph => {
+    if (role === 'admin' && !adminLeadLinked) {
+      toast(adminCfgVerified ? 'Manager has not linked a leads sheet for this admin' : 'Checking manager leads link...', 'err');
+      return;
+    }
     var clean = phoneDigits(ph);
     var idx = (leadsRef.current || []).findIndex(l => phoneDigits(l.phone) === clean);
     var lead = idx >= 0 ? leadsRef.current[idx] : null;
@@ -8386,7 +8558,7 @@ function App() {
     } else {
       toast('📱 Dial sent → open AutoDial on phone', 'info');
     }
-  }, [isMob, callAssist, showNextLeadNotification, session, writePhoneDialRequest]);
+  }, [isMob, callAssist, showNextLeadNotification, session, writePhoneDialRequest, role, adminLeadLinked, adminCfgVerified]);
   var sheetQueueRef = useRef([]);
   var sheetFlushTimer = useRef(null);
   var flushSheetQueue = useCallback(async () => {
@@ -9141,6 +9313,13 @@ function App() {
     }
   }, [phase, countdown, running, cur, dial]);
   var startDial = chosenSlot => {
+    if (role === 'admin' && !adminLeadLinked) {
+      toast(adminCfgVerified ? 'Manager has not linked a leads sheet for this admin' : 'Checking manager leads link...', 'err');
+      setRunning(false);
+      setPhase('idle');
+      setCurIdx(-1);
+      return;
+    }
     var startedSession = session && !session.ended ? session : null;
     if (!session || session.ended) {
       var slots = (myCfg.sessionSlots || []).filter(sl => n(sl.hours, 0) > 0);
@@ -9305,11 +9484,22 @@ function App() {
     }
   };
   var fetchLeads = async () => {
-    if (!cfg.sheetId || !cfg.sheetTab) return;
+    if (role === 'admin' && !adminCfgVerified) {
+      toast('Checking manager leads link...', 'info');
+      return;
+    }
+    if (role === 'admin' && !adminLeadLinked) {
+      toast('Manager has not linked a leads sheet for this admin', 'err');
+      setLeads([]);
+      return;
+    }
+    var sourceSheetId = role === 'admin' ? adminOwnedCfg?.timesheetId || '' : cfg.sheetId;
+    var sourceSheetTab = role === 'admin' ? adminOwnedCfg?.sheetTab || '' : cfg.sheetTab;
+    if (!sourceSheetId || !sourceSheetTab) return;
     setSLoad(true);
     toast('Analyzing…', 'info');
     try {
-      var v = await gSheets.vals(cfg.sheetId, cfg.sheetTab);
+      var v = await gSheets.vals(sourceSheetId, sourceSheetTab);
       if (v.length < 2) {
         toast('Empty', 'err');
         setSLoad(false);
@@ -18909,7 +19099,9 @@ function App() {
           ...p[em],
           timesheetId: f.id,
           _tsName: f.name,
-          _tsResults: []
+          _tsResults: [],
+          sheetTab: '',
+          _sheetTabs: []
         }
       }));
       toast('Loading tabs...', 'info');
@@ -18951,16 +19143,74 @@ function App() {
       flex: 1
     }
   }, "\u2713 Linked: ", ac._tsName || ac.timesheetId.slice(0, 20) + '...'), React.createElement("button", {
-    onClick: () => setAdminConfigs(p => ({
-      ...p,
-      [em]: {
-        ...p[em],
-        timesheetId: '',
-        _tsName: '',
-        sheetTab: '',
-        _sheetTabs: []
+    onClick: async () => {
+      var _now = Date.now();
+      var next = {
+        ...adminConfigs,
+        [em]: {
+          ...adminConfigs[em],
+          timesheetId: '',
+          _tsName: '',
+          sheetTab: '',
+          _sheetTabs: [],
+          _detectedTs: null,
+          _detectedAppt: null,
+          _leadsUnlinkedAt: _now,
+          _leadAccessRev: _now
+        }
+      };
+      setAdminConfigs(next);
+      publishAdminConfigs(next);
+      if (_SB) {
+        try {
+          await Promise.allSettled([_SB.from('autodial_admin_config').upsert({
+            admin_email: 'shared_admincfg_' + em.toLowerCase(),
+            biz_name: JSON.stringify(next[em])
+          }, {
+            onConflict: 'admin_email'
+          }), _SB.from('autodial_admin_config').upsert({
+            admin_email: 'leads_' + em.toLowerCase(),
+            biz_name: JSON.stringify({
+              leads: [],
+              count: 0,
+              revoked: true,
+              cutoffBy: myEmail,
+              ts: _now,
+              devId: window._devId
+            })
+          }, {
+            onConflict: 'admin_email'
+          }), _SB.from('autodial_admin_config').upsert({
+            admin_email: 'phonedial_' + em.toLowerCase(),
+            biz_name: JSON.stringify({
+              revoked: true,
+              cutoffBy: myEmail,
+              handledAt: _now,
+              ts: _now,
+              devId: window._devId
+            })
+          }, {
+            onConflict: 'admin_email'
+          }), _SB.from('autodial_admin_config').upsert({
+            admin_email: 'live_' + em.toLowerCase(),
+            biz_name: JSON.stringify({
+              session: null,
+              curIdx: -1,
+              phase: 'idle',
+              running: false,
+              cutoffBy: myEmail,
+              ts: _now,
+              devId: window._devId
+            })
+          }, {
+            onConflict: 'admin_email'
+          })]);
+        } catch (e) {
+          console.warn('[Admin unlink sheet]', e?.message || e);
+        }
       }
-    })),
+      toast('Leads sheet unlinked - admin calling stopped');
+    },
     style: {
       padding: '2px 8px',
       borderRadius: 4,
