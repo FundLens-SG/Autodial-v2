@@ -205,16 +205,19 @@ button:active{transform:scale(.97)}
 .analytics-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px}
 .dupe-card{background:linear-gradient(135deg,rgba(248,81,73,.05),transparent)}
 @media(max-width:959px){.script-panel{display:none!important}.script-toggle{display:none!important}}
-.hdr-row1{display:flex;align-items:center;gap:8px;padding:14px 14px 0;flex-wrap:wrap}
+.hdr-row1{display:flex;align-items:flex-start;gap:8px;padding:14px 14px 0;flex-wrap:wrap}
 .hdr-row1>button{flex-shrink:0}
 .hdr-row1>.pill{flex-shrink:0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hdr-row2{position:relative;z-index:4;display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px;gap:10px}
-.app-tabs{position:relative;z-index:5;display:flex;padding:6px 10px 10px;gap:4px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:1px solid var(--border);background:var(--bg);margin-bottom:8px}
+.app-tabs{position:relative;z-index:5;display:flex;padding:8px 14px 10px;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:1px solid var(--border);background:var(--bg);margin-bottom:8px}
 .app-tabs::-webkit-scrollbar{display:none}
-.app-tabs button{flex:1 1 auto;min-width:72px;padding:14px 10px;border-radius:12px;font-size:13px;font-weight:700;white-space:nowrap;background:transparent;color:var(--text3)}
+.app-tabs button{flex:1 1 0;min-width:0;min-height:44px;padding:12px 8px;border-radius:12px;font-size:13px;font-weight:700;white-space:nowrap;background:transparent;color:var(--text3);display:flex;align-items:center;justify-content:center;gap:6px;overflow:hidden;text-overflow:ellipsis}
 .app-tabs button.active{background:var(--adim);color:var(--accent2)}
 .content-pad{padding:0 14px;padding-bottom:100px}
-.rank-chip{display:inline-flex;align-items:center;gap:6;padding:5px 12px 5px 8px;border-radius:10px;font-size:12px;font-weight:700}
+.rank-chip{display:inline-flex;align-items:center;gap:6px;max-width:100%;min-width:0;padding:5px 12px 5px 8px;border-radius:10px;font-size:12px;font-weight:700;line-height:1.1;white-space:nowrap}
+.rank-chip span{min-width:0}
+.rank-chip span:nth-child(2){overflow:hidden;text-overflow:ellipsis}
+.rank-chip span:last-child{font-size:10px;opacity:.65;font-weight:700;white-space:nowrap}
 
 /* Auth */
 #auth-gate{position:fixed;inset:0;z-index:10000;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;
@@ -238,8 +241,8 @@ button:active{transform:scale(.97)}
   .hdr-row1 h1{font-size:16px!important}
   .hdr-row2{padding-left:12px;padding-right:12px}
   .mode-banner{margin-left:12px;margin-right:12px}
-  .app-tabs{padding-left:8px;padding-right:8px;gap:5px}
-  .app-tabs button{min-width:82px;min-height:48px;padding:13px 10px;font-size:13px}
+  .app-tabs{padding-left:12px;padding-right:12px;gap:5px}
+  .app-tabs button{min-width:76px;min-height:48px;padding:13px 9px;font-size:13px;flex:1 0 auto}
   .readiness-grid{grid-template-columns:1fr}
   .touch-action-row{grid-template-columns:1fr!important}
 }
@@ -319,7 +322,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0015';
+window.APP_VERSION='2026.04.29.0016';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -746,7 +749,7 @@ var GC_ID='649883090396-mrhmtjaum8u4ec12ciq0p4m31npabbut.apps.googleusercontent.
 var GSCOPES='https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
 // ↓↓↓ SET THIS to your Cloudflare Worker URL for permanent Google auth ↓↓↓
 var WORKER_URL='https://autodial-google-auth.chungakwanc.workers.dev';
-window.claudeKey=function(){return localStorage.getItem('autodial_claude_key')||''}; // e.g. 'https://autodial-google-auth.yourname.workers.dev'
+window.claudeKey=function(){return((window._role||localStorage.getItem('autodial_role'))==='admin')?'':(localStorage.getItem('autodial_claude_key')||'')}; // e.g. 'https://autodial-google-auth.yourname.workers.dev'
 
 // ═══ SAVE TOKEN — shared helper ═══
 function _saveGToken(token){
@@ -4964,7 +4967,12 @@ function App() {
   var [payConfigOpen, setPayConfigOpen] = useState(false);
   var [showSlotPicker, setShowSlotPicker] = useState(false);
   var [geminiKeyVal, setGeminiKeyVal] = useState(localStorage.getItem('autodial_gemini') || (role === 'admin' && cfg.sharedGeminiKey ? cfg.sharedGeminiKey : ''));
-  var [claudeKeyVal, setClaudeKeyVal] = useState(localStorage.getItem('autodial_claude_key') || '');
+  var [claudeKeyVal, setClaudeKeyVal] = useState(role === 'admin' ? '' : localStorage.getItem('autodial_claude_key') || '');
+  useEffect(() => {
+    if (role !== 'admin') return;
+    if (localStorage.getItem('autodial_claude_key')) localStorage.removeItem('autodial_claude_key');
+    if (claudeKeyVal) setClaudeKeyVal('');
+  }, [role, claudeKeyVal]);
   useEffect(() => {
     if (role !== 'admin' || !_SB || !_user) return;
     var _t = setTimeout(async () => {
@@ -5195,6 +5203,7 @@ function App() {
     }
   }, [geminiKeyVal]);
   useEffect(() => {
+    if (role === 'admin') return;
     if (claudeKeyVal) {
       localStorage.setItem('autodial_claude_key', claudeKeyVal);
       if (_SB && _user && window._cloudReady) _SB.from('autodial_admin_config').upsert({
@@ -5208,7 +5217,7 @@ function App() {
         onConflict: 'admin_email'
       }).catch(function () {});
     }
-  }, [claudeKeyVal]);
+  }, [claudeKeyVal, role]);
   useEffect(() => {
     if (role !== 'admin' || !_SB || !WORKER_URL) return;
     var refresh = async () => {
@@ -6877,7 +6886,7 @@ function App() {
             localStorage.setItem('autodial_gemini', d.key);
           }
         }));
-        if (!localStorage.getItem('autodial_claude_key')) _hsJobs.push(_hs('claude_' + myEmail, d => {
+        if (role !== 'admin' && !localStorage.getItem('autodial_claude_key')) _hsJobs.push(_hs('claude_' + myEmail, d => {
           if (d.key) {
             setClaudeKeyVal(d.key);
             localStorage.setItem('autodial_claude_key', d.key);
@@ -14162,7 +14171,8 @@ function App() {
         display: 'flex',
         gap: 6,
         marginTop: 10,
-        alignItems: 'center'
+        alignItems: 'center',
+        flexWrap: 'wrap'
       }
     }, calWeekOffset !== 0 && React.createElement("button", {
       onClick: () => setCalWeekOffset(0),
@@ -14231,7 +14241,7 @@ function App() {
         animation: calRefreshing ? 'spin 1.6s linear infinite' : undefined,
         flexShrink: 0
       }
-    }, calRefreshing ? '⟳…' : '⟳'), React.createElement("button", {
+    }, "\u21BB"), React.createElement("button", {
       onClick: () => setCalFilterOpen(p => !p),
       style: {
         padding: '6px 12px',
@@ -14244,21 +14254,19 @@ function App() {
         flexShrink: 0
       }
     }, (() => {
-      var hidden = Object.values(calVisibility).filter(v => v === false).length;
-      var extras = [];
-      if (hidden) extras.push(hidden + ' hidden');
-      if (!showInvited) extras.push('invites off');
-      if (showDeclined) extras.push('+declined');
-      return '⚙ Filter' + (extras.length ? ' · ' + extras.join(' · ') : '');
+      return '\u2699 Filter';
     })())), React.createElement("div", {
       style: {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         gap: 8,
+        flexWrap: 'wrap',
+        rowGap: 4,
         margin: '8px 0 0',
         fontSize: 10,
-        color: 'var(--text3)'
+        color: 'var(--text3)',
+        lineHeight: 1.35
       }
     }, React.createElement("span", null, weekEvents.length, " events", (() => {
       var cals = new Set(weekEvents.map(e => e._calId).filter(Boolean));
@@ -14602,15 +14610,17 @@ function App() {
       return React.createElement("div", {
         className: "card",
         style: {
-          padding: '10px 6px',
-          overflowX: 'auto'
+          padding: '10px 8px 14px',
+          overflowX: 'auto',
+          overscrollBehaviorX: 'contain',
+          WebkitOverflowScrolling: 'touch'
         }
       }, React.createElement("div", {
         style: {
           display: 'grid',
-          gridTemplateColumns: '42px repeat(7,minmax(92px,1fr))',
+          gridTemplateColumns: '40px repeat(7,minmax(88px,1fr))',
           gap: 1,
-          minWidth: 720
+          minWidth: 'max(700px,100%)'
         }
       }, React.createElement("div", null), days.map(d => {
         var isToday = d.key === todayKey;
@@ -22915,7 +22925,7 @@ function App() {
       fontWeight: 600,
       marginLeft: 6
     }
-  }, "\uD83E\uDDE0 Re-analyze Leads"))), WORKER_URL && React.createElement("div", {
+  }, "\uD83E\uDDE0 Re-analyze Leads"))), role !== 'admin' && WORKER_URL && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 12
@@ -22933,7 +22943,7 @@ function App() {
       fontWeight: 400,
       color: 'var(--text3)'
     }
-  }, "(per-user sync)")), false ? React.createElement(React.Fragment, null, React.createElement("input", {
+  }, "(Main only)")), role === 'admin' ? React.createElement(React.Fragment, null, React.createElement("input", {
     value: cfg.sharedClaudeKey || localStorage.getItem('autodial_claude_key') ? '••••••••••••••••••••••••••••••••••••••••••' : '',
     disabled: true,
     placeholder: "Waiting for manager to share key\u2026",
@@ -22958,7 +22968,7 @@ function App() {
       fontSize: 10,
       color: 'var(--text3)'
     }
-  }, "Each user uses their own key. Get one at ", React.createElement("a", {
+  }, "Only Main can store the Claude key. Get one at ", React.createElement("a", {
     href: "https://console.anthropic.com/settings/keys",
     target: "_blank",
     style: {
