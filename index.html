@@ -4903,7 +4903,7 @@ function App() {
   var [rawSheet, setRawSheet] = useState(null);
   var [showColPicker, setShowColPicker] = useState(null);
   var [showColMap, setShowColMap] = useState(false);
-  var [detectedColMap, setDetectedColMap] = useState(null);
+  var [detectedColMap, setDetectedColMap] = useState(() => load('colMapOverride') || stored.colMap || null);
   var [importReview, setImportReview] = useState(null);
   var [aiAnalyzing, setAiAnalyzing] = useState(false);
   var [payConfigOpen, setPayConfigOpen] = useState(false);
@@ -5854,11 +5854,13 @@ function App() {
     save('data', {
       leads,
       cfg: cleanCfg,
+      colMap: detectedColMap || null,
       _cfgTs
     });
     cloudSave('data', {
       leads,
       cfg: cleanCfg,
+      colMap: detectedColMap || null,
       _cfgTs
     });
     if (_SB && _user && window._cloudReady) {
@@ -5873,7 +5875,10 @@ function App() {
         onConflict: 'admin_email'
       }).catch(function () {});
     }
-  }, [leads, cfg]);
+  }, [leads, cfg, detectedColMap]);
+  useEffect(() => {
+    if (detectedColMap) save('colMapOverride', detectedColMap);
+  }, [detectedColMap]);
   useEffect(() => {
     if (role !== 'main' || !_SB || !window._cloudReady) return;
     publishAdminScripts(adminConfigs, cfg, scriptVersions);
@@ -6595,6 +6600,7 @@ function App() {
             var cl = cloud.leads.leads || [];
             var validated = validateStatuses(cl);
             setLeads(validated);
+            if (cloud.leads.colMap) setDetectedColMap(cloud.leads.colMap);
             var _cloudTs = cloud.leads._cfgTs || 0,
               _localTs2 = stored._cfgTs || 0;
             if (cloud.leads.cfg && (_cloudTs > _localTs2 || !stored.cfg)) setCfg(prev => _sanitizeCfgRichText({
@@ -9986,6 +9992,7 @@ function App() {
       toast('Review import before accepting: ' + review.questionable.length + ' questionable rows', 'info');
       return false;
     }
+    if (meta.colMap) setDetectedColMap(meta.colMap);
     setLeads(tagged || []);
     setImportReview(null);
     return true;
@@ -10509,6 +10516,9 @@ function App() {
   var isCallMode = role === 'admin' || role === 'main' && mainMode === 'call';
   var isManageMode = role === 'main' && mainMode === 'manage';
   var tabs = isCallMode ? callTabs : manageTabs;
+  var leadsHaveParsedColumns = (leads || []).some(l => hasCallablePhone(l.phone)) && (leads || []).some(l => l.name || l.phone || l.status || l.notes);
+  var columnsSetupReady = !!detectedColMap || leadsHaveParsedColumns;
+  var columnsSetupDetail = detectedColMap ? 'Name, phone, status map ready' : leadsHaveParsedColumns ? 'Auto-detected from fetched leads' : 'Review after fetching leads';
   var buildGuidedSetupItems = () => {
     var adminLinked = !!(myCfg.timesheetId || cfg.sheetId || myCfg.sheetTab || cfg.sheetTab);
     if (role === 'admin') return [{
@@ -10529,8 +10539,8 @@ function App() {
     }, {
       key: 'columns',
       label: 'Detected columns',
-      detail: detectedColMap ? 'Column map synced' : 'Pending Main review or next fetch',
-      done: !!detectedColMap
+      detail: detectedColMap ? 'Column map synced' : leadsHaveParsedColumns ? 'Auto-detected from fetched leads' : 'Pending Main review or next fetch',
+      done: columnsSetupReady
     }, {
       key: 'calendar',
       label: 'Calendar',
@@ -10552,8 +10562,8 @@ function App() {
     }, {
       key: 'columns',
       label: 'Detected columns',
-      detail: detectedColMap ? 'Name, phone, status map ready' : 'Review after fetching leads',
-      done: !!detectedColMap,
+      detail: columnsSetupDetail,
+      done: columnsSetupReady,
       action: () => rawSheet ? setShowColMap(true) : setTab('leads')
     }, {
       key: 'calendar',
@@ -19517,8 +19527,8 @@ function App() {
       waitLabel: 'Waiting'
     }, {
       label: 'Detected columns',
-      detail: detectedColMap ? 'Column map synced' : 'Pending Main review or next fetch',
-      done: !!detectedColMap,
+      detail: detectedColMap ? 'Column map synced' : leadsHaveParsedColumns ? 'Auto-detected from fetched leads' : 'Pending Main review or next fetch',
+      done: columnsSetupReady,
       readyLabel: 'Synced',
       waitLabel: 'Waiting'
     }, {
@@ -19539,8 +19549,8 @@ function App() {
       action: () => setSettingsSubtab('integr')
     }, {
       label: 'Detected columns',
-      detail: detectedColMap ? 'Name, phone, status map ready' : 'Review after fetching leads',
-      done: !!detectedColMap,
+      detail: columnsSetupDetail,
+      done: columnsSetupReady,
       action: () => rawSheet ? setShowColMap(true) : setTab('leads')
     }, {
       label: 'Calendar destination',
