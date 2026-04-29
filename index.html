@@ -180,6 +180,9 @@ button:active{transform:scale(.97)}
 .ob-chip{padding:7px 10px;border-radius:999px;background:var(--bg3);border:1px solid var(--border2);color:var(--text2);font-size:11px;font-weight:800;cursor:pointer;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ob-chip.active{background:var(--adim);border-color:rgba(99,102,241,.5);color:var(--accent2)}
 .ob-pop{margin-top:9px;padding:12px;border-radius:12px;background:#0f141d;border:1px solid rgba(99,102,241,.4);box-shadow:0 12px 30px rgba(0,0,0,.3)}
+.ob-answer{margin:0;color:var(--text);font-size:13px;line-height:1.6;white-space:normal}
+.ob-answer div{margin:0 0 8px}
+.ob-answer div:last-child{margin-bottom:0}
 .script-panel.ref-collapsed .sp-ref-col{display:none}
 .script-panel.ref-collapsed .sp-col{max-width:760px;margin:0 auto}
 .mode-banner{margin:0 14px 10px;padding:10px 12px;border-radius:12px;border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--bg2)}
@@ -313,7 +316,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0009';
+window.APP_VERSION='2026.04.29.0010';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1977,18 +1980,101 @@ function _sanitizeRichHtml(html) {
 function _plainText(v, max) {
   return String(v || '').replace(/[<>]/g, '').replace(/\s+\n/g, '\n').trim().slice(0, max || 2000);
 }
+function _htmlToPlain(html, max) {
+  var template = document.createElement('template');
+  template.innerHTML = _sanitizeRichHtml(String(html || ''));
+  return _plainText(template.content.textContent || template.innerText || '', max || 4000);
+}
 function _normalizeObjections(list) {
   if (!Array.isArray(list)) return [];
   return list.map(function (o, i) {
     var title = _plainText(o?.title || o?.label || '', 80);
+    var rawAnswer = String(o?.answerHtml || o?.html || o?.answer || o?.response || '');
+    var answer = /<\/?[a-z][\s\S]*>/i.test(rawAnswer) ? _sanitizeRichHtml(rawAnswer) : _escapeHtml(_plainText(rawAnswer, 5000)).replace(/\n/g, '<br>');
     return {
       id: String(o?.id || 'obj_' + i + '_' + title.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 32)),
       title,
-      answer: _plainText(o?.answer || o?.response || '', 2000)
+      answer
     };
   }).filter(function (o) {
-    return o.title && o.answer;
+    return o.title && _htmlToPlain(o.answer, 20);
   }).slice(0, 30);
+}
+var OWNER_SCRIPT_OBJECTION_SEED = 'shermaine_script2_20260429';
+var OWNER_SCRIPT_OBJECTIONS = [{
+  id: 'shermaine_obj_01_agent_policies',
+  title: 'I have my own agent/policies already',
+  answer: '<div><span style="font-weight:700">1)</span> <span style="font-weight:700">I think it&#39;s ok, I have my own agent/policies already</span> - <span style="font-style:italic">Agree and deflect</span></div><div>Yes XXX, that&#39;s good. Definitely not here to replace your agent. More to add on my 2 cents to see where can be done better so you won&#39;t get shortchanged in the near term when rates are coming down <span style="color:#00bf63;font-weight:700">-&gt; 20 minutes of our time, I will lay down the full details and figures and you can decide if it is something for you. -&gt; Proceed to do A/B option (Closing)</span></div>'
+}, {
+  id: 'shermaine_obj_02_think_not_interested',
+  title: 'Let me think / not interested / early reject',
+  answer: '<div><span style="font-weight:700">2) Let me think about it/If client very defensive/ I’m not interested / straight up early reject:</span></div><div>Actually XXX as you are aware the interest rates environment in Singapore is barely reasonable at 1%. And we are expecting these rates to further drop in the next 6-12 mths. So this meeting is to lay out your entitlements as a customer right now, so you won’t get shortchanged in the near term. <span style="font-weight:700">*mid tone (factual)*</span></div><div>For yourself have you done any FDs so far? (If you have -&gt; which bank and what rates did you manage to lock in at?)</div><div>(yes/no) I see, <span style="color:#00bf63;font-weight:700">let me pass you the full details over a 20 minute meet, anyway XXX you don&#39;t have to take up anything on the spot, you can always go back to sit on the figures and decide if it makes sense to you. -&gt; Proceed to do A/B option (Closing)</span></div>'
+}, {
+  id: 'shermaine_obj_03_lot_insurance',
+  title: 'I got a lot of insurance already',
+  answer: '<div><span style="font-weight:700">3)</span> <span style="font-weight:700">I got a lot of insurance already</span> - <span style="font-weight:700">do contrasting</span> Yes good to hear you’re well covered, which insurer are you with? <span style="font-weight:700">*high tone (curious)*</span> I see xxx, so unlike the traditional policies where your returns are locked in for 10 sometimes 20 years. This new launch has the flexibility of withdrawals from the next month onwards and your tenure is as short as 2 years <span style="font-weight:700">*mid tone (factual)*</span> -&gt; <span style="color:#00bf63;font-weight:700">XXX, 20 mins of our time we run through the few options and you decide which is better for you -&gt; Proceed to do A/B option (Closing)</span></div>'
+}, {
+  id: 'shermaine_obj_04_busy_now',
+  title: 'I am busy now',
+  answer: '<div><span style="font-weight:700">4) I am busy now</span> - I see no worries, let me drop you a call tomorrow, say around lunch time?</div>'
+}, {
+  id: 'shermaine_obj_05_lock_in',
+  title: 'What is the lock-in period?',
+  answer: '<div><span style="font-weight:700">5) What is the lock in period? - Deflection</span></div><div>You can put in over 3, 5, 10 years, you decide which option is better for you. Also depending on your perspective, because some of us view that interest rates will be going down in the next 6 months, so we don’t want to be shortchanged too. <span style="color:#00bf63;font-weight:700">20 mins of our time we run through the few options and you decide which is better for you -&gt; Proceed to do A/B option (Closing)</span></div>'
+}, {
+  id: 'shermaine_obj_06_returns_guaranteed',
+  title: 'Are the returns guaranteed / is 5% guaranteed?',
+  answer: '<div><span style="font-weight:700">6) Are the returns guaranteed / Is the 5% guaranteed?</span> The 10% bonus is guaranteed and the 5% is year on year. Should anything happen to you, this is still principal protected. As a form of legacy, your money is protected and can be passed to your loved ones.</div><div><span style="color:#ff0000">(if client continue asking) So that means the 5% is non-guaranteed la?</span> There is a range, 5-6%. <span style="font-weight:700">Most importantly</span>, fixed deposit rates have been as low as .8% pre-covid and it is ranging at 1% nowadays and it’s about to go further down in the next 3 months. Mmmmm I don&#39;t really believe in anything with a fixed return, it makes more sense to draw a fair return.</div><div><span style="color:#ff0000">(if client continue asking) So that means can go lower too la</span> So far rates are stable at 5% even through covid period. Anything to go lower first in the next 6 months is likely your bank rates and Fixed Deposit rates.</div>'
+}, {
+  id: 'shermaine_obj_07_more_details',
+  title: 'Can you give me more details / what product is this?',
+  answer: '<div><span style="font-weight:700">7) Can you give me more details? / What kind of product is this? (never give plan name)</span></div><div>This is a <span style="font-style:italic">dividend paying</span> plan, you will be paid regular dividends of 5% per annum, on a monthly basis from the moment you put your funds in. Say for instance when you put in $20,000, your dividends will be a total of $1,000 in the year. This $1,000 split across 12 months, you will receive $83 per month.</div><div>As you are aware fixed deposits are currently paying about 1% in the market right now which is quite high, and most people are worried that these rates won&#39;t be here to stay. Simply put, for the month of XXX, our new launch pays a 5% dividend rate, with a guaranteed 10% bonus on the initial deposit.</div><div><span style="color:#00bf63;font-weight:700">20 mins of our time we run through the few options and you decide which is better for you -&gt; Proceed to do A/B option (Closing)</span></div>'
+}, {
+  id: 'shermaine_obj_08_minimum_sum',
+  title: 'Is there a minimum sum I must invest?',
+  answer: '<div><span style="font-weight:700">8) Is there a minimum sum I must invest?</span></div><div>The typical minimum sum is 20k lump sum, or there is also the option of 10k per 2 years.</div><div>*(or 6k over a period of 3 years) → only if clients ask more.</div>'
+}, {
+  id: 'shermaine_obj_09_capital_guaranteed',
+  title: 'Is this capital guaranteed?',
+  answer: '<div><span style="font-weight:700">9) Is this capital guaranteed?</span></div><div>Should anything happen to you, this is still principal protected. As a form of legacy, your money is protected and can be passed to your loved ones.</div>'
+}, {
+  id: 'shermaine_obj_10_send_details',
+  title: 'Can you send me more details?',
+  answer: '<div><span style="font-weight:700">10) Actually, can you send me more details, I decide from there</span></div><div>Oh XXX I&#39;d love to <span style="font-weight:700">(sound humble and like you bobian)</span> but since 2019 MAS has stopped us from doing pre-selling, which means to recommend anything over email or text unless we understand your finances.</div><div>The previous time you also mentioned to Whatsapp and send you the details but since then when the rates came down a fair bit the tranche back then has been fully subscribed, you busy your money also need to work for you mah.</div><div><span style="color:#00bf63;font-weight:700">That’s why I suggest to swing nearby your workplace to pass you the concise figures so you have something to sit on -&gt; Proceed to do A/B option (Closing)</span></div>'
+}, {
+  id: 'shermaine_obj_11_product_name',
+  title: 'Name of the product',
+  answer: '<div><span style="font-weight:700">11) Name of the product</span></div><div>This is a limited tranche product that is offered through exclusive reach outs to customers like yourself.</div>'
+}, {
+  id: 'shermaine_obj_12_get_number',
+  title: 'How did you get my number?',
+  answer: '<div><span style="font-weight:700">12) How did you get my number?</span></div><div>XXX previously you might have clicked to express interest online for something better rates, that’s why I reached out to you a few months back.</div><div>Uh. XXX you use POSB/DBS right?</div><div>Ah thats why. Because Manulife is currently partnered with DBS, that&#39;s why they will sometimes assign clients to senior consultants like myself to serve you.</div>'
+}, {
+  id: 'shermaine_obj_13_second_attempt_close',
+  title: '2nd attempt close',
+  answer: '<div><span style="color:#ff9900;font-weight:700">2nd Attempt Close - Change wording, reinforce</span></div><div>(Haha) XXX I will keep the session to within 20 minutes, that’s the most I can really spare too. And also to let you understand your entitlements as a customer right now, ultimately to not be shortchanged on your current and future savings. We can have a concise chat, and I am sure you are capable enough to determine if it makes sense for you.</div>'
+}, {
+  id: 'shermaine_obj_14_underlying_investments',
+  title: 'Underlying investments / assets',
+  answer: '<div><span style="text-decoration:underline">13) What are the underlying investments/assets/where will my money be invested in?</span></div><div>投资会是带有红利的基金，是Manulife管理的。而且这产品是特别为即将退休的顾客设计的。</div><div>The underlying funds are global dividend paying funds managed by Manulife and they are geared towards retirement.</div><div><span style="color:#ff0000">If they sound scared: ultimately Manulife is launching this for pre-retirees so there’s a peace of mind for dividends to come in regularly.</span></div>'
+}, {
+  id: 'shermaine_obj_15_what_is_manulife',
+  title: 'What is Manulife?',
+  answer: '<div>What is Manulife?</div><div>We are an insurer that’s partnered with DBS specifically for wealth solutions. Normally, we used to be serving in DBS Treasures and now, we are more open to retail investors. We have been partnering with DBS for 15 years, currently it’s the 10th year. Previously it was Singlife Aviva if you recall that was with DBS many years ago so it has changed to Manulife already.</div><div>We do not really do insurance specifically, we dish out more of the wealth solutions catered towards retirement, but in this particular launch, we are just looking at something to hatch against the lower rates in the coming months when we are expecting the rates to come down.</div>'
+}];
+function _mergeObjectionLists(base, incoming) {
+  var out = _normalizeObjections(base);
+  var seen = new Set(out.map(function (o) {
+    return (o.id || o.title || '').toLowerCase();
+  }));
+  _normalizeObjections(incoming).forEach(function (o) {
+    var key = (o.id || o.title || '').toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      out.push(o);
+    }
+  });
+  return out.slice(0, 30);
 }
 function _sanitizeCfgRichText(cfg) {
   if (!cfg || typeof cfg !== 'object') return cfg;
@@ -2000,6 +2086,36 @@ function _sanitizeCfgRichText(cfg) {
   if (typeof next.refNotes === 'string') next.refNotes = _sanitizeRichHtml(next.refNotes);
   if (next.objections !== undefined) next.objections = _normalizeObjections(next.objections);
   return next;
+}
+function _scriptSharePayload(ownerCfg, versions) {
+  return {
+    html: _sanitizeRichHtml(ownerCfg?.callingScript || ''),
+    notes: _sanitizeRichHtml(ownerCfg?.refNotes || ''),
+    objections: _normalizeObjections(ownerCfg?.objections || []),
+    versions: (versions || []).slice(0, 10),
+    ts: Date.now()
+  };
+}
+function publishAdminScripts(configs, ownerCfg, versions) {
+  if (!_SB) return;
+  var payload = _scriptSharePayload(ownerCfg || {}, versions || []);
+  Object.entries(configs || {}).forEach(function (entry) {
+    var email = (entry[0] || '').toLowerCase();
+    var ac = entry[1] || {};
+    if (!email || email.indexOf('@') < 0) return;
+    var row = ac.shareScript ? payload : {
+      _disabled: true,
+      ts: Date.now()
+    };
+    try {
+      _SB.from('autodial_admin_config').upsert({
+        admin_email: 'shared_script_' + email,
+        biz_name: JSON.stringify(row)
+      }, {
+        onConflict: 'admin_email'
+      }).then(function () {}, function () {});
+    } catch (e) {}
+  });
 }
 var _cloudDebounceTimers = {};
 var _cloudDebounce = {};
@@ -5175,6 +5291,18 @@ function App() {
     count: 50
   });
   var myEmail = (window._prof?.email || window._user?.email || '').toLowerCase();
+  useEffect(() => {
+    if (role !== 'main' || !isCreator(myEmail)) return;
+    if (cfg.ownerObjectionSeed === OWNER_SCRIPT_OBJECTION_SEED) return;
+    var merged = _mergeObjectionLists(cfg.objections || [], OWNER_SCRIPT_OBJECTIONS);
+    setCfg(s => ({
+      ...s,
+      objections: merged,
+      ownerObjectionSeed: OWNER_SCRIPT_OBJECTION_SEED
+    }));
+    if (!activeObjectionId && merged.length) setActiveObjectionId(merged[0].id);
+    toast('Owner objection handles loaded from Shermaine Script #2');
+  }, [role, myEmail, cfg.ownerObjectionSeed]);
   var adminOwnedCfg = role === 'admin' ? _normalizeSharedAdminCfg(adminConfigs[myEmail] || {}) : null;
   var adminLeadLinked = role !== 'admin' || adminCfgVerified && _adminLeadAccessLinked(adminOwnedCfg);
   var myCfg = role === 'admin' ? {
@@ -5354,6 +5482,38 @@ function App() {
     });
     toast('Restored ' + (v.name || 'script version'));
   }, [scriptVersions]);
+  var applySharedScriptPayload = useCallback(s => {
+    if (!s) return;
+    if (s._disabled) {
+      setScriptContent('');
+      setRefNotes('');
+      setScriptVersions([]);
+      setCfg(p => ({
+        ...p,
+        callingScript: '',
+        refNotes: '',
+        objections: [],
+        scriptVersions: []
+      }));
+      DBG('[AutoDial] Script share disabled by Main');
+      return;
+    }
+    if (!(s.html || s.notes || s.objections?.length)) return;
+    var html = _sanitizeRichHtml(s.html || '');
+    var notes = _sanitizeRichHtml(s.notes || '');
+    var sv = Array.isArray(s.versions) ? s.versions : [];
+    setScriptContent(html);
+    setRefNotes(notes);
+    setScriptVersions(sv);
+    setCfg(p => ({
+      ...p,
+      callingScript: html,
+      refNotes: notes || p.refNotes || '',
+      objections: _normalizeObjections(s.objections || p.objections || []),
+      scriptVersions: sv
+    }));
+    DBG('[AutoDial] Loaded shared script from Main');
+  }, []);
   var saveObjections = useCallback(next => {
     var clean = _normalizeObjections(next);
     setCfg(s => ({
@@ -5381,7 +5541,7 @@ function App() {
     if (!item) return;
     var title = prompt('Objection title', item.title || '');
     if (!title) return;
-    var answer = prompt('Suggested answer / talk track', item.answer || '');
+    var answer = prompt('Suggested answer / talk track', _htmlToPlain(item.answer || '', 4000));
     if (!answer) return;
     saveObjections((cfg.objections || []).map(o => o.id === item.id ? {
       ...o,
@@ -5461,23 +5621,9 @@ function App() {
   }, [leads, cfg]);
   useEffect(() => {
     if (role !== 'main' || !_SB || !window._cloudReady) return;
-    if (!cfg.callingScript && !cfg.refNotes) return;
-    var payload = {
-      html: _sanitizeRichHtml(cfg.callingScript || ''),
-      notes: _sanitizeRichHtml(cfg.refNotes || ''),
-      objections: _normalizeObjections(cfg.objections),
-      versions: (scriptVersions || []).slice(0, 10),
-      ts: Date.now()
-    };
-    _SB.from('autodial_admin_config').upsert({
-      admin_email: 'shared_script',
-      biz_name: JSON.stringify(payload)
-    }, {
-      onConflict: 'admin_email'
-    }).then(() => DBG('[AutoDial] Published calling script to all admins')).catch(function (e) {
-      console.warn('[AutoDial] script publish failed', e?.message || e);
-    });
-  }, [cfg.callingScript, cfg.refNotes, cfg.objections, scriptVersions, role]);
+    publishAdminScripts(adminConfigs, cfg, scriptVersions);
+    DBG('[AutoDial] Script share synced to selected admins');
+  }, [cfg.callingScript, cfg.refNotes, cfg.objections, scriptVersions, role, adminConfigs]);
   useEffect(() => {
     if (role === 'admin' && adminLeadLinked && myCfg.timesheetId && myCfg.sheetTab && gOk && leads.length === 0 && !appStateRef.current._autoFetched) {
       appStateRef.current._autoFetched = true;
@@ -5963,7 +6109,7 @@ function App() {
               if (gr.data && gr.data.biz_name) {
                 try {
                   var globalCfg = _sanitizeCfgRichText(JSON.parse(gr.data.biz_name));
-                  var GLOBAL_OVERWRITE = ['sharedGeminiKey', 'payRates', 'tierMins', 'sessionDur', 'mThresh', 'nThresh', 'bonusMult', 'metIncentive', 'starThresholds', 'npMax', 'cpl', 'delay', 'callingScript', 'refNotes', 'objections'];
+                  var GLOBAL_OVERWRITE = ['sharedGeminiKey', 'payRates', 'tierMins', 'sessionDur', 'mThresh', 'nThresh', 'bonusMult', 'metIncentive', 'starThresholds', 'npMax', 'cpl', 'delay'];
                   setCfg(p => {
                     var merged = {
                       ...p
@@ -5984,21 +6130,10 @@ function App() {
             }
           })(), (async () => {
             try {
-              var sr = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'shared_script').maybeSingle();
+              var sr = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'shared_script_' + myEmail).maybeSingle();
               if (sr.data && sr.data.biz_name) {
                 var s = JSON.parse(sr.data.biz_name);
-                if (s.html) {
-                  var sv = Array.isArray(s.versions) ? s.versions : [];
-                  setCfg(p => ({
-                    ...p,
-                    callingScript: _sanitizeRichHtml(s.html),
-                    refNotes: _sanitizeRichHtml(s.notes || p.refNotes || ''),
-                    objections: _normalizeObjections(s.objections || p.objections || []),
-                    scriptVersions: sv
-                  }));
-                  setScriptVersions(sv);
-                  DBG('[AutoDial] Loaded shared script from Main');
-                }
+                applySharedScriptPayload(s);
               }
             } catch (e) {}
           })(), (async () => {
@@ -7311,6 +7446,13 @@ function App() {
           });
           return _dedupAppts(next);
         });
+      }
+    }, {
+      key: 'shared_script',
+      enabled: _adminOnly,
+      skipHash: true,
+      apply: p => {
+        applySharedScriptPayload(p || {});
       }
     }, {
       key: 'payevt',
@@ -19023,6 +19165,47 @@ function App() {
     }
   }, "Auto-NI after N No Picks. Blank = use default (", cfg.npMax || 5, ")")), React.createElement("div", {
     style: {
+      marginBottom: 8,
+      padding: 10,
+      borderRadius: 10,
+      background: ac.shareScript ? 'var(--adim)' : 'var(--bg)',
+      border: '1px solid ' + (ac.shareScript ? 'rgba(99,102,241,.42)' : 'var(--border)')
+    }
+  }, React.createElement("label", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      cursor: 'pointer',
+      color: ac.shareScript ? 'var(--accent2)' : 'var(--text2)',
+      fontSize: 12,
+      fontWeight: 800
+    }
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: !!ac.shareScript,
+    onChange: e => {
+      var next = {
+        ...adminConfigs,
+        [em]: {
+          ...adminConfigs[em],
+          shareScript: e.target.checked,
+          scriptShareUpdatedAt: Date.now()
+        }
+      };
+      setAdminConfigs(next);
+      publishAdminScripts(next, cfg, scriptVersions);
+      toast(e.target.checked ? 'Script shared with ' + (ac.bizName || em) : 'Script sharing stopped for ' + (ac.bizName || em));
+    }
+  }), React.createElement("span", null, "\uD83D\uDCCB Share owner script")), React.createElement("p", {
+    style: {
+      margin: '5px 0 0 22px',
+      fontSize: 9,
+      color: 'var(--text3)',
+      lineHeight: 1.35
+    }
+  }, "Shares the saved calling script, reference notes, and objection handles with this admin only.")), React.createElement("div", {
+    style: {
       marginBottom: 8
     }
   }, React.createElement("label", {
@@ -19855,13 +20038,18 @@ function App() {
     onClick: async () => {
       if (!_SB) return;
       try {
+        var globalCfg = {
+          ...cfg
+        };
+        ['callingScript', 'refNotes', 'objections', 'scriptVersions', 'scriptVersionId', 'ownerObjectionSeed'].forEach(k => delete globalCfg[k]);
         await _SB.from('autodial_admin_config').upsert({
           admin_email: 'shared_globalcfg',
-          biz_name: JSON.stringify(cfg)
+          biz_name: JSON.stringify(globalCfg)
         }, {
           onConflict: 'admin_email'
         });
         publishAdminConfigs(adminConfigs);
+        publishAdminScripts(adminConfigs, cfg, scriptVersions);
         toast('☁️ All configs synced to admins!');
       } catch (e) {
         toast('Sync failed', 'err');
@@ -28004,7 +28192,7 @@ WHERE p.id IS NULL;`;
     key: o.id,
     className: 'ob-chip' + (activeObjectionId === o.id ? ' active' : ''),
     onClick: () => setActiveObjectionId(p => p === o.id ? '' : o.id),
-    title: o.answer
+    title: _htmlToPlain(o.answer, 220)
   }, o.title))) : React.createElement("p", {
     style: {
       margin: 0,
@@ -28040,15 +28228,21 @@ WHERE p.id IS NULL;`;
         color: 'var(--text3)',
         padding: 0
       }
-    }, "x")), React.createElement("p", {
+    }, "x")), React.createElement("div", {
+      className: "ob-answer",
       style: {
-        margin: 0,
-        color: 'var(--text)',
-        fontSize: 13,
-        lineHeight: 1.6,
-        whiteSpace: 'pre-wrap'
+        fontFamily: 'inherit'
+      },
+      dangerouslySetInnerHTML: {
+        __html: fillScript(ob.answer, cur || {
+          name: 'XXX',
+          phone: '',
+          age: '',
+          race: '',
+          gender: ''
+        })
       }
-    }, ob.answer), refEditing && React.createElement("div", {
+    }), refEditing && React.createElement("div", {
       style: {
         display: 'flex',
         gap: 6,
