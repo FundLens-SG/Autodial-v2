@@ -331,7 +331,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0022';
+window.APP_VERSION='2026.04.30.0001';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1731,6 +1731,23 @@ window.gCalShare={
 
 // ══════ APPOINTMENT DEFAULT DURATION ══════
 window.DEFAULT_APPT_DURATION=60; // minutes, can be overridden per appointment
+function _slotMinutes(v,fallback,min,max){
+  if(v===''||v===null||v===undefined)return fallback;
+  var num=Number(v);
+  if(!Number.isFinite(num))num=fallback;
+  num=Math.round(num);
+  min=Number.isFinite(Number(min))?Number(min):0;
+  max=Number.isFinite(Number(max))?Number(max):480;
+  return Math.min(max,Math.max(min,num));
+}
+function _formatSlotMinutes(mins){
+  var total=_slotMinutes(mins,0,0,1440);
+  if(total>=60){
+    var h=Math.floor(total/60),m=total%60;
+    return m?h+'h '+m+'m':h+'h';
+  }
+  return total+'m';
+}
 
 // ══════════════════════════════════════════════════════
 //  CLOUD SYNC — Cross-device persistence via Supabase
@@ -1867,6 +1884,8 @@ var SYNC_MAP = {
   starget: 'userState',
   mainMode: 'userState',
   apptDur: 'userState',
+  apptTravelBefore: 'userState',
+  apptTravelAfter: 'userState',
   slogClear: 'userState',
   totalStars: 'userState'
 };
@@ -4982,10 +5001,9 @@ function App() {
   var [showDeclined, setShowDeclined] = useState(load('showdecl') ?? false);
   var [calFilterOpen, setCalFilterOpen] = useState(false);
   var [callLog, setCallLog] = useState([]);
-  var [apptDuration, setApptDuration] = useState(() => {
-    var v = load('apptDur');
-    return v && v >= 15 && v <= 480 ? v : 60;
-  });
+  var [apptTravelBefore, setApptTravelBefore] = useState(() => _slotMinutes(load('apptTravelBefore'), 0, 0, 240));
+  var [apptDuration, setApptDuration] = useState(() => _slotMinutes(load('apptDur'), 60, 15, 480));
+  var [apptTravelAfter, setApptTravelAfter] = useState(() => _slotMinutes(load('apptTravelAfter'), 0, 0, 240));
   var [showWA, setShowWA] = useState(null);
   useEffect(() => {
     if (!showWA && _advanceAfterWARef.current) {
@@ -5679,6 +5697,32 @@ function App() {
       return def;
     }
   };
+  var slotBeforeMin = _slotMinutes(apptTravelBefore, 0, 0, 240);
+  var apptCoreMin = _slotMinutes(apptDuration, 60, 15, 480);
+  var slotAfterMin = _slotMinutes(apptTravelAfter, 0, 0, 240);
+  var slotFootprintMin = slotBeforeMin + apptCoreMin + slotAfterMin;
+  var slotTimingFields = [{
+    key: 'before',
+    label: 'Inbound Travel Buffer',
+    hint: 'Time protected after the previous event',
+    value: apptTravelBefore,
+    set: setApptTravelBefore,
+    min: 0
+  }, {
+    key: 'core',
+    label: 'Core Appointment Time',
+    hint: 'Client-facing meeting duration',
+    value: apptDuration,
+    set: setApptDuration,
+    min: 15
+  }, {
+    key: 'after',
+    label: 'Outbound Travel Buffer',
+    hint: 'Time protected before the next event',
+    value: apptTravelAfter,
+    set: setApptTravelAfter,
+    min: 0
+  }];
   useEffect(() => {
     save('leadFocusMode', leadFocusMode);
   }, [leadFocusMode]);
@@ -6451,17 +6495,24 @@ function App() {
   }, [incentives, myEmail]);
   useEffect(() => {
     save('apptDur', apptDuration);
-    cloudSave('apptDur', apptDuration);
+    save('apptTravelBefore', apptTravelBefore);
+    save('apptTravelAfter', apptTravelAfter);
+    cloudSave('apptDur', apptCoreMin);
+    cloudSave('apptTravelBefore', slotBeforeMin);
+    cloudSave('apptTravelAfter', slotAfterMin);
     if (_SB && _user && window._cloudReady) _SB.from('autodial_admin_config').upsert({
       admin_email: 'apptdur_' + _user.email.toLowerCase(),
       biz_name: JSON.stringify({
-        dur: apptDuration,
+        dur: apptCoreMin,
+        before: slotBeforeMin,
+        after: slotAfterMin,
+        footprint: slotFootprintMin,
         ts: Date.now()
       })
     }, {
       onConflict: 'admin_email'
     }).catch(function () {});
-  }, [apptDuration]);
+  }, [apptDuration, apptTravelBefore, apptTravelAfter, apptCoreMin, slotBeforeMin, slotAfterMin, slotFootprintMin]);
   useEffect(() => {
     save('calvm', calViewMode);
   }, [calViewMode]);
@@ -6916,7 +6967,9 @@ function App() {
             if (us.invitees?.length && !savedInvitees.length) setSavedInvitees(us.invitees);
             if (us.starget) setSessionTarget(us.starget);
             if (us.mainMode) setMainMode(us.mainMode);
-            if (us.apptDur) setApptDuration(us.apptDur);
+            if (us.apptDur) setApptDuration(_slotMinutes(us.apptDur, 60, 15, 480));
+            if (us.apptTravelBefore !== undefined) setApptTravelBefore(_slotMinutes(us.apptTravelBefore, 0, 0, 240));
+            if (us.apptTravelAfter !== undefined) setApptTravelAfter(_slotMinutes(us.apptTravelAfter, 0, 0, 240));
           }
         }
       } catch (e) {
@@ -6967,8 +7020,10 @@ function App() {
           var _cleaned = _sanitizeAdminCfgs(d);
           if (Object.keys(_cleaned).length) setAdminConfigs(_cleaned);
         }));
-        if (!load('apptDur')) _hsJobs.push(_hs('apptdur_' + myEmail, d => {
-          if (d.dur && d.dur !== 60) setApptDuration(d.dur);
+        _hsJobs.push(_hs('apptdur_' + myEmail, d => {
+          if (load('apptDur') === null && d.dur) setApptDuration(_slotMinutes(d.dur, 60, 15, 480));
+          if (load('apptTravelBefore') === null && d.before !== undefined) setApptTravelBefore(_slotMinutes(d.before, 0, 0, 240));
+          if (load('apptTravelAfter') === null && d.after !== undefined) setApptTravelAfter(_slotMinutes(d.after, 0, 0, 240));
         }));
         _hsJobs.push((async () => {
           try {
@@ -7480,7 +7535,9 @@ function App() {
             }
           }
           var ad = p('apptdur_');
-          if (ad?.dur) setApptDuration(prev => ad.dur !== prev ? ad.dur : prev);
+          if (ad?.dur) setApptDuration(prev => _slotMinutes(ad.dur, 60, 15, 480) !== prev ? _slotMinutes(ad.dur, 60, 15, 480) : prev);
+          if (ad?.before !== undefined) setApptTravelBefore(prev => _slotMinutes(ad.before, 0, 0, 240) !== prev ? _slotMinutes(ad.before, 0, 0, 240) : prev);
+          if (ad?.after !== undefined) setApptTravelAfter(prev => _slotMinutes(ad.after, 0, 0, 240) !== prev ? _slotMinutes(ad.after, 0, 0, 240) : prev);
           var sr = p('stars_');
           if (sr?.stars) setTotalStars(prev => sr.stars > prev ? sr.stars : prev);
           var st = p('stabs_');
@@ -10031,10 +10088,9 @@ function App() {
       setApptLocation('');
       setApptObs('');
       setApptInvite('');
-      setApptDuration(() => {
-        var v = load('apptDur');
-        return v && v >= 15 && v <= 480 ? v : 60;
-      });
+      setApptTravelBefore(() => _slotMinutes(load('apptTravelBefore'), 0, 0, 240));
+      setApptDuration(() => _slotMinutes(load('apptDur'), 60, 15, 480));
+      setApptTravelAfter(() => _slotMinutes(load('apptTravelAfter'), 0, 0, 240));
       setPendingShakyKey(null);
       setPickerCollapsed(false);
       setPickerWeekIdx(0);
@@ -14329,7 +14385,7 @@ function App() {
         background: 'linear-gradient(135deg,rgba(34,197,94,.6),rgba(16,185,129,.4))',
         boxShadow: '0 0 6px rgba(34,197,94,.4)'
       }
-    }), "= ", ((n(apptDuration, 60) || 60) / 60).toFixed((n(apptDuration, 60) || 60) % 60 === 0 ? 0 : 1), "h+ free slot"), React.createElement("span", null, "\xB7"), React.createElement("span", null, BIZ_START, "am\u2013", BIZ_END - 12, "pm"))), calFilterOpen && (() => {
+    }), "= ", _formatSlotMinutes(slotFootprintMin), "+ smart slot"), React.createElement("span", null, "\xB7"), React.createElement("span", null, BIZ_START, "am\u2013", BIZ_END - 12, "pm"))), calFilterOpen && (() => {
       var uniq = new Map();
       if (role === 'main') {
         (calList || []).forEach(c => {
@@ -14724,7 +14780,7 @@ function App() {
           end
         }));
         var _freeSlots = isPastDay ? [] : findFreeSlots(d.date, _slotEvs, BIZ_START, BIZ_END);
-        var _minMin = n(apptDuration, 60) || 60;
+        var _minMin = slotFootprintMin;
         return React.createElement("div", {
           key: 'col-' + d.key,
           style: {
@@ -14752,7 +14808,8 @@ function App() {
             className: "free-slot",
             title: 'Free · ' + hrsLabel + ' · click to book',
             onClick: gOk ? async () => {
-              var title = await promptAsync('New event title for ' + fmtDayMonth(d.date) + ' ' + s.start.toLocaleTimeString('en-SG', {
+              var _bookStart = new Date(s.start.getTime() + slotBeforeMin * 60000);
+              var title = await promptAsync('New event title for ' + fmtDayMonth(d.date) + ' ' + _bookStart.toLocaleTimeString('en-SG', {
                 hour: '2-digit',
                 minute: '2-digit',
                 hour12: true
@@ -14763,16 +14820,16 @@ function App() {
               if (!title) return;
               try {
                 toast('Creating event…', 'info');
-                var _dur = Math.min(_minMin, s.hours * 60);
-                var _end = new Date(s.start.getTime() + _dur * 60000);
-                var evt = await gCal.create(title, 'Created from AutoDial free slot', s.start.toISOString(), _end.toISOString(), [], myCfg.targetCalendarId || 'primary');
+                var _dur = Math.min(apptCoreMin, Math.max(15, Math.round(s.hours * 60) - slotBeforeMin - slotAfterMin));
+                var _end = new Date(_bookStart.getTime() + _dur * 60000);
+                var evt = await gCal.create(title, 'Created from AutoDial free slot', _bookStart.toISOString(), _end.toISOString(), [], myCfg.targetCalendarId || 'primary');
                 if (evt?.id) {
                   toast('✓ Event created');
                   setWeekEvents(p => [...p, {
                     id: evt.id,
                     summary: title,
                     start: {
-                      dateTime: s.start.toISOString()
+                        dateTime: _bookStart.toISOString()
                     },
                     end: {
                       dateTime: _end.toISOString()
@@ -14893,7 +14950,7 @@ function App() {
         end: new Date(ev.end?.dateTime || ev.start.dateTime)
       }));
       var freeSlots = isPast ? [] : findFreeSlots(d.date, _evWithTimes, BIZ_START, BIZ_END);
-      var bigSlots = freeSlots.filter(s => s.hours * 60 >= (n(apptDuration, 60) || 60));
+      var bigSlots = freeSlots.filter(s => s.hours * 60 >= slotFootprintMin);
       var totalFreeHrs = freeSlots.reduce((a, s) => a + s.hours, 0);
       return React.createElement("div", {
         key: d.key,
@@ -15042,7 +15099,7 @@ function App() {
             }, "\uD83D\uDCC1 ", ev._calName)));
           }
           var s = item.slot;
-          var isBig = s.hours * 60 >= (n(apptDuration, 60) || 60);
+          var isBig = s.hours * 60 >= slotFootprintMin;
           var timeStr = s.start.toLocaleTimeString('en-SG', {
             hour: '2-digit',
             minute: '2-digit',
@@ -15105,17 +15162,19 @@ function App() {
               if (!title) return;
               try {
                 toast('Creating event…', 'info');
-                var evt = await gCal.create(title, 'Created from AutoDial free slot', s.start.toISOString(), s.end.toISOString(), [], myCfg.targetCalendarId || 'primary');
+                var _bookStart = new Date(s.start.getTime() + slotBeforeMin * 60000);
+                var _bookEnd = new Date(_bookStart.getTime() + apptCoreMin * 60000);
+                var evt = await gCal.create(title, 'Created from AutoDial free slot', _bookStart.toISOString(), _bookEnd.toISOString(), [], myCfg.targetCalendarId || 'primary');
                 if (evt?.id) {
                   toast('✓ Event created');
                   setWeekEvents(p => [...p, {
                     id: evt.id,
                     summary: title,
                     start: {
-                      dateTime: s.start.toISOString()
+                        dateTime: _bookStart.toISOString()
                     },
                     end: {
-                      dateTime: s.end.toISOString()
+                        dateTime: _bookEnd.toISOString()
                     },
                     _calId: 'primary'
                   }]);
@@ -23077,25 +23136,49 @@ function App() {
       color: 'var(--text3)',
       marginBottom: 8
     }
-  }, "Calendar sharing is configured per-admin in ", React.createElement("b", null, "Admin Pay (Per-Person)"), " above. Each admin can be given access to specific calendars, with the option to hide event details (show as \"Busy\" only)."), React.createElement("div", null, React.createElement("label", {
+  }, "Calendar sharing is configured per-admin in ", React.createElement("b", null, "Admin Pay (Per-Person)"), " above. Each admin can be given access to specific calendars, with the option to hide event details (show as \"Busy\" only)."), React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))',
+      gap: 10
+    }
+  }, slotTimingFields.map(f => React.createElement("div", {
+    key: f.key
+  }, React.createElement("label", {
     style: {
       fontSize: 10,
       color: 'var(--text3)',
-      fontWeight: 700,
+      fontWeight: 800,
       display: 'block',
       marginBottom: 3
     }
-  }, "Default Appt Duration (mins)"), React.createElement("input", {
+  }, f.label, " (mins)"), React.createElement("input", {
     type: "number",
-    min: "15",
+    min: String(f.min),
+    max: f.key === 'core' ? "480" : "240",
     step: "15",
-    value: apptDuration,
-    onChange: e => setApptDuration(e.target.value === '' ? '' : +e.target.value),
+    value: f.value,
+    onChange: e => f.set(e.target.value === '' ? '' : +e.target.value),
     style: {
       textAlign: 'center',
-      width: 120
+      width: '100%',
+      fontWeight: 800
     }
-  })))), settingsSubtab === 'prefs' && React.createElement("div", {
+  }), React.createElement("p", {
+    style: {
+      margin: '4px 0 0',
+      fontSize: 9,
+      color: 'var(--text3)',
+      lineHeight: 1.35
+    }
+  }, f.hint)))), React.createElement("p", {
+    style: {
+      margin: '10px 0 0',
+      fontSize: 10,
+      color: 'var(--green)',
+      fontWeight: 800
+    }
+  }, "Smart slot footprint: ", _formatSlotMinutes(slotFootprintMin), " total (", _formatSlotMinutes(slotBeforeMin), " inbound + ", _formatSlotMinutes(apptCoreMin), " appointment + ", _formatSlotMinutes(slotAfterMin), " outbound)."))), settingsSubtab === 'prefs' && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 12,
@@ -25230,7 +25313,7 @@ WHERE p.id IS NULL;`;
     }
   }, (() => {
     try {
-      return fmtLongDay(apptDate + 'T' + apptTime) + ' · ' + apptTime + ' · ' + (apptDuration || 60) + ' min';
+      return fmtLongDay(apptDate + 'T' + apptTime) + ' · ' + apptTime + ' · ' + _formatSlotMinutes(apptCoreMin) + ' appointment / ' + _formatSlotMinutes(slotFootprintMin) + ' slot footprint';
     } catch (e) {
       return apptDate + ' ' + apptTime;
     }
@@ -25293,7 +25376,7 @@ WHERE p.id IS NULL;`;
     });
     var BIZ_START = 9,
       BIZ_END = 21,
-      MIN_HRS = 1.5;
+      MIN_HRS = Math.max(.25, slotFootprintMin / 60);
     return React.createElement("div", {
       style: {
         marginBottom: 14,
@@ -25407,7 +25490,7 @@ WHERE p.id IS NULL;`;
         borderRadius: 2,
         background: 'linear-gradient(135deg,#22c55e,#10b981)'
       }
-    }), "Free ", MIN_HRS, "h+"), React.createElement("span", {
+    }), "Smart fit ", _formatSlotMinutes(slotFootprintMin), "+"), React.createElement("span", {
       style: {
         display: 'inline-flex',
         alignItems: 'center',
@@ -25559,19 +25642,15 @@ WHERE p.id IS NULL;`;
           if (eh <= HR_START || sh >= HR_END) return null;
           var top = Math.max(0, (sh - HR_START) * HOUR_PX);
           var height = Math.max(16, (Math.min(eh, HR_END) - Math.max(sh, HR_START)) * HOUR_PX - 1);
-          var hh = String(s.start.getHours()).padStart(2, '0');
-          var mm = String(s.start.getMinutes()).padStart(2, '0');
+          var bookStart = new Date(s.start.getTime() + slotBeforeMin * 60000);
+          var hh = String(bookStart.getHours()).padStart(2, '0');
+          var mm = String(bookStart.getMinutes()).padStart(2, '0');
           var isSelectedSlot = selectedOnDay && apptTime === hh + ':' + mm;
           return React.createElement("div", {
             key: 'fs-' + si,
             onClick: () => {
-              var slotMins = Math.round(s.hours * 60);
               setApptDate(d.key);
               setApptTime(hh + ':' + mm);
-              setApptDuration(prev => {
-                var saved = Number(prev) || 60;
-                return Math.min(saved, slotMins);
-              });
               setPickerCollapsed(true);
               setTimeout(() => {
                 document.getElementById('appt-form-section')?.scrollIntoView({
@@ -25846,21 +25925,18 @@ WHERE p.id IS NULL;`;
           paddingTop: 6
         }
       }, "Past"), bigSlots.map((s, si) => {
-        var hh = String(s.start.getHours()).padStart(2, '0');
-        var mm = String(s.start.getMinutes()).padStart(2, '0');
-        var eh = String(s.end.getHours()).padStart(2, '0');
-        var em = String(s.end.getMinutes()).padStart(2, '0');
+        var bookStart = new Date(s.start.getTime() + slotBeforeMin * 60000);
+        var bookEnd = new Date(bookStart.getTime() + apptCoreMin * 60000);
+        var hh = String(bookStart.getHours()).padStart(2, '0');
+        var mm = String(bookStart.getMinutes()).padStart(2, '0');
+        var eh = String(bookEnd.getHours()).padStart(2, '0');
+        var em = String(bookEnd.getMinutes()).padStart(2, '0');
         var isSelectedSlot = selectedOnDay && apptTime === hh + ':' + mm;
         return React.createElement("button", {
           key: 'f' + si,
           onClick: () => {
-            var slotMins = Math.round(s.hours * 60);
             setApptDate(d.key);
             setApptTime(hh + ':' + mm);
-            setApptDuration(prev => {
-              var saved = Number(prev) || 60;
-              return Math.min(saved, slotMins);
-            });
             setPickerCollapsed(true);
             setTimeout(() => {
               document.getElementById('appt-form-section')?.scrollIntoView({
@@ -26061,7 +26137,7 @@ WHERE p.id IS NULL;`;
         textAlign: 'center',
         fontStyle: 'italic'
       }
-    }, MIN_HRS, "h min \xB7 ", BIZ_START, ":00\u2013", BIZ_END, ":00 \xB7 ", pickerWeekIdx + 1, "/", TOTAL_WEEKS, " weeks"));
+    }, _formatSlotMinutes(slotFootprintMin), " smart minimum \xB7 ", BIZ_START, ":00\u2013", BIZ_END, ":00 \xB7 ", pickerWeekIdx + 1, "/", TOTAL_WEEKS, " weeks"));
   })(), React.createElement("p", {
     id: "appt-form-section",
     style: {
@@ -26153,26 +26229,42 @@ WHERE p.id IS NULL;`;
   }, "Hint: Receptiveness, industry, tone, objections (questions \u2260 objections), and any observations that could help your specialist"), React.createElement("div", {
     style: {
       display: 'grid',
-      gridTemplateColumns: '1fr 1fr',
+      gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))',
       gap: 8,
       marginBottom: 8
     }
-  }, React.createElement("div", null, React.createElement("label", {
+  }, slotTimingFields.map(f => React.createElement("div", {
+    key: f.key
+  }, React.createElement("label", {
     style: {
-      fontSize: 10,
+      fontSize: 9,
       color: 'var(--text3)',
-      fontWeight: 700
+      fontWeight: 800,
+      display: 'block',
+      marginBottom: 3
     }
-  }, "Duration (mins)"), React.createElement("input", {
+  }, f.label), React.createElement("input", {
     type: "number",
-    value: apptDuration,
-    onChange: ev => setApptDuration(ev.target.value === '' ? '' : +ev.target.value),
+    min: String(f.min),
+    max: f.key === 'core' ? "480" : "240",
+    step: "15",
+    value: f.value,
+    onChange: ev => f.set(ev.target.value === '' ? '' : +ev.target.value),
     style: {
       fontSize: 12,
       textAlign: 'center',
-      padding: '8px'
+      padding: '8px',
+      width: '100%'
     }
-  }))), React.createElement("label", {
+  })))), React.createElement("p", {
+    style: {
+      margin: '-2px 0 10px',
+      fontSize: 10,
+      color: 'var(--green)',
+      fontWeight: 800,
+      lineHeight: 1.35
+    }
+  }, "AI Slot Finder searches for ", _formatSlotMinutes(slotFootprintMin), "+ gaps: ", _formatSlotMinutes(slotBeforeMin), " inbound + ", _formatSlotMinutes(apptCoreMin), " appointment + ", _formatSlotMinutes(slotAfterMin), " outbound."), React.createElement("label", {
     onClick: () => setApptShaky(p => !p),
     style: {
       display: 'flex',
@@ -26316,7 +26408,7 @@ WHERE p.id IS NULL;`;
     disabled: !apptDate || !apptTime,
     onClick: async () => {
       if (!apptDate || !apptTime) return toast('Pick a slot above or set date & time', 'err');
-      var dur = apptDuration || 60;
+      var dur = apptCoreMin;
       var lead = apptLead;
       if (rescheduleTargetAppt) {
         try {
