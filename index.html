@@ -5179,11 +5179,42 @@ function App() {
   var [showHelp, setShowHelp] = useState(!localStorage.getItem('autodial_seen_help'));
   var [showMoreMenu, setShowMoreMenu] = useState(false);
   var [showActivityDrawer, setShowActivityDrawer] = useState(false);
+  var [dialogRequest, setDialogRequest] = useState(null);
+  var [showSetupWizard, setShowSetupWizard] = useState(false);
+  var [setupWizardDismissed, setSetupWizardDismissed] = useState(localStorage.getItem('autodial_setup_wizard_dismissed') === '1');
   var [settingsSearch, setSettingsSearch] = useState('');
   var [settingsSubtab, setSettingsSubtab] = useState(load('settingsSubtab') || 'setup');
+  var settingsSimplified = localStorage.getItem('autodial_settings_v2_disabled') !== '1';
+  var [settingsShowAll, setSettingsShowAll] = useState(!settingsSimplified);
   useEffect(() => {
     save('settingsSubtab', settingsSubtab);
   }, [settingsSubtab]);
+  var resolveDialog = useCallback(value => {
+    setDialogRequest(req => {
+      if (req && req.resolve) req.resolve(value);
+      return null;
+    });
+  }, []);
+  var confirmAsync = useCallback((message, opts = {}) => new Promise(resolve => setDialogRequest({
+    kind: 'confirm',
+    title: opts.title || 'Confirm action',
+    message,
+    confirmLabel: opts.confirmLabel || 'Confirm',
+    cancelLabel: opts.cancelLabel || 'Cancel',
+    danger: opts.danger !== false,
+    resolve
+  })), []);
+  var promptAsync = useCallback((message, defaultValue = '', opts = {}) => new Promise(resolve => setDialogRequest({
+    kind: 'prompt',
+    title: opts.title || 'Input needed',
+    message,
+    value: defaultValue || '',
+    placeholder: opts.placeholder || '',
+    multiline: !!opts.multiline,
+    confirmLabel: opts.confirmLabel || 'Save',
+    cancelLabel: opts.cancelLabel || 'Cancel',
+    resolve
+  })), []);
   var fileRef = useRef(null);
   var cdRef = useRef(null);
   var timerRef = useRef(null);
@@ -5617,10 +5648,16 @@ function App() {
     if (activeObjectionId && !clean.some(o => o.id === activeObjectionId)) setActiveObjectionId('');
     return clean;
   }, [activeObjectionId]);
-  var addObjection = useCallback(() => {
-    var title = prompt('Objection title (e.g. I already have an agent)');
+  var addObjection = useCallback(async () => {
+    var title = await promptAsync('Objection title', '', {
+      title: 'Add objection',
+      placeholder: 'I already have an agent'
+    });
     if (!title) return;
-    var answer = prompt('Suggested answer / talk track');
+    var answer = await promptAsync('Suggested answer / talk track', '', {
+      title: 'Add talk track',
+      multiline: true
+    });
     if (!answer) return;
     var item = {
       id: 'obj_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
@@ -5630,12 +5667,17 @@ function App() {
     saveObjections([...(cfg.objections || []), item]);
     setActiveObjectionId(item.id);
     toast('Objection added');
-  }, [cfg.objections, saveObjections]);
-  var editObjection = useCallback(item => {
+  }, [cfg.objections, saveObjections, promptAsync]);
+  var editObjection = useCallback(async item => {
     if (!item) return;
-    var title = prompt('Objection title', item.title || '');
+    var title = await promptAsync('Objection title', item.title || '', {
+      title: 'Edit objection'
+    });
     if (!title) return;
-    var answer = prompt('Suggested answer / talk track', _htmlToPlain(item.answer || '', 4000));
+    var answer = await promptAsync('Suggested answer / talk track', _htmlToPlain(item.answer || '', 4000), {
+      title: 'Edit talk track',
+      multiline: true
+    });
     if (!answer) return;
     saveObjections((cfg.objections || []).map(o => o.id === item.id ? {
       ...o,
@@ -5644,12 +5686,15 @@ function App() {
     } : o));
     setActiveObjectionId(item.id);
     toast('Objection updated');
-  }, [cfg.objections, saveObjections]);
-  var removeObjection = useCallback(item => {
-    if (!item || !confirm('Remove objection "' + item.title + '"?')) return;
+  }, [cfg.objections, saveObjections, promptAsync]);
+  var removeObjection = useCallback(async item => {
+    if (!item || !(await confirmAsync('Remove objection "' + item.title + '"?', {
+      title: 'Remove objection',
+      confirmLabel: 'Remove'
+    }))) return;
     saveObjections((cfg.objections || []).filter(o => o.id !== item.id));
     toast('Objection removed');
-  }, [cfg.objections, saveObjections]);
+  }, [cfg.objections, saveObjections, confirmAsync]);
   var moveObjection = useCallback((item, dir) => {
     if (!item) return;
     var list = _normalizeObjections(cfg.objections || []);
@@ -10319,9 +10364,102 @@ function App() {
   var isCallMode = role === 'admin' || role === 'main' && mainMode === 'call';
   var isManageMode = role === 'main' && mainMode === 'manage';
   var tabs = isCallMode ? callTabs : manageTabs;
+  var buildGuidedSetupItems = () => {
+    var adminLinked = !!(myCfg.timesheetId || cfg.sheetId || myCfg.sheetTab || cfg.sheetTab);
+    if (role === 'admin') return [{
+      key: 'main',
+      label: 'Main workspace',
+      detail: adminLinked ? 'Leads and rules synced by Main' : 'Waiting for Main to assign workspace',
+      done: adminLinked
+    }, {
+      key: 'sheet',
+      label: 'Leads sheet',
+      detail: myCfg._tsName || cfg._sheetName || (adminLinked ? 'Shared by Main' : 'Not linked yet'),
+      done: !!(myCfg.timesheetId || cfg.sheetId)
+    }, {
+      key: 'tab',
+      label: 'Leads tab',
+      detail: myCfg.sheetTab || cfg.sheetTab || 'Main has not selected a tab',
+      done: !!(myCfg.sheetTab || cfg.sheetTab)
+    }, {
+      key: 'columns',
+      label: 'Detected columns',
+      detail: detectedColMap ? 'Column map synced' : 'Pending Main review or next fetch',
+      done: !!detectedColMap
+    }, {
+      key: 'calendar',
+      label: 'Calendar',
+      detail: myCfg.targetCalendarId || calShares[0]?.calendar_name || (weekEvents.length ? weekEvents.length + ' events loaded' : 'Main controls calendar access'),
+      done: !!(myCfg.targetCalendarId || calShares.length || weekEvents.length)
+    }];
+    return [{
+      key: 'google',
+      label: 'Google workspace',
+      detail: 'Sheets, Drive, and Calendar access',
+      done: gOk,
+      action: connectG
+    }, {
+      key: 'sheet',
+      label: 'Leads source',
+      detail: cfg.sheetTab ? 'Sheet tab: ' + cfg.sheetTab : 'Pick sheet and tab',
+      done: !!((cfg.sheetId || myCfg.timesheetId) && (cfg.sheetTab || myCfg.sheetTab)),
+      action: () => setSettingsSubtab('integr')
+    }, {
+      key: 'columns',
+      label: 'Detected columns',
+      detail: detectedColMap ? 'Name, phone, status map ready' : 'Review after fetching leads',
+      done: !!detectedColMap,
+      action: () => rawSheet ? setShowColMap(true) : setTab('leads')
+    }, {
+      key: 'calendar',
+      label: 'Calendar destination',
+      detail: myCfg.targetCalendarId || (calList.length ? calList.length + ' calendars loaded' : 'Choose calendar sharing'),
+      done: !!(gOk && (calList.length || myCfg.targetCalendarId)),
+      action: () => setTab('cal')
+    }, {
+      key: 'team',
+      label: 'Admin staff access',
+      detail: Object.keys(adminConfigs || {}).length + ' staff configured',
+      done: Object.keys(adminConfigs || {}).length > 0,
+      action: () => isManageMode ? setSettingsSubtab('team') : setMainMode('manage')
+    }];
+  };
+  var guidedSetupItems = buildGuidedSetupItems();
+  var guidedDoneCount = guidedSetupItems.filter(x => x.done).length;
+  var guidedSetupComplete = guidedDoneCount === guidedSetupItems.length;
+  var settingsAllTabs = [['setup', 'Setup'], ['prefs', 'Calling'], ['integr', role === 'admin' ? 'Linked' : 'Connect'], ['ai', 'AI Import'], ['data', 'Sync'], ...(isManageMode ? [['team', 'Team']] : []), ...(isCreatorUser ? [['owner', 'Owner']] : [])];
+  var settingsRoleTabs = settingsShowAll ? settingsAllTabs : role === 'admin' ? [['setup', 'Setup'], ['integr', 'Linked'], ['prefs', 'Calling'], ['ai', 'AI Import']] : isManageMode ? [['setup', 'Setup'], ['team', 'Team'], ['integr', 'Connect'], ['ai', 'AI Import'], ['data', 'Sync'], ...(isCreatorUser ? [['owner', 'Owner']] : [])] : [['setup', 'Setup'], ['prefs', 'Calling'], ['integr', 'Connect'], ['ai', 'AI Import'], ['data', 'Sync']];
+  useEffect(() => {
+    if (tab !== 'settings') return;
+    if (settingsRoleTabs.some(([k]) => k === settingsSubtab)) return;
+    setSettingsSubtab(settingsRoleTabs[0]?.[0] || 'setup');
+  }, [tab, settingsSubtab, settingsShowAll, settingsSimplified, role, mainMode, isCreatorUser]);
+  useEffect(() => {
+    if (setupWizardDismissed || guidedSetupComplete) return;
+    var t = setTimeout(() => setShowSetupWizard(true), 700);
+    return () => clearTimeout(t);
+  }, [setupWizardDismissed, guidedSetupComplete, role, mainMode]);
   var readiness = getReadiness(cur);
   var todayKey = getTodaySGT();
   var priorityCallbacks = (cbQueue || []).filter(cb => cb.status !== 'called' && cb.scheduled_date && cb.scheduled_date <= todayKey).sort((a, b) => String(a.scheduled_date + ' ' + a.scheduled_time).localeCompare(String(b.scheduled_date + ' ' + b.scheduled_time)));
+  var operatorQueue = [];
+  try {
+    var _opSeen = new Set();
+    var _opAfter = curIdx >= 0 ? curIdx : -1;
+    for (var _opI = 0; _opI < 3; _opI++) {
+      var _opIdx = getNextDialable(leads, _opAfter, {
+        ...dialFilters()
+      });
+      if (_opIdx < 0 || _opSeen.has(_opIdx)) break;
+      _opSeen.add(_opIdx);
+      operatorQueue.push({
+        idx: _opIdx,
+        lead: leads[_opIdx]
+      });
+      _opAfter = _opIdx;
+    }
+  } catch (_opErr) {}
+  var operatorCallbacks = priorityCallbacks.slice(0, 3);
   var getLiveActor = f => {
     var d = f?.data || {};
     var details = d.details || {};
@@ -10522,8 +10660,11 @@ function App() {
       border: '1px solid rgba(99,102,241,.25)'
     }
   }, "?"), React.createElement("button", {
-    onClick: () => {
-      if (confirm('Sign out of AutoDial?')) authLogout();
+    onClick: async () => {
+      if (await confirmAsync('Sign out of AutoDial?', {
+        title: 'Sign out',
+        confirmLabel: 'Sign out'
+      })) authLogout();
     },
     title: "Sign out",
     style: {
@@ -11259,6 +11400,299 @@ function App() {
     className: "card",
     style: {
       marginBottom: 10,
+      borderColor: running ? 'rgba(34,197,94,.28)' : 'rgba(99,102,241,.22)',
+      background: 'linear-gradient(135deg,rgba(16,185,129,.06),rgba(99,102,241,.04))'
+    }
+  }, React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 10
+    }
+  }, React.createElement("div", null, React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      fontWeight: 900,
+      letterSpacing: '.08em',
+      textTransform: 'uppercase',
+      color: 'var(--green)'
+    }
+  }, "Operator Mode"), React.createElement("p", {
+    className: "mono",
+    style: {
+      margin: '2px 0 0',
+      fontSize: 28,
+      fontWeight: 900,
+      color: '#f1f5f9'
+    }
+  }, session && !session.ended ? fmtTime(elapsed) : '00:00:00')), React.createElement("span", {
+    className: "pill",
+    style: {
+      background: running ? 'var(--gdim)' : 'var(--bg3)',
+      color: running ? 'var(--green)' : 'var(--text3)'
+    }
+  }, running ? 'LIVE' : pending.length + ' READY')), React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: '1.4fr .9fr',
+      gap: 8,
+      marginBottom: 8
+    }
+  }, React.createElement("div", {
+    style: {
+      padding: 12,
+      borderRadius: 12,
+      background: 'var(--bg)',
+      border: '1px solid var(--border)'
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: '0 0 3px',
+      fontSize: 10,
+      fontWeight: 800,
+      color: 'var(--text3)',
+      textTransform: 'uppercase',
+      letterSpacing: '.08em'
+    }
+  }, "Current lead"), cur && running ? React.createElement(React.Fragment, null, React.createElement("h3", {
+    style: {
+      margin: 0,
+      fontSize: 18,
+      fontWeight: 900,
+      color: '#fff',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap'
+    }
+  }, cur.name || 'Unnamed'), React.createElement("p", {
+    className: "mono",
+    style: {
+      margin: '2px 0 0',
+      fontSize: 13,
+      color: 'var(--accent2)'
+    }
+  }, cur.phone || 'No phone'), React.createElement("p", {
+    style: {
+      margin: '5px 0 0',
+      fontSize: 10,
+      color: 'var(--text3)',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap'
+    }
+  }, cur.notes || cur.email || 'No notes')) : React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 12,
+      color: 'var(--text3)'
+    }
+  }, pending.length ? 'Ready to start' : 'No callable leads')), React.createElement("div", {
+    style: {
+      display: 'grid',
+      gap: 6
+    }
+  }, !running ? React.createElement("button", {
+    onClick: () => startDial(),
+    disabled: !pending.length,
+    style: {
+      padding: '12px 10px',
+      borderRadius: 12,
+      background: 'linear-gradient(135deg,#22c55e,#16a34a)',
+      color: '#fff',
+      fontSize: 13,
+      fontWeight: 900,
+      opacity: pending.length ? 1 : .45
+    }
+  }, "Start") : React.createElement("button", {
+    onClick: pauseDial,
+    style: {
+      padding: '12px 10px',
+      borderRadius: 12,
+      background: 'var(--amdim)',
+      color: 'var(--amber)',
+      fontSize: 13,
+      fontWeight: 900,
+      border: '1px solid rgba(210,153,34,.25)'
+    }
+  }, "Pause"), running && React.createElement("button", {
+    onClick: async () => {
+      if (await confirmAsync('End this session?', {
+        title: 'End session',
+        confirmLabel: 'End'
+      })) endSession();
+    },
+    style: {
+      padding: '10px',
+      borderRadius: 12,
+      background: 'var(--rdim)',
+      color: 'var(--red)',
+      fontSize: 12,
+      fontWeight: 900,
+      border: '1px solid rgba(248,81,73,.28)'
+    }
+  }, "End"))), cur && running && phase === 'calling' && React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(4,1fr)',
+      gap: 6,
+      marginBottom: 8
+    }
+  }, [['np', 'NP', 'var(--amber)', 'var(--amdim)'], ['cb', 'CB', 'var(--blue)', 'var(--bdim)'], ['ni', 'NI', 'var(--red)', 'var(--rdim)'], ['set', 'Set', 'var(--green)', 'var(--gdim)']].map(([s, label, color, bg]) => React.createElement("button", {
+    key: s,
+    onClick: () => s === 'cb' ? (setShowCb(true), setCbDate(''), setCbTime('')) : handleOutcome(s),
+    disabled: s === 'set' && (setDone || showPostCall?.status === 'set'),
+    style: {
+      padding: '11px 0',
+      borderRadius: 12,
+      background: bg,
+      color,
+      fontSize: 12,
+      fontWeight: 900,
+      border: '1px solid rgba(255,255,255,.06)',
+      opacity: s === 'set' && (setDone || showPostCall?.status === 'set') ? .5 : 1
+    }
+  }, label))), React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: '1fr 1fr',
+      gap: 8
+    }
+  }, React.createElement("div", {
+    style: {
+      padding: 10,
+      borderRadius: 12,
+      background: 'var(--bg)',
+      border: '1px solid var(--border)'
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: '0 0 6px',
+      fontSize: 10,
+      fontWeight: 900,
+      color: 'var(--text3)',
+      textTransform: 'uppercase',
+      letterSpacing: '.08em'
+    }
+  }, "Next 3"), operatorQueue.length ? operatorQueue.map(item => React.createElement("button", {
+    key: item.idx,
+    onClick: () => running ? proceedToLead(item.idx) : setCurIdx(item.idx),
+    style: {
+      width: '100%',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 6,
+      padding: '7px 0',
+      background: 'transparent',
+      color: 'var(--text2)',
+      borderRadius: 0,
+      borderTop: '1px solid var(--border)',
+      textAlign: 'left'
+    }
+  }, React.createElement("span", {
+    style: {
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap',
+      fontSize: 11,
+      fontWeight: 800
+    }
+  }, item.lead?.name || item.lead?.phone || 'Lead'), React.createElement("span", {
+    className: "pill",
+    style: {
+      background: 'var(--bg3)',
+      color: 'var(--text3)'
+    }
+  }, item.idx + 1))) : React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: 'var(--text3)'
+    }
+  }, "Queue clear")), React.createElement("div", {
+    style: {
+      padding: 10,
+      borderRadius: 12,
+      background: 'var(--bg)',
+      border: '1px solid var(--border)'
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: '0 0 6px',
+      fontSize: 10,
+      fontWeight: 900,
+      color: 'var(--text3)',
+      textTransform: 'uppercase',
+      letterSpacing: '.08em'
+    }
+  }, "Due CB"), operatorCallbacks.length ? operatorCallbacks.map(c => React.createElement("div", {
+    key: c.id || c.lead_phone + c.scheduled_date,
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      gap: 6,
+      padding: '7px 0',
+      borderTop: '1px solid var(--border)',
+      fontSize: 11
+    }
+  }, React.createElement("span", {
+    style: {
+      color: '#f1f5f9',
+      fontWeight: 800,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap'
+    }
+  }, c.lead_name || c.lead_phone), React.createElement("span", {
+    className: "mono",
+    style: {
+      color: c.scheduled_date < todayKey ? 'var(--red)' : 'var(--blue)'
+    }
+  }, c.scheduled_date < todayKey ? 'late' : c.scheduled_time || 'today'))) : React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 11,
+      color: 'var(--text3)'
+    }
+  }, "None due"))), undoInfo && React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 8,
+      marginTop: 8,
+      padding: '9px 10px',
+      borderRadius: 12,
+      background: 'var(--amdim)',
+      border: '1px solid rgba(240,180,41,.25)'
+    }
+  }, React.createElement("span", {
+    style: {
+      fontSize: 11,
+      fontWeight: 800,
+      color: 'var(--amber)',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap'
+    }
+  }, "Last: ", undoInfo.status.toUpperCase(), " - ", undoInfo.name), React.createElement("button", {
+    onClick: doUndo,
+    style: {
+      padding: '6px 12px',
+      borderRadius: 9,
+      background: 'rgba(240,180,41,.16)',
+      color: 'var(--amber)',
+      fontSize: 11,
+      fontWeight: 900,
+      border: '1px solid rgba(240,180,41,.25)'
+    }
+  }, "Undo"))), React.createElement("div", {
+    className: "card",
+    style: {
+      marginBottom: 10,
       padding: 12,
       borderColor: 'rgba(99,102,241,.22)',
       background: 'linear-gradient(135deg,rgba(99,102,241,.06),rgba(88,166,255,.03))'
@@ -11403,8 +11837,11 @@ function App() {
       fontSize: 10
     }
   }, n(session.selectedSlot.hours, 5), "h \uD83C\uDFAF", n(session.selectedSlot.apptsBar, 2)), React.createElement("button", {
-    onClick: () => {
-      if (confirm('End session?')) endSession();
+    onClick: async () => {
+      if (await confirmAsync('End session?', {
+        title: 'End session',
+        confirmLabel: 'End'
+      })) endSession();
     },
     style: {
       padding: '5px 10px',
@@ -12687,8 +13124,11 @@ function App() {
       boxShadow: '0 6px 24px rgba(245,158,11,.3)'
     }
   }, "\u23F8 Pause"), React.createElement("button", {
-    onClick: () => {
-      if (confirm('End this session?')) endSession();
+    onClick: async () => {
+      if (await confirmAsync('End this session?', {
+        title: 'End session',
+        confirmLabel: 'End'
+      })) endSession();
     },
     style: {
       width: '100%',
@@ -13859,11 +14299,14 @@ function App() {
             className: "free-slot",
             title: 'Free · ' + hrsLabel + ' · click to book',
             onClick: gOk ? async () => {
-              var title = prompt('New event title for ' + fmtDayMonth(d.date) + ' ' + s.start.toLocaleTimeString('en-SG', {
+              var title = await promptAsync('New event title for ' + fmtDayMonth(d.date) + ' ' + s.start.toLocaleTimeString('en-SG', {
                 hour: '2-digit',
                 minute: '2-digit',
                 hour12: true
-              }) + ':');
+              }) + ':', '', {
+                title: 'Create calendar event',
+                placeholder: 'Call Winnie'
+              });
               if (!title) return;
               try {
                 toast('Creating event…', 'info');
@@ -14202,7 +14645,10 @@ function App() {
             }
           }, isBig ? '✨ Free · ' : 'Gap · ', hrsLabel)), isBig && gOk && React.createElement("button", {
             onClick: async () => {
-              var title = prompt('New event title (e.g. "Call Winnie", "Prep meeting"):');
+              var title = await promptAsync('New event title', '', {
+                title: 'Create calendar event',
+                placeholder: 'Call Winnie'
+              });
               if (!title) return;
               try {
                 toast('Creating event…', 'info');
@@ -14323,7 +14769,10 @@ function App() {
     onClick: async () => {
       var _adminEmails = Object.keys(adminConfigs || {}).filter(em => em.includes('@') && em.toLowerCase() !== myEmail.toLowerCase());
       var _scope = [myEmail, ..._adminEmails];
-      if (!confirm('⚠️ Delete ALL ' + appointments.length + ' appointments?\n\nThis wipes Main + every managed admin (' + _adminEmails.length + ' admins) and cannot be undone.')) return;
+      if (!(await confirmAsync('Delete ALL ' + appointments.length + ' appointments?\n\nThis wipes Main + every managed admin (' + _adminEmails.length + ' admins) and cannot be undone.', {
+        title: 'Delete all appointments',
+        confirmLabel: 'Delete all'
+      }))) return;
       toast('🗑 Wiping all appointments…', 'info');
       try {
         var wiped = await clearApptsForAdmins(_scope);
@@ -14493,7 +14942,10 @@ function App() {
       }
   }, "\uD83E\uDE81 Fly Kite"), React.createElement("button", {
       onClick: async () => {
-        if (!confirm('Delete ' + _selCount + ' selected appointment' + (_selCount === 1 ? '' : 's') + '?')) return;
+        if (!(await confirmAsync('Delete ' + _selCount + ' selected appointment' + (_selCount === 1 ? '' : 's') + '?', {
+          title: 'Delete selected appointments',
+          confirmLabel: 'Delete'
+        }))) return;
         var _toNuke = appointments.filter(a => selectedAppts.has(a.id) && a.calEventId);
         if (_toNuke.length && window.gCal) {
           _toNuke.forEach(a => {
@@ -15919,8 +16371,11 @@ function App() {
           fontWeight: 700
         }
       }, "\uD83D\uDCE7 Email"), React.createElement("button", {
-        onClick: () => {
-          if (!confirm('Delete Cycle ' + c.cycleNum + ' for ' + _nm + '?\n\nThis will unlock the archived sessions so they appear in the current cycle again.')) return;
+        onClick: async () => {
+          if (!(await confirmAsync('Delete Cycle ' + c.cycleNum + ' for ' + _nm + '?\n\nThis will unlock the archived sessions so they appear in the current cycle again.', {
+            title: 'Delete payment cycle',
+            confirmLabel: 'Delete cycle'
+          }))) return;
           setAdminSessions(p => ({
             ...p,
             [c.admin]: (p[c.admin] || []).map(s => s.cycleId === c.id ? {
@@ -15981,8 +16436,11 @@ function App() {
         margin: 0
       }
     }, "\uD83D\uDCCB Payment History"), React.createElement("button", {
-      onClick: () => {
-        if (!confirm('⚠️ Clear ALL ' + paymentHistory.length + ' payment records?\n\nThis wipes the local history list. Admins keep their own copies of the payment notifications.')) return;
+      onClick: async () => {
+        if (!(await confirmAsync('Clear ALL ' + paymentHistory.length + ' payment records?\n\nThis wipes the local history list. Admins keep their own copies of the payment notifications.', {
+          title: 'Clear payment history',
+          confirmLabel: 'Clear'
+        }))) return;
         setPaymentHistory([]);
         save('payh', []);
         cloudSave('payh', []);
@@ -16303,8 +16761,11 @@ function App() {
         color: 'var(--text3)'
       }
     }, isManageMode ? _allAdminSessions.length : sessionLog.length, " sessions"), isCallMode && sessionLog.length > 0 && React.createElement("button", {
-      onClick: () => {
-        if (!confirm('⚠️ Delete ALL ' + sessionLog.length + ' sessions?\n\nThis will reset pay history and cannot be undone.')) return;
+      onClick: async () => {
+        if (!(await confirmAsync('Delete ALL ' + sessionLog.length + ' sessions?\n\nThis will reset pay history and cannot be undone.', {
+          title: 'Delete all sessions',
+          confirmLabel: 'Delete all'
+        }))) return;
         Promise.all(sessionLog.map(s => syncTimesheetSession(s, {
           status: 'Deleted',
           action: 'Cleared by ' + userName
@@ -16325,8 +16786,11 @@ function App() {
         border: '1px solid rgba(248,81,73,.2)'
       }
     }, "\uD83D\uDDD1 Clear All"), isManageMode && _allAdminSessions.length > 0 && React.createElement("button", {
-      onClick: () => {
-        if (!confirm('⚠️ Clear ALL admin sessions from this view?\n\nThis only clears the cached list (' + _allAdminSessions.length + ' sessions across ' + _adminEntries.length + ' admins). Admins keep their own copies.')) return;
+      onClick: async () => {
+        if (!(await confirmAsync('Clear ALL admin sessions from this view?\n\nThis only clears the cached list (' + _allAdminSessions.length + ' sessions across ' + _adminEntries.length + ' admins). Admins keep their own copies.', {
+          title: 'Clear admin sessions',
+          confirmLabel: 'Clear'
+        }))) return;
         var _keys = [];
         Object.entries(adminSessions).forEach(([em, list]) => {
           (Array.isArray(list) ? list : []).forEach(s => {
@@ -16506,8 +16970,11 @@ function App() {
           fontWeight: 600
         }
       }, "\u2713 Mark Paid"), isCallMode && React.createElement("button", {
-        onClick: () => {
-          if (!confirm('Delete this session?')) return;
+        onClick: async () => {
+          if (!(await confirmAsync('Delete this session?', {
+            title: 'Delete session',
+            confirmLabel: 'Delete'
+          }))) return;
           syncTimesheetSession(s, {
             status: 'Deleted',
             action: 'Deleted by ' + userName
@@ -16698,8 +17165,11 @@ function App() {
           fontWeight: 600
         }
       }, "\u2713 Mark Paid"), React.createElement("button", {
-        onClick: () => {
-          if (!confirm('Delete this session for ' + _name + '?')) return;
+        onClick: async () => {
+          if (!(await confirmAsync('Delete this session for ' + _name + '?', {
+            title: 'Delete session',
+            confirmLabel: 'Delete'
+          }))) return;
           gTimesheet.updateRow(_ac.timesheetId || myCfg.timesheetId || cfg.sheetId, s, {
             status: 'Deleted',
             action: 'Deleted by ' + userName
@@ -16905,8 +17375,11 @@ function App() {
           },
           title: "Mark paid"
         }, "\u2713"), role === 'main' && React.createElement("button", {
-          onClick: () => {
-            if (!confirm('Delete this incentive for ' + (x.leadName || '') + '?\n\nAmount: $' + (x.amount || 0).toFixed(2))) return;
+          onClick: async () => {
+            if (!(await confirmAsync('Delete this incentive for ' + (x.leadName || '') + '?\n\nAmount: $' + (x.amount || 0).toFixed(2), {
+              title: 'Delete incentive',
+              confirmLabel: 'Delete'
+            }))) return;
             setIncentives(p => p.filter((_, j) => j !== _i));
             toast('Incentive deleted');
           },
@@ -18668,7 +19141,7 @@ function App() {
       fontSize: 11,
       color: 'var(--text3)'
     }
-  }, "Quick jump"), [['setup', 'Setup checklist'], ['integr', role === 'admin' ? 'Synced workspace' : 'Google, sheets, calendar'], ['ai', 'AI import review'], ['data', 'Sync diagnostics'], ['team', 'Admins and pay'], ['prefs', 'Calling preferences']].filter(([k, label]) => label.toLowerCase().includes(settingsSearch.toLowerCase()) && (k !== 'team' || isManageMode)).map(([k, label]) => React.createElement("button", {
+  }, "Quick jump"), [['setup', 'Setup checklist'], ['integr', role === 'admin' ? 'Synced workspace' : 'Google, sheets, calendar'], ['ai', 'AI import review'], ['data', 'Sync diagnostics'], ['team', 'Admins and pay'], ['prefs', 'Calling preferences'], ['owner', 'Owner controls']].filter(([k, label]) => label.toLowerCase().includes(settingsSearch.toLowerCase()) && settingsAllTabs.some(([tabKey]) => tabKey === k)).map(([k, label]) => React.createElement("button", {
     key: k,
     onClick: () => {
       setSettingsSubtab(k);
@@ -18685,6 +19158,42 @@ function App() {
       border: '1px solid var(--border)'
     }
   }, label))), React.createElement("div", {
+    className: "card",
+    style: {
+      marginBottom: 10,
+      padding: 10,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+      borderColor: settingsShowAll ? 'var(--border)' : 'rgba(99,102,241,.24)'
+    }
+  }, React.createElement("div", null, React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 12,
+      fontWeight: 900,
+      color: '#f1f5f9'
+    }
+  }, settingsShowAll ? 'All settings' : role === 'admin' ? 'Admin settings' : isManageMode ? 'Main management settings' : 'Main calling settings'), React.createElement("p", {
+    style: {
+      margin: '2px 0 0',
+      fontSize: 10,
+      color: 'var(--text3)'
+    }
+  }, settingsShowAll ? 'Full settings list visible' : 'Role view hides panels you usually do not need')), React.createElement("button", {
+    onClick: () => setSettingsShowAll(p => !p),
+    style: {
+      flexShrink: 0,
+      padding: '8px 11px',
+      borderRadius: 10,
+      background: settingsShowAll ? 'var(--bg3)' : 'var(--adim)',
+      color: settingsShowAll ? 'var(--text2)' : 'var(--accent2)',
+      fontSize: 11,
+      fontWeight: 900,
+      border: '1px solid ' + (settingsShowAll ? 'var(--border)' : 'rgba(99,102,241,.3)')
+    }
+  }, settingsShowAll ? 'Role View' : 'Show All')), React.createElement("div", {
     style: {
       display: 'flex',
       gap: 6,
@@ -18696,7 +19205,7 @@ function App() {
       overflowX: 'auto',
       WebkitOverflowScrolling: 'touch'
     }
-  }, [['setup', 'Setup'], ['prefs', 'Calling'], ['integr', role === 'admin' ? 'Linked' : 'Connect'], ['ai', 'AI Import'], ['data', 'Sync'], ...(isManageMode ? [['team', 'Team']] : []), ...(isCreatorUser ? [['owner', 'Owner']] : [])].map(([_k, _lbl]) => React.createElement("button", {
+  }, settingsRoleTabs.map(([_k, _lbl]) => React.createElement("button", {
     key: _k,
     onClick: () => setSettingsSubtab(_k),
     style: {
@@ -19248,7 +19757,10 @@ function App() {
   }, editingAdmin === em ? 'Close' : 'Edit'), React.createElement("button", {
     title: "Wipe all of " + (ac.bizName || em) + "'s appointments from cloud",
     onClick: async () => {
-      if (!confirm('🗑 Wipe ALL appointments for ' + (ac.bizName || em) + '?\n\nThis clears every cloud row (apptlive, sharedappt, appts) for this admin and removes them from your dashboard. Cannot be undone.')) return;
+      if (!(await confirmAsync('Wipe ALL appointments for ' + (ac.bizName || em) + '?\n\nThis clears every cloud row (apptlive, sharedappt, appts) for this admin and removes them from your dashboard. Cannot be undone.', {
+        title: 'Wipe admin appointments',
+        confirmLabel: 'Wipe'
+      }))) return;
       toast('Wiping ' + (ac.bizName || em) + '…', 'info');
       try {
         var wiped = await clearApptsForAdmins([em]);
@@ -19272,7 +19784,10 @@ function App() {
     size: "sm",
     weight: 600,
     onClick: async () => {
-      if (!confirm('Remove ' + (ac.bizName || em) + ' from your admin list?\n\nTheir account will be locked out on next login until you re-add them. Their existing appointments stay in the cloud (use 🗑 Appts first if you want to wipe those).')) return;
+      if (!(await confirmAsync('Remove ' + (ac.bizName || em) + ' from your admin list?\n\nTheir account will be locked out on next login until you re-add them. Their existing appointments stay in the cloud (use Appts first if you want to wipe those).', {
+        title: 'Remove admin',
+        confirmLabel: 'Remove'
+      }))) return;
       if (_SB) {
         try {
           var _now = Date.now();
@@ -22150,8 +22665,11 @@ function App() {
     size: "sm",
     weight: 600,
     radius: 6,
-    onClick: () => {
-      if (!confirm('Delete ALL ' + waTemplates.length + ' templates?')) return;
+    onClick: async () => {
+      if (!(await confirmAsync('Delete ALL ' + waTemplates.length + ' templates?', {
+        title: 'Delete templates',
+        confirmLabel: 'Delete all'
+      }))) return;
       waTemplates.forEach(t => {
         if (t.id && _SB) _SB.from('autodial_wa_templates').delete().eq('id', t.id).then(() => {});
       });
@@ -22266,8 +22784,11 @@ function App() {
     style: {
       padding: '4px 8px'
     },
-    onClick: () => {
-      if (!confirm('Delete "' + t.name + '"?')) return;
+    onClick: async () => {
+      if (!(await confirmAsync('Delete "' + t.name + '"?', {
+        title: 'Delete template',
+        confirmLabel: 'Delete'
+      }))) return;
       setWaTemplates(p => {
         var updated = p.filter((_, j) => j !== i);
         if (_SB && _user) _SB.from('autodial_admin_config').upsert({
@@ -23132,7 +23653,10 @@ function App() {
     }
   }, "\u2713 Approve"), React.createElement("button", {
     onClick: async () => {
-      if (!confirm('Reject ' + u.full_name + '?')) return;
+      if (!(await confirmAsync('Reject ' + u.full_name + '?', {
+        title: 'Reject user',
+        confirmLabel: 'Reject'
+      }))) return;
       try {
         await _SB.from('profiles').delete().eq('id', u.id);
         setPendingUsers(p => p.filter(x => x.id !== u.id));
@@ -23174,7 +23698,7 @@ function App() {
       fontWeight: 600
     }
   }, "(", usersList.filter(u => u.approved && !isCreator(u.email)).length, " approved)")), React.createElement("button", {
-    onClick: () => {
+    onClick: async () => {
       var sql = `INSERT INTO public.profiles (id, email, full_name, approved, role, autodial_role, requested_role)
 SELECT u.id, u.email, COALESCE(u.raw_user_meta_data->>'full_name', split_part(u.email,'@',1)), false, 'admin', 'admin', 'admin'
 FROM auth.users u
@@ -23184,7 +23708,11 @@ WHERE p.id IS NULL;`;
         navigator.clipboard.writeText(sql);
         toast('📋 Backfill SQL copied — paste into Supabase SQL editor', 'info');
       } catch (e) {
-        prompt('Copy this SQL and paste into Supabase SQL editor:', sql);
+        await promptAsync('Copy this SQL and paste into Supabase SQL editor:', sql, {
+          title: 'Supabase backfill SQL',
+          multiline: true,
+          confirmLabel: 'Done'
+        });
       }
     },
     title: "Copy SQL to backfill missing profiles for users added via Supabase dashboard",
@@ -23264,7 +23792,10 @@ WHERE p.id IS NULL;`;
   }, ['admin', 'main'].map(r => React.createElement("button", {
     key: r,
     onClick: async () => {
-      if (!confirm('Change ' + (u.full_name || u.email) + ' to ' + (r === 'main' ? 'Main' : 'Admin') + '?\n\nThey will need to re-select this role on their next login.')) return;
+      if (!(await confirmAsync('Change ' + (u.full_name || u.email) + ' to ' + (r === 'main' ? 'Main' : 'Admin') + '?\n\nThey will need to re-select this role on their next login.', {
+        title: 'Change user role',
+        confirmLabel: 'Change'
+      }))) return;
       try {
         await _SB.from('profiles').update({
           autodial_role: r,
@@ -23298,7 +23829,10 @@ WHERE p.id IS NULL;`;
       padding: '3px 10px'
     },
     onClick: async () => {
-      if (!confirm('Revoke access for ' + u.full_name + '?')) return;
+      if (!(await confirmAsync('Revoke access for ' + u.full_name + '?', {
+        title: 'Revoke access',
+        confirmLabel: 'Revoke'
+      }))) return;
       try {
         await _SB.from('profiles').update({
           approved: false
@@ -23402,8 +23936,14 @@ WHERE p.id IS NULL;`;
     }
   }, "Wipes all running stats (dialed, sets, NP, NI, sessions, pay history, billing cycles, incentives, promotions, stars). Leads, appointments, and admin configs are kept."), React.createElement("button", {
     onClick: async () => {
-      if (!confirm('⚠️ NUCLEAR RESET\n\nThis will wipe, for EVERY user:\n• All session logs (dialed/sets/NP/CB/NI)\n• All admin session cache\n• All payment history\n• All billing cycles\n• All incentives & tips\n• All promotions\n• Stars, daily counters, current session\n\nLeads, appointments, and admin configs will be kept.\n\nContinue?')) return;
-      if (!confirm('Are you ABSOLUTELY sure? This cannot be undone.')) return;
+      if (!(await confirmAsync('NUCLEAR RESET\n\nThis will wipe, for EVERY user:\n- All session logs (dialed/sets/NP/CB/NI)\n- All admin session cache\n- All payment history\n- All billing cycles\n- All incentives & tips\n- All promotions\n- Stars, daily counters, current session\n\nLeads, appointments, and admin configs will be kept.\n\nContinue?', {
+        title: 'Nuclear reset',
+        confirmLabel: 'Continue'
+      }))) return;
+      if (!(await confirmAsync('Are you ABSOLUTELY sure? This cannot be undone.', {
+        title: 'Final confirmation',
+        confirmLabel: 'Reset'
+      }))) return;
       try {
         setSessionLog([]);
         save('slog', []);
@@ -23848,8 +24388,12 @@ WHERE p.id IS NULL;`;
       var clash = checkClash(p.date, p.time);
       return React.createElement("button", {
         key: i,
-        onClick: () => {
-          if (clash && !confirm('⚠ This slot clashes with "' + clash.name + '". Schedule CB anyway?')) return;
+        onClick: async () => {
+          if (clash && !(await confirmAsync('This slot clashes with "' + clash.name + '". Schedule CB anyway?', {
+            title: 'Callback clash',
+            confirmLabel: 'Schedule anyway',
+            danger: false
+          }))) return;
           setCbDate(p.date);
           setCbTime(p.time);
           handleOutcome('cb', {
@@ -25398,7 +25942,11 @@ WHERE p.id IS NULL;`;
         });
         if (_conflicts.length) {
           var _msg = '⚠ Conflict — this slot overlaps:\n\n' + _conflicts.slice(0, 5).map(c => '• ' + c).join('\n') + (_conflicts.length > 5 ? '\n• ...and ' + (_conflicts.length - 5) + ' more' : '') + '\n\nCreate appointment anyway?';
-          if (!confirm(_msg)) return;
+          if (!(await confirmAsync(_msg, {
+            title: 'Appointment conflict',
+            confirmLabel: 'Create anyway',
+            danger: false
+          }))) return;
         }
       } catch (_ce) {
         console.warn('[Conflict check]', _ce?.message || _ce);
@@ -27339,7 +27887,10 @@ WHERE p.id IS NULL;`;
       }
       var _a = (appointments || []).find(x => x.calEventId === calEditEvent.id);
       if (!_a) {
-        if (!confirm('Delete this event from Google Calendar? This cannot be undone.')) return;
+        if (!(await confirmAsync('Delete this event from Google Calendar? This cannot be undone.', {
+          title: 'Delete calendar event',
+          confirmLabel: 'Delete'
+        }))) return;
         setCalEditSaving(true);
         try {
           var ok = await gCal.del(calEditEvent.id, calEditEvent._calId || 'primary');
@@ -28971,7 +29522,250 @@ WHERE p.id IS NULL;`;
       fontWeight: 700,
       border: '1px solid rgba(210,153,34,.2)'
     }
-  }, "+ Add Reference Notes")))))), React.createElement("button", {
+  }, "+ Add Reference Notes")))))), React.createElement(Modal, {
+    show: showSetupWizard && !guidedSetupComplete,
+    onClose: () => setShowSetupWizard(false),
+    align: "center",
+    bg: ".86",
+    zIndex: 180
+  }, React.createElement("div", {
+    style: {
+      width: '100%',
+      maxWidth: 460,
+      background: 'var(--bg2)',
+      border: '1px solid var(--border2)',
+      borderRadius: 20,
+      padding: 18,
+      boxShadow: '0 24px 80px rgba(0,0,0,.45)'
+    }
+  }, React.createElement("div", {
+    style: {
+      display: 'flex',
+      justifyContent: 'space-between',
+      gap: 10,
+      marginBottom: 12
+    }
+  }, React.createElement("div", null, React.createElement("h3", {
+    style: {
+      margin: 0,
+      fontSize: 18,
+      fontWeight: 900,
+      color: '#f1f5f9'
+    }
+  }, "Guided setup"), React.createElement("p", {
+    style: {
+      margin: '4px 0 0',
+      fontSize: 11,
+      color: 'var(--text3)'
+    }
+  }, guidedDoneCount, " of ", guidedSetupItems.length, " complete")), React.createElement("button", {
+    onClick: () => setShowSetupWizard(false),
+    style: {
+      width: 32,
+      height: 32,
+      borderRadius: 10,
+      background: 'var(--bg3)',
+      color: 'var(--text3)',
+      padding: 0
+    }
+  }, "x")), React.createElement("div", {
+    style: {
+      height: 7,
+      borderRadius: 999,
+      background: 'var(--bg3)',
+      overflow: 'hidden',
+      marginBottom: 12
+    }
+  }, React.createElement("div", {
+    style: {
+      width: guidedDoneCount / guidedSetupItems.length * 100 + '%',
+      height: '100%',
+      background: 'linear-gradient(90deg,var(--accent),var(--green))'
+    }
+  })), guidedSetupItems.map(item => React.createElement(item.action && !item.done ? "button" : "div", {
+    key: item.key,
+    onClick: item.action && !item.done ? () => {
+      setShowSetupWizard(false);
+      item.action();
+    } : undefined,
+    style: {
+      width: '100%',
+      display: 'flex',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 10,
+      padding: '11px 12px',
+      borderRadius: 12,
+      marginBottom: 7,
+      background: item.done ? 'var(--gdim)' : 'var(--bg3)',
+      color: item.done ? 'var(--green)' : 'var(--text2)',
+      border: '1px solid ' + (item.done ? 'rgba(63,185,80,.25)' : 'var(--border)'),
+      textAlign: 'left',
+      cursor: item.action && !item.done ? 'pointer' : 'default'
+    }
+  }, React.createElement("span", {
+    style: {
+      minWidth: 0
+    }
+  }, React.createElement("span", {
+    style: {
+      display: 'block',
+      fontSize: 12,
+      fontWeight: 900,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap'
+    }
+  }, item.label), React.createElement("span", {
+    style: {
+      display: 'block',
+      marginTop: 2,
+      fontSize: 10,
+      color: item.done ? 'rgba(63,185,80,.72)' : 'var(--text3)',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap'
+    }
+  }, item.detail)), React.createElement("span", {
+    className: "pill",
+    style: {
+      background: item.done ? 'rgba(63,185,80,.14)' : 'var(--bg)',
+      color: item.done ? 'var(--green)' : 'var(--text3)'
+    }
+  }, item.done ? 'Done' : item.action ? 'Open' : 'Waiting'))), React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      marginTop: 10
+    }
+  }, React.createElement("button", {
+    onClick: () => {
+      localStorage.setItem('autodial_setup_wizard_dismissed', '1');
+      setSetupWizardDismissed(true);
+      setShowSetupWizard(false);
+    },
+    style: {
+      flex: 1,
+      padding: '11px',
+      borderRadius: 12,
+      background: 'var(--bg3)',
+      color: 'var(--text3)',
+      fontSize: 12,
+      fontWeight: 800,
+      border: '1px solid var(--border)'
+    }
+  }, "Hide"), React.createElement("button", {
+    onClick: () => {
+      setShowSetupWizard(false);
+      setTab('settings');
+      setSettingsSubtab('setup');
+    },
+    style: {
+      flex: 1,
+      padding: '11px',
+      borderRadius: 12,
+      background: 'var(--adim)',
+      color: 'var(--accent2)',
+      fontSize: 12,
+      fontWeight: 900,
+      border: '1px solid rgba(99,102,241,.3)'
+    }
+  }, "Open setup")))), React.createElement(Modal, {
+    show: !!dialogRequest,
+    onClose: () => resolveDialog(dialogRequest?.kind === 'confirm' ? false : null),
+    align: "center",
+    bg: ".88",
+    zIndex: 320
+  }, dialogRequest && React.createElement("div", {
+    style: {
+      width: '100%',
+      maxWidth: 440,
+      background: 'var(--bg2)',
+      border: '1px solid var(--border2)',
+      borderRadius: 18,
+      padding: 18,
+      boxShadow: '0 24px 80px rgba(0,0,0,.48)'
+    }
+  }, React.createElement("h3", {
+    style: {
+      margin: '0 0 8px',
+      fontSize: 17,
+      fontWeight: 900,
+      color: '#f1f5f9'
+    }
+  }, dialogRequest.title), React.createElement("p", {
+    style: {
+      margin: '0 0 14px',
+      fontSize: 12,
+      lineHeight: 1.5,
+      whiteSpace: 'pre-wrap',
+      color: 'var(--text2)'
+    }
+  }, dialogRequest.message), dialogRequest.kind === 'prompt' && (dialogRequest.multiline ? React.createElement("textarea", {
+    value: dialogRequest.value,
+    onChange: e => setDialogRequest(req => ({
+      ...req,
+      value: e.target.value
+    })),
+    placeholder: dialogRequest.placeholder,
+    autoFocus: true,
+    style: {
+      width: '100%',
+      minHeight: 140,
+      resize: 'vertical',
+      marginBottom: 14,
+      borderRadius: 12,
+      padding: 12,
+      background: 'var(--bg)',
+      color: 'var(--text)',
+      border: '1px solid var(--border2)',
+      fontFamily: 'inherit',
+      fontSize: 13,
+      outline: 'none'
+    }
+  }) : React.createElement("input", {
+    value: dialogRequest.value,
+    onChange: e => setDialogRequest(req => ({
+      ...req,
+      value: e.target.value
+    })),
+    onKeyDown: e => {
+      if (e.key === 'Enter') resolveDialog(dialogRequest.value || null);
+    },
+    placeholder: dialogRequest.placeholder,
+    autoFocus: true,
+    style: {
+      marginBottom: 14
+    }
+  })), React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 8,
+      justifyContent: 'flex-end'
+    }
+  }, React.createElement("button", {
+    onClick: () => resolveDialog(dialogRequest.kind === 'confirm' ? false : null),
+    style: {
+      padding: '10px 14px',
+      borderRadius: 12,
+      background: 'var(--bg3)',
+      color: 'var(--text2)',
+      fontSize: 12,
+      fontWeight: 800,
+      border: '1px solid var(--border)'
+    }
+  }, dialogRequest.cancelLabel || 'Cancel'), React.createElement("button", {
+    onClick: () => resolveDialog(dialogRequest.kind === 'prompt' ? (dialogRequest.value || null) : true),
+    style: {
+      padding: '10px 14px',
+      borderRadius: 12,
+      background: dialogRequest.danger ? 'var(--rdim)' : 'var(--adim)',
+      color: dialogRequest.danger ? 'var(--red)' : 'var(--accent2)',
+      fontSize: 12,
+      fontWeight: 900,
+      border: '1px solid ' + (dialogRequest.danger ? 'rgba(248,81,73,.3)' : 'rgba(99,102,241,.3)')
+    }
+  }, dialogRequest.confirmLabel || 'Confirm')))), React.createElement("button", {
     className: 'script-toggle' + (scriptOpen ? ' open' : ''),
     onClick: () => setScriptOpen(p => !p),
     title: scriptOpen ? 'Hide script' : 'Show calling script',

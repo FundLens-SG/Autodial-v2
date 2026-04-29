@@ -1,4 +1,4 @@
-# AutoDial v2 - User Guide
+﻿# AutoDial v2 - User Guide
 
 **The v2 workspace for AutoDial caller and management workflows**
 
@@ -351,3 +351,4 @@ Phone detection is Singapore-mobile first: 8-digit numbers starting with 8/9, or
 AutoDial currently ships as a pre-compiled single-file React app in `index.html`. Keep production fixes surgical there, but future feature work should move toward the source/build plan in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) so changes happen in readable components before compiling to the deployed file.
 
 *AutoDial v2 - Dial smarter, manage cleaner, and ship safely.*
+

@@ -12,3 +12,8 @@ Suggested first extraction order:
 2. `src/components/dial` for the caller workspace.
 3. `src/components/manage` for live activity, tracking, payroll, and settings.
 4. `src/components/script` for script editor, reference notes, and version history.
+
+Current extraction baseline:
+- `src/app/*.mjs` contains smoke-tested helpers for lead import, status transitions, callbacks, pay, sync health, PWA cache naming, and rich-text sanitation.
+- `src/components/setup`, `src/components/dial`, and `src/components/manage` contain the first Vite-ready UI slices.
+- Production still runs from root `index.html`; `index.vite.html` is the source shell used while the migration is staged.
