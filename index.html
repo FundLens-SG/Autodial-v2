@@ -4307,6 +4307,40 @@ function App() {
     location: ''
   });
   var [calEditSaving, setCalEditSaving] = useState(false);
+  var _apptSyncKey = a => {
+    if (!a) return '';
+    if (a.id) return 'id:' + String(a.id);
+    if (a.calEventId) return 'cal:' + String(a.calEventId);
+    return ['row', (a.admin || '').toLowerCase(), a.phone || '', a.apptDate || '', a.apptTime || '', a.createdAt || '', a.followUp || 'pending', (a.name || '').toLowerCase()].join('|');
+  };
+  var _sameApptSyncRow = (a, b) => {
+    if (!a || !b) return false;
+    if (a.id && b.id && String(a.id) === String(b.id)) return true;
+    if (a.calEventId && b.calEventId && String(a.calEventId) === String(b.calEventId)) return true;
+    return _apptSyncKey(a) === _apptSyncKey(b);
+  };
+  var _parseApptPayload = raw => {
+    if (!raw) return {
+      ok: false,
+      list: []
+    };
+    try {
+      var p = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      var list = Array.isArray(p?.data) ? p.data : Array.isArray(p?.appts) ? p.appts : Array.isArray(p) ? p : null;
+      return Array.isArray(list) ? {
+        ok: true,
+        list
+      } : {
+        ok: false,
+        list: []
+      };
+    } catch (_e) {
+      return {
+        ok: false,
+        list: []
+      };
+    }
+  };
   var pullAdminAppts = useCallback(async () => {
     if (role === 'admin' || !_SB || !_user) return 0;
     if (_liveSyncRef.current?.clearGuardUntil > Date.now()) {
@@ -4321,35 +4355,50 @@ function App() {
       var _adminEmails = Object.keys(adminConfigs || {}).filter(em => em.includes('@') && em.toLowerCase() !== myEmail.toLowerCase());
       if (!_adminEmails.length) return 0;
       var _byAdmin = {};
+      var _freshAdmins = new Set();
       await Promise.all(_adminEmails.map(async em => {
         var k = em.toLowerCase();
+        var loaded = {
+          ok: false,
+          list: []
+        };
         try {
-          var r = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'sharedappt_' + k).single();
-          if (r.data?.biz_name) {
-            var parsed = JSON.parse(r.data.biz_name);
-            var list = Array.isArray(parsed?.data) ? parsed.data : Array.isArray(parsed) ? parsed : [];
-            _byAdmin[k] = list.map(a => ({
-              ...a,
-              admin: a.admin || em
-            }));
-          } else _byAdmin[k] = [];
-        } catch (_e) {
-          _byAdmin[k] = [];
+          var r = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'sharedappt_' + k).maybeSingle();
+          loaded = _parseApptPayload(r.data?.biz_name);
+        } catch (_e) {}
+        if (!loaded.ok || loaded.list.length === 0) {
+          try {
+            var r2 = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'appts_' + k).maybeSingle();
+            var legacy = _parseApptPayload(r2.data?.biz_name);
+            if (legacy.ok && (!loaded.ok || legacy.list.length > 0)) loaded = legacy;
+          } catch (_e) {}
+        }
+        if (loaded.ok) {
+          _freshAdmins.add(k);
+          _byAdmin[k] = loaded.list.map(a => ({
+            ...a,
+            admin: a.admin || em
+          }));
         }
       }));
+      if (!_freshAdmins.size) return 0;
       var _delIds = _getDelIds();
       var _added = 0;
       setAppointments(prev => {
-        var _mine = prev.filter(a => !a.admin || a.admin.toLowerCase() === myEmail.toLowerCase());
+        var _prevKeys = new Set(prev.map(_apptSyncKey));
+        var _mine = prev.filter(a => {
+          var _aem = (a.admin || '').toLowerCase();
+          if (!_aem || _aem === myEmail.toLowerCase()) return true;
+          return !_freshAdmins.has(_aem);
+        });
         var _adminFresh = [];
         Object.entries(_byAdmin).forEach(([em, list]) => {
           list.forEach(a => {
             if (!isApptDeleted(a, _delIds)) _adminFresh.push(a);
           });
         });
-        var _prevKeys = new Set(prev.filter(a => a.admin && a.admin.toLowerCase() !== myEmail.toLowerCase()).map(a => String(a.id || a.phone + '_' + (a.apptDate || a.createdAt || ''))));
         _adminFresh.forEach(a => {
-          var k = String(a.id || a.phone + '_' + (a.apptDate || a.createdAt || ''));
+          var k = _apptSyncKey(a);
           if (!_prevKeys.has(k)) _added++;
         });
         return _dedupAppts([..._mine, ..._adminFresh]);
@@ -5235,7 +5284,7 @@ function App() {
     };
     (arr || []).forEach(a => {
       if (!a) return;
-      var key = a.leadId || (a.phone || '') + '|' + (a.apptDate || '') + '|' + (a.followUp || 'pending');
+      var key = a.leadId || a.id || a.calEventId || (a.admin || '') + '|' + (a.phone || '') + '|' + (a.apptDate || '') + '|' + (a.followUp || 'pending');
       var ex = map.get(key);
       if (!ex) {
         map.set(key, a);
@@ -8520,7 +8569,8 @@ function App() {
     if (!adminEmails.length) return;
     var _cancelled = false;
     var applyRemoteAdmin = (adminEmail, p) => {
-      if (_cancelled || !p || !Array.isArray(p.data)) return;
+      var parsedPayload = _parseApptPayload(p);
+      if (_cancelled || !parsedPayload.ok) return;
       if (_liveSyncRef.current.clearGuardUntil > Date.now()) {
         DBG('[LiveSync] aggregation skipped — clear in progress');
         return;
@@ -8531,16 +8581,16 @@ function App() {
       }
       var delIds = _getDelIds();
       var emLow = adminEmail.toLowerCase();
-      var fresh = p.data.filter(a => !isApptDeleted(a, delIds)).map(a => ({
+      var fresh = parsedPayload.list.filter(a => !isApptDeleted(a, delIds)).map(a => ({
         ...a,
         admin: a.admin || adminEmail
       }));
       setAppointments(prev => {
         var next = prev.slice();
-        var freshIds = new Set();
+        var freshKeys = new Set();
         fresh.forEach(fa => {
-          var idx = next.findIndex(la => fa.id && la.id === fa.id || fa.calEventId && la.calEventId === fa.calEventId || fa.phone && la.phone === fa.phone && fa.apptDate && la.apptDate === fa.apptDate);
-          if (fa.id) freshIds.add(String(fa.id));
+          var idx = next.findIndex(la => _sameApptSyncRow(la, fa));
+          freshKeys.add(_apptSyncKey(fa));
           if (idx >= 0) {
             next[idx] = {
               ...next[idx],
@@ -8552,8 +8602,7 @@ function App() {
         });
         var _final = next.filter(a => {
           if (!a.admin || a.admin.toLowerCase() !== emLow) return true;
-          if (a.id && freshIds.has(String(a.id))) return true;
-          return false;
+          return freshKeys.has(_apptSyncKey(a));
         });
         return _dedupAppts(_final);
       });
@@ -11472,7 +11521,11 @@ function App() {
         gap: 8
       }
     }, React.createElement("button", {
-      onClick: () => setShowInviteLink(true),
+      onClick: () => {
+        setShowActivityDrawer(false);
+        setShowMoreMenu(false);
+        setShowInviteLink(true);
+      },
       style: {
         padding: '12px',
         borderRadius: 12,
@@ -27717,7 +27770,7 @@ WHERE p.id IS NULL;`;
       onClose: () => setShowInviteLink(false),
       align: "center",
       bg: ".88",
-      zIndex: 103
+      zIndex: 340
     }, React.createElement("div", {
       style: {
         width: '100%',
@@ -27784,7 +27837,25 @@ WHERE p.id IS NULL;`;
       }
     }, React.createElement("button", {
       onClick: () => {
-        navigator.clipboard.writeText(_url).then(() => toast('Link copied ✓'));
+        var done = () => toast('Link copied');
+        var fallback = () => {
+          var ta = document.createElement('textarea');
+          ta.value = _url;
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          document.body.appendChild(ta);
+          ta.select();
+          try {
+            document.execCommand('copy');
+            done();
+          } catch (_e) {
+            toast('Could not copy link automatically', 'err');
+          }
+          document.body.removeChild(ta);
+        };
+        if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(_url).then(done).catch(fallback);
+        fallback();
+        return;
       },
       style: {
         flex: 1,
