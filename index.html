@@ -144,7 +144,7 @@ button:active{transform:scale(.97)}
 @media(min-width:960px){
   :root{--left-pane-w:clamp(420px,32vw,680px);--app-side-margin:max(calc((100vw - 1920px)/2),0px)}
   .desktop-wrap{gap:0;align-items:stretch}
-  .desktop-wrap .app-shell{margin:0 auto;border-radius:0;flex:1 1 auto;width:100%;max-width:min(1920px,100vw);height:100vh;height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;display:grid;grid-template-columns:minmax(0,var(--left-pane-w)) minmax(0,1fr);align-items:start;scrollbar-width:none}
+  .desktop-wrap .app-shell{margin:0 auto;border-radius:0;flex:1 1 auto;width:100%;max-width:min(1920px,100vw);height:100vh;height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;display:grid;grid-template-columns:minmax(0,var(--left-pane-w)) minmax(0,1fr);grid-auto-rows:max-content;align-items:start;align-content:start;scrollbar-width:none}
   .desktop-wrap .app-shell::-webkit-scrollbar{display:none}
   .desktop-wrap .app-shell>:not(.script-panel):not(.script-toggle){grid-column:1;min-width:0}
   .script-panel{grid-column:2;grid-row:1 / span 999;align-self:start;width:100%;min-width:0;max-width:100%;min-height:100vh;min-height:100dvh;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden}
@@ -330,7 +330,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0019';
+window.APP_VERSION='2026.04.29.0020';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
