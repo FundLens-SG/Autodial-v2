@@ -1577,7 +1577,8 @@ window.DB={
   async getAllSessions(){if(!_SB)return[];try{var r=await _SB.from('autodial_sessions').select('*').order('start_time',{ascending:false});return r.data||[]}catch(e){return[]}},
   async markPaid(email){if(!_SB)return;try{await _SB.from('autodial_sessions').update({paid:true,paid_date:new Date().toISOString()}).eq('email',email).eq('paid',false)}catch(e){}},
   async markSessPaid(email,startTime){if(!_SB||!email||!startTime)return false;try{await _SB.from('autodial_sessions').update({paid:true,paid_date:new Date().toISOString()}).eq('email',email).eq('start_time',new Date(startTime).toISOString());return true}catch(e){console.warn('[DB.markSessPaid]',e.message);return false}},
-  async deleteSess(email,startTime){if(!_SB||!email||!startTime)return false;try{await _SB.from('autodial_sessions').delete().eq('email',email).eq('start_time',new Date(startTime).toISOString());return true}catch(e){console.warn('[DB.deleteSess]',e.message);return false}},
+  async deleteSess(email,startTime){if(!_SB||!email||!startTime)return false;try{var vals=[startTime];try{var iso=new Date(startTime).toISOString();if(iso&&!vals.includes(iso))vals.push(iso)}catch(_e){}await Promise.all(vals.map(v=>_SB.from('autodial_sessions').delete().eq('email',email).eq('start_time',v).catch(()=>{})));return true}catch(e){console.warn('[DB.deleteSess]',e.message);return false}},
+  async deleteSessRecord(s,email){if(!_SB||!s)return false;try{var dbId=s.dbSessionId||s.sessionDbId||s.supabaseId||'';if(dbId){await _SB.from('autodial_sessions').delete().eq('id',dbId)}var em=(email||s.email||s.adminEmail||s._email||s.admin||'').toLowerCase();return await this.deleteSess(em,s.startTime||s.start_time)}catch(e){console.warn('[DB.deleteSessRecord]',e.message);return false}},
 
   // Call Log (session replay)
   async logAction(sessionId,uid,action,leadName,leadPhone,details){if(!_SB)return;try{await _SB.from('autodial_call_log').insert({
@@ -1853,6 +1854,7 @@ var SYNC_MAP = {
   starget: 'userState',
   mainMode: 'userState',
   apptDur: 'userState',
+  slogClear: 'userState',
   totalStars: 'userState'
 };
 function publishAdminConfigs(configs) {
@@ -2435,7 +2437,8 @@ function localDateKey(d) {
 }
 function startOfWeek(d) {
   var s = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  s.setDate(s.getDate() - s.getDay());
+  var mondayOffset = (s.getDay() + 6) % 7;
+  s.setDate(s.getDate() - mondayOffset);
   return s;
 }
 function _toDate(d) {
@@ -4708,7 +4711,87 @@ function App() {
   var [promotionLog, setPromotionLog] = useState(load('promo') || []);
   var [milestone, setMilestone] = useState(null);
   var [confetti, setConfetti] = useState(false);
-  var [sessionLog, setSessionLog] = useState(load('slog') || []);
+  var _sessionValueKeys = v => {
+    if (v === undefined || v === null || v === '') return [];
+    var out = [String(v)];
+    try {
+      var d = new Date(v);
+      if (!isNaN(d)) {
+        out.push(String(d.getTime()));
+        out.push(d.toISOString());
+      }
+    } catch (_e) {}
+    return [...new Set(out)];
+  };
+  var _sessionClearKeysFor = s => {
+    if (!s) return [];
+    var out = [];
+    ['id', 'timesheetAutoId', 'sessionKey', 'session_key', 'dbSessionId', 'sessionDbId', 'supabaseId'].forEach(k => {
+      if (s[k]) out.push(k + ':' + String(s[k]));
+    });
+    var email = (s.email || s.adminEmail || s._email || s.admin || '').toLowerCase();
+    var times = [..._sessionValueKeys(s.startTime), ..._sessionValueKeys(s.start_time)];
+    times.forEach(t => {
+      out.push('time:' + t);
+      if (email) out.push('emailtime:' + email + '|' + t);
+    });
+    return [...new Set(out)];
+  };
+  var _normalizeSessionClearMeta = meta => {
+    var m = meta && typeof meta === 'object' ? meta : {};
+    var keys = Array.isArray(m.keys) ? m.keys : [];
+    var ids = Array.isArray(m.ids) ? m.ids.map(x => 'id:' + x) : [];
+    return {
+      ts: m.ts || 0,
+      reason: m.reason || '',
+      keys: [...new Set([...keys, ...ids].filter(Boolean).map(String))].slice(-5000)
+    };
+  };
+  var _filterClearedSessionList = (list, meta) => {
+    var m = _normalizeSessionClearMeta(meta);
+    if (!m.keys.length) return Array.isArray(list) ? list : [];
+    var blocked = new Set(m.keys);
+    return (Array.isArray(list) ? list : []).filter(s => !_sessionClearKeysFor(s).some(k => blocked.has(k)));
+  };
+  var sessionListFromPayload = p => Array.isArray(p) ? p : Array.isArray(p?.data) ? p.data : [];
+  var _initialSessionClearMeta = _normalizeSessionClearMeta(load('slog_clear'));
+  var [sessionClearMeta, setSessionClearMeta] = useState(_initialSessionClearMeta);
+  var sessionClearRef = useRef(_initialSessionClearMeta);
+  var [sessionLog, setSessionLog] = useState(() => _filterClearedSessionList(load('slog') || [], _initialSessionClearMeta));
+  var applySessionClearMeta = useCallback(meta => {
+    var incoming = _normalizeSessionClearMeta(meta);
+    if (!incoming.keys.length && !incoming.ts) return sessionClearRef.current;
+    var current = _normalizeSessionClearMeta(sessionClearRef.current);
+    var keys = new Set(current.keys || []);
+    incoming.keys.forEach(k => keys.add(k));
+    var merged = {
+      ts: Math.max(current.ts || 0, incoming.ts || 0, Date.now()),
+      reason: incoming.reason || current.reason || 'synced clear',
+      keys: [...keys].slice(-5000)
+    };
+    sessionClearRef.current = merged;
+    setSessionClearMeta(merged);
+    return merged;
+  }, []);
+  var rememberClearedSessions = useCallback((sessions, reason) => {
+    var current = _normalizeSessionClearMeta(sessionClearRef.current);
+    var keys = new Set(current.keys || []);
+    (Array.isArray(sessions) ? sessions : []).forEach(s => _sessionClearKeysFor(s).forEach(k => keys.add(k)));
+    var next = {
+      ts: Date.now(),
+      reason: reason || 'cleared',
+      keys: [...keys].slice(-5000)
+    };
+    sessionClearRef.current = next;
+    setSessionClearMeta(next);
+    save('slog_clear', next);
+    return next;
+  }, []);
+  var isClearedSession = useCallback(s => {
+    var blocked = new Set((_normalizeSessionClearMeta(sessionClearRef.current).keys || []));
+    return _sessionClearKeysFor(s).some(k => blocked.has(k));
+  }, [sessionClearMeta]);
+  var filterClearedSessions = useCallback((list, meta) => _filterClearedSessionList(list, meta || sessionClearRef.current), [sessionClearMeta]);
   var [paymentHistory, setPaymentHistory] = useState(load('payh') || []);
   var [adminSessions, setAdminSessions] = useState(() => {
     var _raw = load('asess') || {};
@@ -5881,6 +5964,32 @@ function App() {
     cloudSave('slog', sessionLog);
   }, [sessionLog]);
   useEffect(() => {
+    var clean = _normalizeSessionClearMeta(sessionClearMeta);
+    sessionClearRef.current = clean;
+    save('slog_clear', clean);
+    if (clean.ts || clean.keys.length) cloudSave('slogClear', clean);
+    setSessionLog(prev => {
+      var filtered = _filterClearedSessionList(prev, clean);
+      return filtered.length === prev.length ? prev : filtered;
+    });
+    if (_SB && _user?.email && window._cloudReady && (clean.ts || clean.keys.length)) {
+      _SB.from('autodial_admin_config').upsert({
+        admin_email: 'slogclear_' + _user.email.toLowerCase(),
+        biz_name: JSON.stringify(clean)
+      }, {
+        onConflict: 'admin_email'
+      }).then(() => {
+        try {
+          window._bumpSyncVer && window._bumpSyncVer();
+          syncSend('liveSync', {
+            v: Date.now(),
+            key: 'slogclear'
+          });
+        } catch (_e) {}
+      }).catch(function () {});
+    }
+  }, [sessionClearMeta]);
+  useEffect(() => {
     save('acfg', adminConfigs);
     cloudSave('acfg', adminConfigs);
     if (role !== 'admin') publishAdminConfigs(adminConfigs);
@@ -6344,12 +6453,15 @@ function App() {
             } catch (e) {}
           })(), (async () => {
             try {
+              var cr = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'slogclear_' + myEmail).maybeSingle();
+              if (cr.data && cr.data.biz_name) applySessionClearMeta(JSON.parse(cr.data.biz_name));
               var sr = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'slog_' + myEmail).maybeSingle();
               if (sr.data && sr.data.biz_name) {
-                var sl = JSON.parse(sr.data.biz_name);
-                if (sl.length && !sessionLog.length) {
-                  setSessionLog(sl);
-                  DBG('[AutoDial] Loaded ' + sl.length + ' sessions from Supabase');
+                var sl = sessionListFromPayload(JSON.parse(sr.data.biz_name));
+                var cleanSl = filterClearedSessions(sl);
+                if (cleanSl.length && !sessionLog.length) {
+                  setSessionLog(cleanSl);
+                  DBG('[AutoDial] Loaded ' + cleanSl.length + ' sessions from Supabase');
                 }
               }
             } catch (e) {}
@@ -6458,10 +6570,11 @@ function App() {
             try {
               var sr = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'slog_' + myEmail).maybeSingle();
               if (sr.data && sr.data.biz_name) {
-                var sl = JSON.parse(sr.data.biz_name);
-                if (sl.length > sessionLog.length) {
-                  setSessionLog(sl);
-                  DBG('[AutoDial] Cross-device: loaded ' + sl.length + ' sessions');
+                var sl = sessionListFromPayload(JSON.parse(sr.data.biz_name));
+                var cleanSl = filterClearedSessions(sl);
+                if (cleanSl.length > sessionLog.length) {
+                  setSessionLog(cleanSl);
+                  DBG('[AutoDial] Cross-device: loaded ' + cleanSl.length + ' sessions');
                 }
               }
             } catch (e) {}
@@ -6501,7 +6614,11 @@ function App() {
             var _cleaned = _sanitizeAdminCfgs(cloud.adminConfigs);
             if (Object.keys(_cleaned).length) setAdminConfigs(_cleaned);
           }
-          if (cloud.sessions?.length && !sessionLog.length) setSessionLog(cloud.sessions);
+          if (cloud.userState?.slogClear) applySessionClearMeta(cloud.userState.slogClear);
+          if (cloud.sessions?.length && !sessionLog.length) {
+            var _cloudSessions = filterClearedSessions(cloud.sessions);
+            if (_cloudSessions.length) setSessionLog(_cloudSessions);
+          }
           if (cloud.appointments?.length && !appointments.length) {
             var _dIds = _getDelIds();
             var _filt = cloud.appointments.filter(a => !isApptDeleted(a, _dIds));
@@ -6543,6 +6660,10 @@ function App() {
           }
         };
         var _hsJobs = [];
+        _hsJobs.push(_hs('slogclear_' + myEmail, d => {
+          var merged = applySessionClearMeta(d);
+          setSessionLog(prev => _filterClearedSessionList(prev, merged));
+        }));
         if (!localStorage.getItem('autodial_gemini')) _hsJobs.push(_hs('gemini_' + myEmail, d => {
           if (d.key) {
             setGeminiKeyVal(d.key);
@@ -6764,7 +6885,8 @@ function App() {
             var merged = [...prev];
             dbSessions.forEach(s => {
               var st = new Date(s.start_time).getTime();
-              if (!existing.has(st)) merged.push({
+              var dbSession = {
+                dbSessionId: s.id,
                 startTime: st,
                 endTime: s.end_time ? new Date(s.end_time).getTime() : null,
                 elapsed: s.elapsed || 0,
@@ -6781,8 +6903,10 @@ function App() {
                 pay: s.pay || 0,
                 paid: !!s.paid,
                 paidDate: s.paid_date || null,
+                email: s.email || myEmail,
                 ended: true
-              });
+              };
+              if (!existing.has(st) && !isClearedSession(dbSession)) merged.push(dbSession);
             });
             merged.sort((a, b) => (b.startTime || 0) - (a.startTime || 0));
             return merged;
@@ -7120,7 +7244,10 @@ function App() {
       };
       var unsub = onSync(msg => {
         if (msg.type === 'liveSync' && msg._dev !== window._devId) {
-          setTimeout(pullLatest, 500);
+          setTimeout(() => {
+            pullLatest();
+            if (typeof window._liveSyncPull === 'function') window._liveSyncPull();
+          }, 500);
         }
       });
       var onVis = () => {
@@ -7234,6 +7361,9 @@ function App() {
           }, {
             onConflict: 'admin_email'
           });
+          try {
+            window._bumpSyncVer && window._bumpSyncVer();
+          } catch (_e) {}
           DBG('[LiveSync] push ' + shortKey + ' hash', newHash);
         } catch (e) {
           console.warn('[LiveSync ' + shortKey + ' push]', e?.message || e);
@@ -7636,9 +7766,24 @@ function App() {
         }
       }
     }, {
+      key: 'slogclear',
+      skipHash: true,
+      apply: p => {
+        var merged = applySessionClearMeta(p);
+        setSessionLog(prev => _filterClearedSessionList(prev, merged));
+      }
+    }, {
       key: 'slog',
       apply: p => {
-        if (Array.isArray(p?.data)) setSessionLog(prev => p.data.length > prev.length ? p.data : prev);
+        if (Array.isArray(p?.data)) {
+          var cleanData = filterClearedSessions(p.data);
+          setSessionLog(prev => {
+            if (!cleanData.length && !p.data.length && sessionClearRef.current?.keys?.length) return [];
+            if (cleanData.length > prev.length) return cleanData;
+            var stripped = _filterClearedSessionList(prev, sessionClearRef.current);
+            return stripped.length === prev.length ? prev : stripped;
+          });
+        }
       }
     }, {
       key: 'promo',
@@ -13849,17 +13994,26 @@ function App() {
       }
     }, "\uD83D\uDDD3 Grid")), React.createElement("button", {
       onClick: () => {
+        if (calRefreshing) return;
         setCalRefreshing(true);
         setCalRefreshTrigger(p => p + 1);
+        return;
         toast('Refreshing calendar…', 'info');
       },
       style: {
-        padding: '6px 10px',
+        width: 34,
+        minWidth: 34,
+        height: 30,
+        padding: 0,
         borderRadius: 8,
         background: 'var(--bg3)',
         color: 'var(--text2)',
         fontSize: 10,
         fontWeight: 700,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        animation: calRefreshing ? 'spin 1.6s linear infinite' : undefined,
         flexShrink: 0
       }
     }, calRefreshing ? '⟳…' : '⟳'), React.createElement("button", {
@@ -15692,31 +15846,117 @@ function App() {
           toast('Not connected to cloud', 'err');
           return;
         }
-        var emails = Object.keys(adminConfigs || {}).filter(e => e.includes('@') && e.toLowerCase() !== myEmail.toLowerCase());
+        var emails = Object.keys(adminConfigs || {}).filter(e => e.includes('@') && e.toLowerCase() !== myEmail.toLowerCase()).map(e => e.toLowerCase());
+        try {
+          var _payDiscovery = await _SB.from('autodial_admin_config').select('admin_email,biz_name').like('admin_email', 'slog_%');
+          (_payDiscovery.data || []).forEach(row => {
+            var em = String(row.admin_email || '').replace(/^slog_/, '').toLowerCase();
+            if (em.includes('@') && em !== myEmail && !emails.includes(em)) emails.push(em);
+          });
+        } catch (_e) {}
+        try {
+          var _cfgDiscovery = await _SB.from('autodial_admin_config').select('admin_email,biz_name').like('admin_email', 'shared_admincfg_%');
+          var _discoveredCfgs = {};
+          (_cfgDiscovery.data || []).forEach(row => {
+            var em = String(row.admin_email || '').replace(/^shared_admincfg_/, '').toLowerCase();
+            if (!em.includes('@') || em === myEmail) return;
+            if (!emails.includes(em)) emails.push(em);
+            try {
+              _discoveredCfgs[em] = _normalizeSharedAdminCfg(JSON.parse(row.biz_name || '{}'));
+            } catch (_e2) {
+              _discoveredCfgs[em] = _normalizeSharedAdminCfg({});
+            }
+          });
+          if (Object.keys(_discoveredCfgs).length) setAdminConfigs(prev => {
+            var next = {
+              ...prev
+            };
+            Object.entries(_discoveredCfgs).forEach(([em, ac]) => {
+              next[em] = Object.assign({}, ac, next[em] || {});
+            });
+            return next;
+          });
+        } catch (_e) {}
+        try {
+          var _dbDiscovery = await DB.getAllSessions();
+          (_dbDiscovery || []).forEach(row => {
+            var em = (row.email || '').toLowerCase();
+            if (em && em !== myEmail && !emails.includes(em)) emails.push(em);
+          });
+        } catch (_e) {}
         if (!emails.length) {
-          toast('No admins configured', 'err');
+          toast('No admin payroll sources found yet', 'err');
           return;
         }
         toast('↻ Pulling ' + emails.length + ' admin session logs…', 'info');
         try {
+          var clearByEmail = {};
+          await Promise.allSettled(emails.map(async em => {
+            try {
+              var clr = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'slogclear_' + em.toLowerCase()).maybeSingle();
+              if (clr.data?.biz_name) clearByEmail[em.toLowerCase()] = _normalizeSessionClearMeta(JSON.parse(clr.data.biz_name));
+            } catch (_e) {}
+          }));
           var results = await Promise.all(emails.map(async em => {
             try {
               var r = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'slog_' + em.toLowerCase()).single();
               if (r.data?.biz_name) {
-                var slog = JSON.parse(r.data.biz_name);
-                return [em, Array.isArray(slog) ? slog : []];
+                var slog = sessionListFromPayload(JSON.parse(r.data.biz_name));
+                return [em, _filterClearedSessionList(slog, clearByEmail[em.toLowerCase()] || {})];
               }
             } catch (e) {}
             return [em, []];
           }));
+          (_dbDiscovery || []).forEach(row => {
+            var em = (row.email || '').toLowerCase();
+            if (!em || em === myEmail) return;
+            var st = row.start_time ? new Date(row.start_time).getTime() : 0;
+            var dbSession = {
+              dbSessionId: row.id,
+              startTime: st,
+              endTime: row.end_time ? new Date(row.end_time).getTime() : null,
+              elapsed: row.elapsed || 0,
+              dialed: row.dialed || 0,
+              np: row.np || 0,
+              cb: row.cb || 0,
+              ni: row.ni || 0,
+              sets: row.sets || 0,
+              tier: row.tier || '',
+              hourlyRate: row.hourly_rate || 0,
+              bonusMult: row.bonus_mult || 1.5,
+              fullSession: !!row.is_full_session,
+              bonus: !!row.is_bonus,
+              pay: row.pay || 0,
+              paid: !!row.paid,
+              paidDate: row.paid_date || null,
+              email: em,
+              ended: true
+            };
+            if (!_filterClearedSessionList([dbSession], clearByEmail[em] || {}).length) return;
+            results.push([em, [dbSession]]);
+          });
           var byEmail = {};
-          var totalSessions = 0;
           results.forEach(([em, sessions]) => {
             if (sessions.length) {
-              byEmail[em.toLowerCase()] = sessions;
-              totalSessions += sessions.length;
+              var key = em.toLowerCase();
+              var existing = byEmail[key] || [];
+              var existingKeys = new Set(existing.map(s => s.sessionKey || s.id || s.startTime));
+              sessions.forEach(s => {
+                if (sessSuppress.has(_suppKey(key, s.startTime))) return;
+                var sk = s.sessionKey || s.id || s.startTime;
+                if (!existingKeys.has(sk)) {
+                  existingKeys.add(sk);
+                  existing.push({
+                    ...s,
+                    email: s.email || key,
+                    _email: key
+                  });
+                }
+              });
+              byEmail[key] = existing;
             }
           });
+          var totalSessions = Object.values(byEmail).reduce((a, sessions) => a + sessions.length, 0);
           if (totalSessions === 0) {
             toast('⚠ No sessions found in cloud. Admins must end a session first.', 'err');
             return;
@@ -16795,14 +17035,16 @@ function App() {
           title: 'Delete all sessions',
           confirmLabel: 'Delete all'
         }))) return;
-        Promise.all(sessionLog.map(s => syncTimesheetSession(s, {
-          status: 'Deleted',
-          action: 'Cleared by ' + userName
-        }))).catch(() => {});
-        Promise.all(sessionLog.map(s => DB.deleteSess(myEmail, s.startTime))).catch(() => {});
+        var clearedSessions = sessionLog.slice();
+        rememberClearedSessions(clearedSessions, 'admin-pay-clear-all');
         setSessionLog([]);
         save('slog', []);
         cloudSave('slog', []);
+        await Promise.allSettled(clearedSessions.map(s => syncTimesheetSession(s, {
+          status: 'Deleted',
+          action: 'Cleared by ' + userName
+        })));
+        await Promise.allSettled(clearedSessions.map(s => DB.deleteSessRecord(s, myEmail)));
         toast('All sessions cleared');
       },
       style: {
@@ -16838,7 +17080,7 @@ function App() {
               status: 'Deleted',
               action: 'Cleared by ' + userName
             }, userName, ac).catch(() => {});
-            DB.deleteSess(em, s.startTime).catch(() => {});
+            DB.deleteSessRecord(s, em).catch(() => {});
           });
         });
         setAdminSessions({});
@@ -17008,7 +17250,8 @@ function App() {
             status: 'Deleted',
             action: 'Deleted by ' + userName
           }).catch(() => {});
-          DB.deleteSess(myEmail, s.startTime).catch(() => {});
+          rememberClearedSessions([s], 'admin-pay-delete');
+          DB.deleteSessRecord(s, myEmail).catch(() => {});
           var sk = s.id || s.startTime;
           setSessionLog(p => p.filter(x => (x.id || x.startTime) !== sk));
           toast('Session deleted');
@@ -17203,7 +17446,7 @@ function App() {
             status: 'Deleted',
             action: 'Deleted by ' + userName
           }, userName, _ac).catch(() => {});
-          DB.deleteSess(_em, s.startTime).catch(() => {});
+          DB.deleteSessRecord(s, _em).catch(() => {});
           if (s.startTime) setSessSuppress(prev => {
             var n = new Set(prev);
             n.add(_suppKey(_em, s.startTime));
