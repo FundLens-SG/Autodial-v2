@@ -308,7 +308,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0004';
+window.APP_VERSION='2026.04.29.0005';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -929,7 +929,7 @@ window.gSheets={
       // Add headers to new tabs
       for(var i=0;i<missing.length;i++){
         var tab=missing[i];var headers=[];
-        if(tab==='Timesheet')headers=[['Date','Day','Admin','Start','End','Hours','Dialed','NP','CB','NI','Set','Tier','$/hr','Bonus','Total Pay','Status']];
+        if(tab==='Timesheet')headers=[['Date','Day','Admin','Start','End','Hours','Dialed','NP','CB','NI','Set','Tier','$/hr','Bonus','Total Pay','Status','AutoDial ID','Session Key','Last Synced','Sync Action']];
         else if(tab==='Appointments Set')headers=[['Date Set','Admin','Lead Name','Phone','Appt Date','Appt Time','Location','Duration','Status','Follow-Up','Tip/EFYC','Notes']];
         else if(tab==='Pay')headers=[['Date','Admin','Amount','Sessions','Hours','Incentives','Invoice #','Screenshot','Status']];
         if(headers.length)await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab)+'!A1:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',{method:'POST',body:JSON.stringify({values:headers})});
@@ -1399,6 +1399,64 @@ function round30(date){var d=new Date(date);var m=d.getMinutes();d.setMinutes(m<
 var DAYS=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
 window.gTimesheet={_id:null,
+  headers:['Date','Day','Admin','Start','End','Hours','Dialed','NP','CB','NI','Set','Tier','$/hr','Bonus','Total Pay','Status','AutoDial ID','Session Key','Last Synced','Sync Action'],
+  tabName(cfg,preferred){return preferred||cfg?.timesheetTab||'Timesheet'},
+  sessionId(s){return String(s?.timesheetAutoId||s?.id||('sess_'+(s?.startTime||Date.now())))},
+  sessionKey(s,name){return String(s?.sessionKey||((s?.email||s?.adminEmail||s?._email||s?.admin||name||'')+'|'+(s?.startTime||'')))},
+  async ensureSheet(id,tabName){
+    if(!id)return '';
+    var tab=tabName||'Timesheet';
+    await gSheets.ensureTabs(id,[tab]);
+    try{
+      var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab+'!A1:T1'))).json();
+      var h=vals.values&&vals.values[0]?vals.values[0]:[];
+      var next=[...h];
+      for(var i=0;i<this.headers.length;i++)if(!next[i])next[i]=this.headers[i];
+      if(next.join('|')!==h.join('|'))await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab+'!A1:T1')+'?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[next]})});
+    }catch(e){console.warn('[TS ensureSheet]',e?.message||e)}
+    return tab
+  },
+  async findRow(id,s,cfg,tabName){
+    try{
+      var tab=await this.ensureSheet(id,this.tabName(cfg,tabName));
+      var rows=await gSheets.vals(id,tab+'!A:T');
+      var sid=this.sessionId(s), skey=this.sessionKey(s,s?.adminName||s?.admin);
+      for(var i=rows.length-1;i>=1;i--){var r=rows[i]||[];if(sid&&String(r[16]||'')===sid)return{row:i+1,tab};if(skey&&String(r[17]||'')===skey)return{row:i+1,tab}}
+      var d=new Date(s.startTime||0);
+      var date=d.toLocaleDateString('en-SG',{day:'2-digit',month:'2-digit',year:'numeric'});
+      var start=round30(d).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false});
+      var admin=String(s.adminName||s.admin||s.email||s.adminEmail||s._email||'').toLowerCase();
+      for(var j=rows.length-1;j>=1;j--){var rr=rows[j]||[];var rowAdmin=String(rr[2]||'').toLowerCase();var adminStem=admin.split('@')[0]||admin;if(String(rr[0]||'')===date&&String(rr[3]||'')===start&&(!admin||rowAdmin===admin||rowAdmin.indexOf(adminStem)>=0||admin.indexOf(rowAdmin)>=0))return{row:j+1,tab}}
+    }catch(e){console.warn('[TS findRow]',e?.message||e)}
+    return{row:0,tab:this.tabName(cfg,tabName)}
+  },
+  async updateRow(id,s,fields,actor,cfg,tabName){
+    try{
+      if(!id||!s)return false;
+      fields=fields||{};
+      var found=await this.findRow(id,s,cfg,tabName);
+      if(!found.row)return false;
+      var data=[];
+      function set(col,val){data.push({range:found.tab+'!'+col+found.row,values:[[val==null?'':val]]})}
+      if('hours'in fields)set('F',fields.hours);
+      if('dialed'in fields)set('G',fields.dialed);
+      if('np'in fields)set('H',fields.np);
+      if('cb'in fields)set('I',fields.cb);
+      if('ni'in fields)set('J',fields.ni);
+      if('sets'in fields)set('K',fields.sets);
+      if('tier'in fields)set('L',fields.tier);
+      if('rate'in fields)set('M',fields.rate);
+      if('bonus'in fields)set('N',fields.bonus);
+      if('pay'in fields)set('O',fields.pay);
+      if('status'in fields)set('P',fields.status);
+      set('Q',this.sessionId(s));
+      set('R',this.sessionKey(s,actor));
+      set('S',new Date().toLocaleString('en-SG'));
+      set('T',fields.action||('Updated by '+(actor||'AutoDial')));
+      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values:batchUpdate?valueInputOption=USER_ENTERED',{method:'POST',body:JSON.stringify({data})});
+      return found.row
+    }catch(e){console.warn('[TS updateRow]',e?.message||e);return false}
+  },
   async ensure(customId){
     // Use custom per-admin sheet if provided
     if(customId)return customId;
@@ -1416,7 +1474,8 @@ window.gTimesheet={_id:null,
       var d=await r.json();this._id=d.spreadsheetId;localStorage.setItem('ad_ts_id',this._id);return this._id}catch(e){return null}},
 
   async append(s,name,cfg,customSheetId){
-    var id=await this.ensure(customSheetId);if(!id)return;
+    var id=await this.ensure(customSheetId);if(!id)return false;
+    var tabName=await this.ensureSheet(id,this.tabName(cfg));
     var startDate=new Date(s.startTime);
     var endDate=s.endTime?new Date(s.endTime):new Date();
     // Round to nearest 30 min
@@ -1447,13 +1506,13 @@ window.gTimesheet={_id:null,
       '$'+(s.pay||0).toFixed(2),
       s.tsNote?'Unpaid — '+s.tsNote:'Unpaid'
     ];
-    var tabName=customSheetId?'Sheet1':'Timesheet';
-    try{await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tabName)+'!A:P:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
-      {method:'POST',body:JSON.stringify({values:[row]})})}catch(e){console.warn('[TS]',e.message)}},
+    row.push(this.sessionId(s),this.sessionKey(s,name),new Date().toLocaleString('en-SG'),'Created');
+    try{var res=await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tabName)+'!A:T:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
+      {method:'POST',body:JSON.stringify({values:[row]})});try{return await res.json()}catch(_e){return{ok:true}}}catch(e){console.warn('[TS]',e.message);return false}},
 
   // AI detect previous timesheet data from a sheet
   async detectExisting(sheetId){
-    try{var vals=await gSheets.vals(sheetId,'Sheet1!A:P');if(!vals||vals.length<2)return[];
+    try{var vals=await gSheets.vals(sheetId,'Timesheet!A:T');if(!vals||vals.length<2)vals=await gSheets.vals(sheetId,'Sheet1!A:T');if(!vals||vals.length<2)return[];
       var headers=vals[0];var rows=vals.slice(1);
       return rows.map(function(r){return{date:r[0]||'',day:r[1]||'',admin:r[2]||'',start:r[3]||'',end:r[4]||'',hours:r[5]||'',
         dialed:r[6]||'',np:r[7]||'',cb:r[8]||'',ni:r[9]||'',sets:r[10]||'',tier:r[11]||'',rate:r[12]||'',bonus:r[13]||'',pay:r[14]||'',status:r[15]||''}})
@@ -1472,6 +1531,8 @@ window.DB={
   async getSessions(email){if(!_SB)return[];try{var r=await _SB.from('autodial_sessions').select('*').eq('email',email).order('start_time',{ascending:false});return r.data||[]}catch(e){return[]}},
   async getAllSessions(){if(!_SB)return[];try{var r=await _SB.from('autodial_sessions').select('*').order('start_time',{ascending:false});return r.data||[]}catch(e){return[]}},
   async markPaid(email){if(!_SB)return;try{await _SB.from('autodial_sessions').update({paid:true,paid_date:new Date().toISOString()}).eq('email',email).eq('paid',false)}catch(e){}},
+  async markSessPaid(email,startTime){if(!_SB||!email||!startTime)return false;try{await _SB.from('autodial_sessions').update({paid:true,paid_date:new Date().toISOString()}).eq('email',email).eq('start_time',new Date(startTime).toISOString());return true}catch(e){console.warn('[DB.markSessPaid]',e.message);return false}},
+  async deleteSess(email,startTime){if(!_SB||!email||!startTime)return false;try{await _SB.from('autodial_sessions').delete().eq('email',email).eq('start_time',new Date(startTime).toISOString());return true}catch(e){console.warn('[DB.deleteSess]',e.message);return false}},
 
   // Call Log (session replay)
   async logAction(sessionId,uid,action,leadName,leadPhone,details){if(!_SB)return;try{await _SB.from('autodial_call_log').insert({
@@ -7865,17 +7926,37 @@ function App() {
         setPhase('idle');
       }
       if (d.type === 'adminSession' && role === 'main') {
+        var e = d.email || 'unknown';
+        var ac = adminConfigs[(e || '').toLowerCase()] || {};
+        var sess = {
+          ...(d.session || {}),
+          email: e,
+          adminEmail: e,
+          adminName: (d.session || {}).adminName || ac.bizName || e
+        };
         setAdminSessions(p => {
-          var e = d.email || 'unknown';
+          var existing = p[e] || [];
+          if (existing.some(x => x.startTime === sess.startTime)) return p;
           return {
             ...p,
-            [e]: [...(p[e] || []), d.session]
+            [e]: [...existing, sess]
           };
         });
+        if (localStorage.getItem('ad_gt')) {
+          var tsId = ac.timesheetId || myCfg.timesheetId || cfg.sheetId || '';
+          if (tsId) {
+            gTimesheet.updateRow(tsId, sess, {
+              status: sess.paid ? 'Paid' : sess.tsNote ? 'Unpaid - ' + sess.tsNote : 'Unpaid',
+              action: 'Reconciled by Main'
+            }, userName, ac).then(row => {
+              if (!row) return gTimesheet.append(sess, sess.adminName || e, ac, tsId);
+            }).catch(() => {});
+          }
+        }
       }
     });
     return unsub;
-  }, [role, isMob, callAssist, showNextLeadNotification]);
+  }, [role, isMob, callAssist, showNextLeadNotification, adminConfigs, myCfg, cfg.sheetId, userName]);
   useEffect(() => {
     var _start = session?.startTime;
     if (!_start || session?.ended) return;
@@ -7891,6 +7972,43 @@ function App() {
       document.removeEventListener('visibilitychange', onVis);
     };
   }, [session?.startTime, session?.ended]);
+  useEffect(() => {
+    if (role !== 'main' || !localStorage.getItem('ad_gt')) return;
+    var sessions = [];
+    Object.entries(adminSessions || {}).forEach(([em, list]) => {
+      var ac = adminConfigs[(em || '').toLowerCase()] || {};
+      (Array.isArray(list) ? list : []).forEach(s => {
+        if (!s || !s.startTime) return;
+        sessions.push({
+          em,
+          ac,
+          s: {
+            ...s,
+            email: s.email || em,
+            adminEmail: s.adminEmail || em,
+            adminName: s.adminName || ac.bizName || em
+          }
+        });
+      });
+    });
+    if (!sessions.length) return;
+    var key = sessions.map(x => x.em + '|' + x.s.startTime + '|' + (x.s.paid ? 1 : 0)).slice(-80).join(',');
+    if (appStateRef.current._lastTimesheetReconcile === key) return;
+    appStateRef.current._lastTimesheetReconcile = key;
+    var t = setTimeout(() => {
+      sessions.slice(-80).forEach(({em, ac, s}) => {
+        var tsId = ac.timesheetId || myCfg.timesheetId || cfg.sheetId || '';
+        if (!tsId) return;
+        gTimesheet.updateRow(tsId, s, {
+          status: s.paid ? 'Paid' : s.tsNote ? 'Unpaid - ' + s.tsNote : 'Unpaid',
+          action: 'Main reconcile'
+        }, userName, ac).then(row => {
+          if (!row) return gTimesheet.append(s, s.adminName || em, ac, tsId);
+        }).catch(() => {});
+      });
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [role, adminSessions, adminConfigs, myCfg, cfg.sheetId, userName]);
   var pending = leads.filter(l => l.status === 'pending' || l.status === 'cb');
   var cur = curIdx >= 0 && curIdx < leads.length ? leads[curIdx] : null;
   var nextLeadRef = useRef(-1);
@@ -7903,6 +8021,12 @@ function App() {
     if (!apptSheetId || !localStorage.getItem('ad_gt')) return false;
     return gSheets.updateApptRow(apptSheetId, appt, fields, userName);
   }, [myCfg.timesheetId, cfg.sheetId, userName]);
+  var syncTimesheetSession = useCallback(async (sess, fields = {}, ownerCfg) => {
+    var c = ownerCfg || myCfg;
+    var tsId = sess?.timesheetSheetId || c.timesheetId || cfg.sheetId;
+    if (!tsId || !localStorage.getItem('ad_gt')) return false;
+    return gTimesheet.updateRow(tsId, sess, fields, userName, c);
+  }, [myCfg, cfg.sheetId, userName]);
   var monthlyAppts = getMonthlyAppts(appointments, myEmail);
   var rank = getRank(monthlyAppts, cfg.starThresholds);
   var nextRank = getNextRank(monthlyAppts, cfg.starThresholds);
@@ -8051,8 +8175,16 @@ function App() {
       requestWakeLock();
       ensureNotifyPermission().then(ok => setCallAssistStatus(ok ? 'Notifications ready' : 'Notifications off'));
     }
-    setSession({
-      startTime: Date.now(),
+    var startedAt = Date.now();
+    var sessionId = 'sess_' + startedAt + '_' + Math.random().toString(36).slice(2, 8);
+    var nextSession = {
+      id: sessionId,
+      timesheetAutoId: sessionId,
+      sessionKey: myEmail + '|' + startedAt,
+      email: myEmail,
+      adminEmail: myEmail,
+      adminName: userName,
+      startTime: startedAt,
       dialed: 0,
       np: 0,
       ni: 0,
@@ -8060,10 +8192,12 @@ function App() {
       sets: 0,
       ended: false,
       selectedSlot: chosenSlot || null
-    });
+    };
+    setSession(nextSession);
     setElapsed(0);
     setShowSlotPicker(false);
     toast(chosenSlot ? '🔥 ' + n(chosenSlot.hours, 5) + 'h challenge accepted!' : 'Session started! 🔥');
+    return nextSession;
   };
   var endSession = () => {
     if (!session) return;
@@ -8073,6 +8207,12 @@ function App() {
       endTime: Date.now(),
       elapsed
     };
+    s.id = s.id || 'sess_' + (s.startTime || Date.now()) + '_' + Math.random().toString(36).slice(2, 8);
+    s.timesheetAutoId = s.timesheetAutoId || s.id;
+    s.sessionKey = s.sessionKey || myEmail + '|' + (s.startTime || '');
+    s.email = s.email || myEmail;
+    s.adminEmail = s.adminEmail || myEmail;
+    s.adminName = s.adminName || userName;
     s.rank = rank.label;
     s.monthlyAppts = monthlyAppts;
     s.role = role;
@@ -8156,11 +8296,12 @@ function App() {
         setTimeout(() => setConfetti(false), 3000);
       }
     }
-    setSession(s);
-    setSessionLog(p => [{
+    var sessionRecord = {
       ...s,
       callLog: [...callLog]
-    }, ...p]);
+    };
+    setSession(s);
+    setSessionLog(p => [sessionRecord, ...p]);
     setRunning(false);
     setPhase('idle');
     setShowNextPreview(false);
@@ -8201,7 +8342,16 @@ function App() {
       if (tsId) {
         gSheets.ensureTabs(tsId, ['Timesheet', 'Appointments Set', 'Pay']);
       }
-      gTimesheet.append(s, userName, myCfg, tsId || undefined);
+      gTimesheet.append(s, userName, myCfg, tsId || undefined).then(res => {
+        var rng = res?.updates?.updatedRange || '';
+        setSessionLog(p => p.map(x => (x.id && x.id === s.id) || x.startTime === s.startTime ? {
+          ...x,
+          timesheetSheetId: tsId,
+          timesheetRange: rng,
+          timesheetAutoId: s.timesheetAutoId,
+          sessionKey: s.sessionKey
+        } : x));
+      }).catch(() => {});
     }
   };
   var broadcastStats = useCallback(() => {
@@ -8695,13 +8845,14 @@ function App() {
     }
   }, [phase, countdown, running, cur, dial]);
   var startDial = chosenSlot => {
+    var startedSession = session && !session.ended ? session : null;
     if (!session || session.ended) {
       var slots = (myCfg.sessionSlots || []).filter(sl => n(sl.hours, 0) > 0);
       if (slots.length > 1 && !chosenSlot) {
         setShowSlotPicker(true);
         return;
       }
-      startSession(chosenSlot || slots[0] || null);
+      startedSession = startSession(chosenSlot || slots[0] || null);
     }
     var f = getNextDialable(leads, -1, {
       ...dialFilters()
@@ -8725,22 +8876,15 @@ function App() {
     setRunning(true);
     setPhase('calling');
     setTab('dial');
-    setTimeout(() => dial(leads[f].phone), 500);
-    syncSend('start', {
+    var startPayload = {
       curIdx: f,
       phase: 'calling',
-      session: {
-        startTime: Date.now(),
-        dialed: 0,
-        np: 0,
-        ni: 0,
-        cb: 0,
-        sets: 0,
-        ended: false
-      },
+      session: startedSession,
       phone: leads[f].phone,
       leads
-    });
+    };
+    syncSend('start', startPayload);
+    if (isMob) dial(leads[f].phone);else setTimeout(() => dial(leads[f].phone), 500);
   };
   var pauseDial = () => {
     setRunning(false);
@@ -13676,10 +13820,21 @@ function App() {
         color: 'var(--green)'
       }
     }, "Paid") : isMain && React.createElement("button", {
-      onClick: () => setAppointments(p => p.map(x => x.id === a.id ? {
+      onClick: async () => {
+        await syncApptSheet({
+          ...a,
+          tipPaid: true
+        }, {
+          status: 'Set',
+          followUp: 'Closed',
+          tip: role === 'main' ? a.efyc || 0 : a.tip || 0,
+          notes: (a.remarks || '') + ' [Tip paid ' + new Date().toLocaleString('en-SG') + ']'
+        });
+        setAppointments(p => p.map(x => x.id === a.id ? {
         ...x,
         tipPaid: true
-      } : x)),
+      } : x));
+      },
       style: {
         padding: '4px 10px',
         borderRadius: 6,
@@ -15023,6 +15178,11 @@ function App() {
     }, isManageMode ? _allAdminSessions.length : sessionLog.length, " sessions"), isCallMode && sessionLog.length > 0 && React.createElement("button", {
       onClick: () => {
         if (!confirm('⚠️ Delete ALL ' + sessionLog.length + ' sessions?\n\nThis will reset pay history and cannot be undone.')) return;
+        Promise.all(sessionLog.map(s => syncTimesheetSession(s, {
+          status: 'Deleted',
+          action: 'Cleared by ' + userName
+        }))).catch(() => {});
+        Promise.all(sessionLog.map(s => DB.deleteSess(myEmail, s.startTime))).catch(() => {});
         setSessionLog([]);
         save('slog', []);
         cloudSave('slog', []);
@@ -15050,6 +15210,16 @@ function App() {
           var n = new Set(prev);
           _keys.forEach(k => n.add(k));
           return n;
+        });
+        Object.entries(adminSessions).forEach(([em, list]) => {
+          var ac = adminConfigs[(em || '').toLowerCase()] || {};
+          (Array.isArray(list) ? list : []).forEach(s => {
+            gTimesheet.updateRow(ac.timesheetId || myCfg.timesheetId || cfg.sheetId, s, {
+              status: 'Deleted',
+              action: 'Cleared by ' + userName
+            }, userName, ac).catch(() => {});
+            DB.deleteSess(em, s.startTime).catch(() => {});
+          });
         });
         setAdminSessions({});
         toast('Admin sessions cleared');
@@ -15186,11 +15356,18 @@ function App() {
           fontWeight: 600
         }
       }, "\uD83D\uDCF9 Replay")), role === 'main' && !s.paid && React.createElement("button", {
-        onClick: () => setSessionLog(p => p.map((x, j) => j === i ? {
+        onClick: () => {
+          syncTimesheetSession(s, {
+            status: 'Paid',
+            action: 'Marked paid by ' + userName
+          }).catch(() => {});
+          DB.markSessPaid(myEmail, s.startTime).catch(() => {});
+          setSessionLog(p => p.map((x, j) => j === i ? {
           ...x,
           paid: true,
           paidDate: new Date().toISOString()
-        } : x)),
+        } : x));
+        },
         style: {
           marginTop: 6,
           width: '100%',
@@ -15204,7 +15381,13 @@ function App() {
       }, "\u2713 Mark Paid"), isCallMode && React.createElement("button", {
         onClick: () => {
           if (!confirm('Delete this session?')) return;
-          setSessionLog(p => p.filter((_, j) => j !== i));
+          syncTimesheetSession(s, {
+            status: 'Deleted',
+            action: 'Deleted by ' + userName
+          }).catch(() => {});
+          DB.deleteSess(myEmail, s.startTime).catch(() => {});
+          var sk = s.id || s.startTime;
+          setSessionLog(p => p.filter(x => (x.id || x.startTime) !== sk));
           toast('Session deleted');
         },
         style: {
@@ -15362,6 +15545,11 @@ function App() {
         }
       }, (_ac.sessionDur || myCfg.sessionDur).toFixed(1), "h"), !s.fullSession && s.elapsed && React.createElement("span", null, (s.elapsed / 3600).toFixed(1), "h")), !s.paid && React.createElement("button", {
         onClick: () => {
+          gTimesheet.updateRow(_ac.timesheetId || myCfg.timesheetId || cfg.sheetId, s, {
+            status: 'Paid',
+            action: 'Marked paid by ' + userName
+          }, userName, _ac).catch(() => {});
+          DB.markSessPaid(_em, s.startTime).catch(() => {});
           setAdminSessions(p => ({
             ...p,
             [_em]: (p[_em] || []).map(x => x.startTime === s.startTime ? {
@@ -15385,6 +15573,11 @@ function App() {
       }, "\u2713 Mark Paid"), React.createElement("button", {
         onClick: () => {
           if (!confirm('Delete this session for ' + _name + '?')) return;
+          gTimesheet.updateRow(_ac.timesheetId || myCfg.timesheetId || cfg.sheetId, s, {
+            status: 'Deleted',
+            action: 'Deleted by ' + userName
+          }, userName, _ac).catch(() => {});
+          DB.deleteSess(_em, s.startTime).catch(() => {});
           if (s.startTime) setSessSuppress(prev => {
             var n = new Set(prev);
             n.add(_suppKey(_em, s.startTime));
@@ -24228,6 +24421,15 @@ WHERE p.id IS NULL;`;
           ...update
         });
       }
+      await syncApptSheet({
+        ...a,
+        ...update
+      }, {
+        status: 'Set',
+        followUp: 'Closed',
+        tip: amt,
+        notes: (a.remarks || '') + ' [' + (isMain ? 'EFYC' : 'Tip') + ' $' + amt + ' ' + new Date().toLocaleString('en-SG') + ']'
+      });
       if (tipModal.fromMet) {
         setIncentives(p => p.filter(inc => !(inc.type === 'met' && inc.leadName === a.name && (inc.admin || '').toLowerCase() === (a.admin || myEmail).toLowerCase())));
       }
@@ -26161,15 +26363,28 @@ WHERE p.id IS NULL;`;
       var em = m.admin;
       var _paidKeys = [];
       var _curList = adminSessions[em] || [];
+      var _payAc = adminConfigs[(em || '').toLowerCase()] || {};
+      var _sessionsForSheet = [];
       if (m._cycleId) {
         _curList.forEach(s => {
-          if (s.cycleId === m._cycleId) _paidKeys.push(_suppKey(em, s.startTime));
+          if (s.cycleId === m._cycleId) {
+            _paidKeys.push(_suppKey(em, s.startTime));
+            _sessionsForSheet.push(s);
+          }
         });
       } else {
         _curList.forEach(s => {
-          if (!s.paid && !s.cycleId) _paidKeys.push(_suppKey(em, s.startTime));
+          if (!s.paid && !s.cycleId) {
+            _paidKeys.push(_suppKey(em, s.startTime));
+            _sessionsForSheet.push(s);
+          }
         });
       }
+      Promise.all(_sessionsForSheet.map(s => gTimesheet.updateRow(_payAc.timesheetId || myCfg.timesheetId || cfg.sheetId, s, {
+        status: 'Paid',
+        action: 'Paid via PayNow by ' + userName
+      }, userName, _payAc))).catch(() => {});
+      Promise.all(_sessionsForSheet.map(s => DB.markSessPaid(em, s.startTime))).catch(() => {});
       if (_paidKeys.length) setSessSuppress(prev => {
         var n = new Set(prev);
         _paidKeys.forEach(k => n.add(k));
@@ -26220,15 +26435,16 @@ WHERE p.id IS NULL;`;
         invNum: m.invNum,
         cycleId: m._cycleId
       }, ...p]);
-      if (cfg.sheetId && localStorage.getItem('ad_gt')) {
+      var _paySheetId = _payAc.timesheetId || myCfg.timesheetId || cfg.sheetId;
+      if (_paySheetId && localStorage.getItem('ad_gt')) {
         try {
-          gSheets.appendPay(cfg.sheetId, {
+          gSheets.ensureTabs(_paySheetId, ['Pay']).then(() => gSheets.appendPay(_paySheetId, {
             admin: em,
             amount: m.amount,
             sessions: m.sessCount || 0,
             hours: m.totalHrs || 0,
             incentives: m.incCount || 0
-          });
+          })).catch(() => {});
         } catch (e) {}
       }
       try {
