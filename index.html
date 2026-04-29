@@ -171,9 +171,11 @@ button:active{transform:scale(.97)}
 .sp-edit b{font-weight:700;color:#f1f5f9}
 .sp-edit i{font-style:italic;color:var(--accent3)}
 .sp-edit u{text-decoration:underline;text-underline-offset:3px}
-.script-read{max-width:68ch;margin:0 auto;font-size:14.5px;color:var(--text);line-height:1.75;font-family:inherit}
+.script-read{max-width:68ch;margin:0 auto;font-size:14.5px;color:var(--text);line-height:1.58;font-family:inherit}
 .script-read b{font-weight:800;color:#fff}
-.script-read [style*="font-weight:700"]{display:block;margin:16px 0 6px;padding-top:10px;border-top:1px solid var(--border)}
+.script-read [style*="font-weight:700"],.script-read [style*="font-weight: 700"]{font-weight:800;border-top:0!important;padding-top:0!important}
+.script-read div,.script-read p{border-top:0!important}
+.script-read hr{display:none}
 .script-token{display:inline-block;padding:0 4px;border-radius:5px;background:rgba(99,102,241,.16);color:var(--accent3);font-weight:800;line-height:1.45}
 .ob-bank{margin:0 0 12px;padding:10px;border-radius:12px;background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.22)}
 .ob-chip-row{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
@@ -316,7 +318,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.29.0013';
+window.APP_VERSION='2026.04.29.0014';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -18685,37 +18687,34 @@ function App() {
   }, label))), React.createElement("div", {
     style: {
       display: 'flex',
-      gap: 4,
+      gap: 6,
       marginBottom: 14,
-      background: 'var(--bg3)',
-      padding: 4,
-      borderRadius: 12,
+      background: 'var(--bg2)',
+      padding: 5,
+      borderRadius: 14,
       border: '1px solid var(--border)',
-      flexWrap: 'wrap'
+      overflowX: 'auto',
+      WebkitOverflowScrolling: 'touch'
     }
-  }, [['setup', 'Start', 'Setup'], ['prefs', 'Call', 'Calling'], ['integr', 'Link', role === 'admin' ? 'Linked' : 'Connect'], ['ai', 'AI', 'Import'], ['data', 'Sync', 'Data'], ...(isManageMode ? [['team', 'Team', 'Admins']] : []), ...(isCreatorUser ? [['owner', 'Own', 'Owner']] : [])].map(([_k, _ic, _lbl]) => React.createElement("button", {
+  }, [['setup', 'Setup'], ['prefs', 'Calling'], ['integr', role === 'admin' ? 'Linked' : 'Connect'], ['ai', 'AI Import'], ['data', 'Sync'], ...(isManageMode ? [['team', 'Team']] : []), ...(isCreatorUser ? [['owner', 'Owner']] : [])].map(([_k, _lbl]) => React.createElement("button", {
     key: _k,
     onClick: () => setSettingsSubtab(_k),
     style: {
-      flex: '1 1 auto',
-      minWidth: 60,
-      padding: '9px 6px',
-      borderRadius: 8,
-      background: settingsSubtab === _k ? 'var(--adim)' : 'transparent',
-      color: settingsSubtab === _k ? 'var(--accent2)' : 'var(--text3)',
-      fontSize: 11,
-      fontWeight: 700,
-      border: 'none',
+      flex: '0 0 auto',
+      minWidth: 74,
+      padding: '9px 12px',
+      borderRadius: 10,
+      background: settingsSubtab === _k ? 'var(--adim)' : 'var(--bg)',
+      color: settingsSubtab === _k ? 'var(--accent2)' : 'var(--text2)',
+      fontSize: 12,
+      fontWeight: 800,
+      border: '1px solid ' + (settingsSubtab === _k ? 'rgba(99,102,241,.4)' : 'var(--border)'),
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      gap: 4
+      whiteSpace: 'nowrap'
     }
-  }, React.createElement("span", {
-    style: {
-      fontSize: 13
-    }
-  }, _ic), _lbl))), settingsSubtab === 'setup' && (() => {
+  }, _lbl))), settingsSubtab === 'setup' && (() => {
     var adminLinked = !!(myCfg.timesheetId || cfg.sheetId || myCfg.sheetTab || cfg.sheetTab);
     var setupItems = role === 'admin' ? [{
       label: 'Main workspace',
@@ -28663,7 +28662,7 @@ WHERE p.id IS NULL;`;
     style: {
       fontSize: 14.5,
       color: 'var(--text)',
-      lineHeight: 1.75,
+      lineHeight: 1.58,
       fontFamily: 'inherit'
     },
     dangerouslySetInnerHTML: {
@@ -28922,7 +28921,7 @@ WHERE p.id IS NULL;`;
     style: {
       fontSize: 13,
       color: 'var(--text)',
-      lineHeight: 1.7,
+      lineHeight: 1.58,
       fontFamily: 'inherit'
     },
     dangerouslySetInnerHTML: {
