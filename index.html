@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.01.0004';
+window.APP_VERSION='2026.05.01.0005';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -5290,6 +5290,7 @@ function App() {
   var [apptTravelAfter, setApptTravelAfter] = useState(() => _slotMinutes(load('apptTravelAfter'), 0, 0, 240));
   var [preferredApptTimes, setPreferredApptTimes] = useState(() => _normalizePreferredApptTimes(load('preferredApptTimes')));
   var [showWA, setShowWA] = useState(null);
+  var [shareWaTemplateId, setShareWaTemplateId] = useState('');
   useEffect(() => {
     if (!showWA && _advanceAfterWARef.current) {
       var fn = _advanceAfterWARef.current;
@@ -5302,6 +5303,15 @@ function App() {
     template: '',
     category: 'appointment'
   });
+  useEffect(() => {
+    if (!waTemplates.length) {
+      if (shareWaTemplateId) setShareWaTemplateId('');
+      return;
+    }
+    if (!shareWaTemplateId || !waTemplates.some(t => String(t.id || t.name || '') === String(shareWaTemplateId))) {
+      setShareWaTemplateId(String(waTemplates[0].id || waTemplates[0].name || ''));
+    }
+  }, [waTemplates, shareWaTemplateId]);
   var [showReplay, setShowReplay] = useState(null);
   var [rawSheet, setRawSheet] = useState(null);
   var [showColPicker, setShowColPicker] = useState(null);
@@ -6420,6 +6430,90 @@ function App() {
       }).catch(() => {})));
     }
     toast('Stopped script sharing for ' + targets.length + ' admin' + (targets.length === 1 ? '' : 's'));
+  }, []);
+  var _waTplKey = t => String(t?.id || t?.name || '');
+  var _cleanWATemplate = t => t && typeof t === 'object' ? {
+    id: t.id || 'wa_' + Date.now(),
+    name: String(t.name || 'WhatsApp template'),
+    template: String(t.template || ''),
+    category: String(t.category || 'appointment')
+  } : null;
+  var _selectedWATemplates = useCallback(ids => {
+    var wanted = new Set((ids || []).map(x => String(x || '')).filter(Boolean));
+    return (waTemplates || []).filter(t => wanted.has(_waTplKey(t))).map(_cleanWATemplate).filter(t => t && t.template);
+  }, [waTemplates]);
+  var shareWATemplatesToAdmins = useCallback(async (emails, templateIds) => {
+    var targets = (emails || []).map(e => (e || '').toLowerCase()).filter(e => e && e.includes('@'));
+    if (!targets.length) return toast('Choose at least one admin to share with', 'err');
+    var selected = _selectedWATemplates(templateIds);
+    if (!selected.length) return toast('Choose a WhatsApp template first', 'err');
+    var ids = selected.map(_waTplKey);
+    var names = selected.map(t => t.name).join(', ');
+    var ts = Date.now();
+    setAdminConfigs(prev => {
+      var next = {
+        ...prev
+      };
+      targets.forEach(em => {
+        next[em] = {
+          ...(next[em] || {}),
+          shareWaTemplates: true,
+          waTemplateShareIds: ids,
+          waTemplateShareNames: names,
+          waTemplateShareUpdatedAt: ts
+        };
+      });
+      publishAdminConfigs(next);
+      return next;
+    });
+    if (!_SB) {
+      toast('Saved locally. Cloud is not ready yet.', 'err');
+      return;
+    }
+    try {
+      await Promise.all(targets.map(em => _SB.from('autodial_admin_config').upsert({
+        admin_email: 'watpl_' + em,
+        biz_name: JSON.stringify(selected)
+      }, {
+        onConflict: 'admin_email'
+      })));
+      toast('Shared WhatsApp template with ' + targets.length + ' admin' + (targets.length === 1 ? '' : 's'));
+      try {
+        window._bumpSyncVer && window._bumpSyncVer();
+      } catch (_e) {}
+    } catch (e) {
+      toast('Template share failed: ' + (e?.message || e), 'err');
+    }
+  }, [_selectedWATemplates]);
+  var stopWATemplateShareForAdmins = useCallback(async emails => {
+    var targets = (emails || []).map(e => (e || '').toLowerCase()).filter(e => e && e.includes('@'));
+    if (!targets.length) return;
+    var ts = Date.now();
+    setAdminConfigs(prev => {
+      var next = {
+        ...prev
+      };
+      targets.forEach(em => {
+        next[em] = {
+          ...(next[em] || {}),
+          shareWaTemplates: false,
+          waTemplateShareIds: [],
+          waTemplateShareNames: '',
+          waTemplateShareUpdatedAt: ts
+        };
+      });
+      publishAdminConfigs(next);
+      return next;
+    });
+    if (_SB) {
+      await Promise.all(targets.map(em => _SB.from('autodial_admin_config').upsert({
+        admin_email: 'watpl_' + em,
+        biz_name: JSON.stringify([])
+      }, {
+        onConflict: 'admin_email'
+      }).catch(() => {})));
+    }
+    toast('Stopped WhatsApp template sharing for ' + targets.length + ' admin' + (targets.length === 1 ? '' : 's'));
   }, []);
   var applySharedScriptPayload = useCallback(s => {
     if (!s) return;
@@ -7758,6 +7852,11 @@ function App() {
                 }
               } catch (_e) {}
             }
+          }
+          if (role === 'admin') {
+            setWaTemplates([]);
+            waInitRef.current = true;
+            return;
           }
           var t = await DB.getWATemplates();
           if (t && t.length) {
@@ -11396,8 +11495,9 @@ function App() {
   var guidedSetupItems = buildGuidedSetupItems();
   var guidedDoneCount = guidedSetupItems.filter(x => x.done).length;
   var guidedSetupComplete = guidedDoneCount === guidedSetupItems.length;
-  var settingsAllTabs = [['setup', 'Setup'], ['prefs', 'Calling'], ['integr', role === 'admin' ? 'Linked' : 'Connect'], ['data', 'Sync'], ...(isManageMode ? [['team', 'Team']] : []), ...(isCreatorUser ? [['owner', 'Owner']] : [])];
-  var settingsRoleTabs = settingsShowAll ? settingsAllTabs : role === 'admin' ? [['setup', 'Setup'], ['integr', 'Linked'], ['prefs', 'Calling']] : isManageMode ? [['setup', 'Setup'], ['team', 'Team'], ['integr', 'Connect'], ['data', 'Sync'], ...(isCreatorUser ? [['owner', 'Owner']] : [])] : [['setup', 'Setup'], ['prefs', 'Calling'], ['integr', 'Connect'], ['data', 'Sync']];
+  var _prefsTabLabel = isManageMode ? 'Templates' : 'Calling';
+  var settingsAllTabs = [['setup', 'Setup'], ['prefs', _prefsTabLabel], ['integr', role === 'admin' ? 'Linked' : 'Connect'], ['data', 'Sync'], ...(isManageMode ? [['team', 'Team']] : []), ...(isCreatorUser ? [['owner', 'Owner']] : [])];
+  var settingsRoleTabs = settingsShowAll ? settingsAllTabs : role === 'admin' ? [['setup', 'Setup'], ['integr', 'Linked'], ['prefs', 'Templates']] : isManageMode ? [['setup', 'Setup'], ['team', 'Team'], ['prefs', 'Templates'], ['integr', 'Connect'], ['data', 'Sync'], ...(isCreatorUser ? [['owner', 'Owner']] : [])] : [['setup', 'Setup'], ['prefs', 'Calling'], ['integr', 'Connect'], ['data', 'Sync']];
   useEffect(() => {
     if (tab !== 'settings') return;
     if (settingsRoleTabs.some(([k]) => k === settingsSubtab)) return;
@@ -20924,7 +21024,42 @@ function App() {
       fontSize: 12,
       fontWeight: 600
     }
-  }, "Add")), Object.entries(adminConfigs).map(([em, ac]) => React.createElement("div", {
+  }, "Add")), React.createElement("div", {
+    style: {
+      marginBottom: 10,
+      padding: '9px 10px',
+      borderRadius: 10,
+      background: 'rgba(37,211,102,.06)',
+      border: '1px solid rgba(37,211,102,.18)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 10,
+      color: 'var(--text2)',
+      lineHeight: 1.35
+    }
+  }, React.createElement("b", {
+    style: {
+      color: '#25d366'
+    }
+  }, "WhatsApp templates"), " live under Settings \u2192 Templates. Create them there, then choose which template each admin receives below."), React.createElement("button", {
+    onClick: () => setSettingsSubtab('prefs'),
+    style: {
+      padding: '6px 10px',
+      borderRadius: 8,
+      background: 'rgba(37,211,102,.12)',
+      color: '#25d366',
+      fontSize: 10,
+      fontWeight: 900,
+      border: '1px solid rgba(37,211,102,.24)',
+      flexShrink: 0
+    }
+  }, "Open Templates")), Object.entries(adminConfigs).map(([em, ac]) => React.createElement("div", {
     key: em,
     style: {
       background: 'var(--bg3)',
@@ -20958,7 +21093,7 @@ function App() {
       fontSize: 9,
       color: 'var(--text3)'
     }
-  }, "\uD83D\uDCE8 ", waTemplates.length, " WA template", waTemplates.length === 1 ? '' : 's', " shared ", React.createElement("span", {
+  }, ac.shareWaTemplates ? "\uD83D\uDCE8 WA shared: " + (ac.waTemplateShareNames || 'selected template') + " " : "\uD83D\uDCE8 WA: choose a template to share ", React.createElement("span", {
     style: {
       opacity: .6
     }
@@ -21626,6 +21761,69 @@ function App() {
     }
   }, ac.shareScript ? 'Sharing: ' + (ac.scriptShareName || 'selected saved script') : "Pick one saved script version to share with this admin.")), React.createElement("div", {
     style: {
+      marginBottom: 8,
+      padding: 10,
+      borderRadius: 10,
+      background: ac.shareWaTemplates ? 'rgba(37,211,102,.08)' : 'var(--bg)',
+      border: '1px solid ' + (ac.shareWaTemplates ? 'rgba(37,211,102,.32)' : 'var(--border)')
+    }
+  }, React.createElement("label", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      cursor: 'pointer',
+      color: ac.shareWaTemplates ? '#25d366' : 'var(--text2)',
+      fontSize: 12,
+      fontWeight: 800
+    }
+  }, React.createElement("input", {
+    type: "checkbox",
+    checked: !!ac.shareWaTemplates,
+    onChange: e => {
+      if (e.target.checked) {
+        var selected = String(ac.waTemplateShareIds?.[0] || shareWaTemplateId || waTemplates[0]?.id || waTemplates[0]?.name || '');
+        if (!waTemplates.length || !selected) {
+          e.target.checked = false;
+          return toast('Create a WhatsApp template before sharing', 'err');
+        }
+        shareWATemplatesToAdmins([em], [selected]);
+      } else {
+        stopWATemplateShareForAdmins([em]);
+      }
+    }
+  }), React.createElement("span", null, "\uD83D\uDCAC Share WhatsApp template")), waTemplates.length > 0 ? React.createElement("select", {
+    value: String(ac.waTemplateShareIds?.[0] || shareWaTemplateId || waTemplates[0]?.id || waTemplates[0]?.name || ''),
+    onChange: e => {
+      setShareWaTemplateId(e.target.value);
+      shareWATemplatesToAdmins([em], [e.target.value]);
+    },
+    style: {
+      width: '100%',
+      marginTop: 8,
+      padding: '7px 8px',
+      borderRadius: 8,
+      fontSize: 11
+    }
+  }, waTemplates.map(t => React.createElement("option", {
+    key: _waTplKey(t),
+    value: _waTplKey(t)
+  }, (t.name || 'WhatsApp template') + (t.category ? ' · ' + t.category : '')))) : React.createElement("p", {
+    style: {
+      margin: '6px 0 0 22px',
+      fontSize: 9,
+      color: 'var(--amber)',
+      lineHeight: 1.35
+    }
+  }, "Open Templates to create a WhatsApp template first."), React.createElement("p", {
+    style: {
+      margin: '5px 0 0 22px',
+      fontSize: 9,
+      color: 'var(--text3)',
+      lineHeight: 1.35
+    }
+  }, ac.shareWaTemplates ? 'Sharing: ' + (ac.waTemplateShareNames || 'selected WhatsApp template') : "Admins only receive the selected WhatsApp template.")), React.createElement("div", {
+    style: {
       marginBottom: 8
     }
   }, React.createElement("label", {
@@ -21988,7 +22186,14 @@ function App() {
       fontWeight: 700,
       color: 'var(--accent2)'
     }
-  }, "\uD83D\uDD0D AI Detected Tabs"), ac._detectedAppt && React.createElement("div", {
+  }, "\uD83D\uDD0D Optional detected tabs"), React.createElement("p", {
+    style: {
+      margin: '0 0 6px',
+      fontSize: 9,
+      color: 'var(--text3)',
+      lineHeight: 1.35
+    }
+  }, "AutoDial guessed these from tab names. They are optional imports for old records only; your Leads tab above is still the calling source."), ac._detectedAppt && React.createElement("div", {
     style: {
       display: 'flex',
       alignItems: 'center',
@@ -22096,7 +22301,7 @@ function App() {
       fontSize: 10,
       fontWeight: 600
     }
-  }, "Import")), ac._detectedTs && React.createElement("div", {
+  }, "Import old appts")), ac._detectedTs && React.createElement("div", {
     style: {
       display: 'flex',
       alignItems: 'center',
@@ -22209,7 +22414,7 @@ function App() {
       fontSize: 10,
       fontWeight: 600
     }
-  }, "Import as Past Pay")))), React.createElement("p", {
+  }, "Import past pay")))), React.createElement("p", {
     style: {
       fontSize: 10,
       color: 'var(--text3)',
@@ -22228,7 +22433,7 @@ function App() {
     style: {
       color: 'var(--accent2)'
     }
-  }, "Pay"), " tabs are auto-created when used. Use Create / Repair Tabs Now to create or fix headers immediately.")), React.createElement("div", {
+  }, "Pay"), " tabs are system tabs. Use Create / Repair Tabs Now if you want AutoDial to create or fix them. Only press the detected import buttons when this sheet already contains past appointment/pay history.")), React.createElement("div", {
     style: {
       marginBottom: 6
     }
@@ -25012,7 +25217,7 @@ function App() {
     style: {
       margin: 0
     }
-  }, React.createElement("b", null, "WhatsApp Templates"), " \u2014 Create templates, auto-shared with admins")))), React.createElement("button", {
+  }, React.createElement("b", null, "WhatsApp Templates"), " \u2014 Create in Settings \u2192 Templates, then choose which one each admin receives")))), React.createElement("button", {
     onClick: () => {
       setShowHelp(false);
       localStorage.setItem('autodial_seen_help', '1');
