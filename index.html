@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.01.0003';
+window.APP_VERSION='2026.05.01.0004';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -4518,11 +4518,17 @@ function App() {
       var _baseUndo = appStateRef.current._pendingSetUndoBase || {};
       appStateRef.current._lastUndo = {
         leadIdx: _baseUndo.leadIdx ?? li,
+        leadId: _baseUndo.leadId || leads[_baseUndo.leadIdx ?? li]?.id || '',
+        leadName: _baseUndo.leadName || leads[_baseUndo.leadIdx ?? li]?.name || '',
+        leadPhone: _baseUndo.leadPhone || leads[_baseUndo.leadIdx ?? li]?.phone || '',
         status: 'set',
         prevStatus: _baseUndo.prevStatus || 'pending',
         prevNpCount: _baseUndo.prevNpCount || 0,
         prevSheetValue: _baseUndo.prevSheetValue || '',
         statusCol: _baseUndo.statusCol,
+        sheetRow: _baseUndo.sheetRow || leads[_baseUndo.leadIdx ?? li]?.sheetRow || 0,
+        sheetId: _baseUndo.sheetId || leads[_baseUndo.leadIdx ?? li]?._sourceSheetId || cfg.sheetId || '',
+        sheetTab: _baseUndo.sheetTab || leads[_baseUndo.leadIdx ?? li]?._sourceSheetTab || cfg.sheetTab || 'Sheet1',
         ts: Date.now(),
         calEventId: _pending.calEventId || '',
         apptId: _pending.apptId || '',
@@ -4610,6 +4616,34 @@ function App() {
     setApptDuration(a.duration || 60);
     setApptShaky(false);
     setApptHardOverride(false);
+    setPickerWeekIdx(0);
+    setPickerCollapsed(false);
+    setShowAppt(true);
+  };
+  var _openIncompleteApptFlow = a => {
+    if (!a) return;
+    setRescheduleTargetAppt(null);
+    setApptLead({
+      id: a.leadId || a._setUndo?.leadId || a.id,
+      name: a.name,
+      phone: a.phone,
+      email: a.email || '',
+      age: a.age || '',
+      gender: a.gender || '',
+      race: a.race || '',
+      notes: a.remarks || ''
+    });
+    setApptDate('');
+    setApptTime('');
+    setApptLocation(a.location || '');
+    setApptObs(a.remarks || '');
+    setApptInvite(a.inviteEmails || '');
+    setApptTravelBefore(() => _slotMinutes(load('apptTravelBefore'), 0, 0, 240));
+    setApptDuration(() => _slotMinutes(load('apptDur'), a.duration || 60, 1, 480));
+    setApptTravelAfter(() => _slotMinutes(load('apptTravelAfter'), 0, 0, 240));
+    setApptShaky(!!a.shaky);
+    setApptHardOverride(false);
+    setPendingShakyKey(null);
     setPickerWeekIdx(0);
     setPickerCollapsed(false);
     setShowAppt(true);
@@ -5710,9 +5744,67 @@ function App() {
       ts: Date.now()
     }, ...p].slice(0, 5));
   }, []);
-  var doUndo = async () => {
-    if (!undoInfo) return;
-    var u = appStateRef.current._lastUndo;
+  var _leadFromUndoPayload = u => {
+    if (!u) return null;
+    var idx = u.leadIdx >= 0 ? u.leadIdx : -1;
+    var lead = idx >= 0 ? leadsRef.current[idx] : null;
+    var undoPhone = normalizePhone(u.leadPhone || u.phone || '');
+    if ((!lead || undoPhone && normalizePhone(lead.phone || '') !== undoPhone) && undoPhone) {
+      var foundIdx = leadsRef.current.findIndex(l => normalizePhone(l.phone || '') === undoPhone);
+      if (foundIdx >= 0) {
+        u.leadIdx = foundIdx;
+        lead = leadsRef.current[foundIdx];
+      }
+    }
+    if (lead) return lead;
+    if (!u.leadPhone && !u.phone && !u.sheetRow) return null;
+    return {
+      id: u.leadId || '',
+      name: u.leadName || '',
+      phone: u.leadPhone || u.phone || '',
+      status: u.prevStatus || 'pending',
+      npCount: u.prevNpCount || 0,
+      sheetValue: u.prevSheetValue || '',
+      sheetRow: u.sheetRow || 0,
+      statusCol: u.statusCol
+    };
+  };
+  var _undoPayloadForAppt = a => {
+    if (!a) return null;
+    var raw = a._setUndo || a.setUndo || {};
+    var phone = normalizePhone(a.phone || raw.leadPhone || raw.phone || '');
+    var leadIdx = raw.leadIdx >= 0 ? raw.leadIdx : -1;
+    if (phone) {
+      var foundIdx = leadsRef.current.findIndex(l => normalizePhone(l.phone || '') === phone);
+      if (foundIdx >= 0) leadIdx = foundIdx;
+    }
+    var lead = leadIdx >= 0 ? leadsRef.current[leadIdx] : null;
+    return {
+      ...raw,
+      leadIdx,
+      status: 'set',
+      prevStatus: raw.prevStatus || lead?.status || 'pending',
+      prevNpCount: raw.prevNpCount || lead?.npCount || 0,
+      prevSheetValue: raw.prevSheetValue ?? lead?.sheetValue ?? lead?.notes ?? '',
+      statusCol: raw.statusCol ?? lead?.statusCol,
+      sheetRow: raw.sheetRow || lead?.sheetRow || 0,
+      sheetId: raw.sheetId || lead?._sourceSheetId || cfg.sheetId || '',
+      sheetTab: raw.sheetTab || lead?._sourceSheetTab || cfg.sheetTab || 'Sheet1',
+      leadId: raw.leadId || a.leadId || lead?.id || '',
+      leadPhone: raw.leadPhone || a.phone || lead?.phone || '',
+      leadName: raw.leadName || a.name || lead?.name || '',
+      calEventId: a.calEventId || raw.calEventId || '',
+      apptId: a.id || raw.apptId || '',
+      dbApptId: a.dbApptId || raw.dbApptId || '',
+      apptSheetId: a.apptSheetId || raw.apptSheetId || '',
+      apptSheetRange: a.apptSheetRange || raw.apptSheetRange || '',
+      calendarId: a.calendarId || raw.calendarId || 'primary'
+    };
+  };
+  var doUndo = async (overrideInfo, overrideUndo) => {
+    var info = overrideInfo || undoInfo;
+    if (!info) return;
+    var u = overrideUndo || appStateRef.current._lastUndo;
     if (!u) return;
     var steps = [];
     var step = (label, ok, detail) => steps.push({
@@ -5727,14 +5819,15 @@ function App() {
       clearTimeout(autoAdvanceTimerRef.current);
       autoAdvanceTimerRef.current = null;
     }
-    var lead = u.leadIdx >= 0 ? leadsRef.current[u.leadIdx] : null;
+    var lead = _leadFromUndoPayload(u);
+    var undoPhone = lead?.phone || u.leadPhone || u.phone || '';
     var restoredLead = lead ? {
       ...lead,
       status: u.prevStatus || 'pending',
       npCount: u.prevNpCount || 0,
       sheetValue: u.prevSheetValue || lead.sheetValue || lead.notes || ''
     } : null;
-    setLeads(p => p.map((l, i) => i === u.leadIdx ? {
+    setLeads(p => p.map((l, i) => i === u.leadIdx || undoPhone && normalizePhone(l.phone || '') === normalizePhone(undoPhone) ? {
       ...l,
       status: u.prevStatus || 'pending',
       npCount: u.prevNpCount || 0,
@@ -5743,12 +5836,18 @@ function App() {
     step('Lead status reverted locally', true);
     if (restoredLead) {
       try {
-        if (u.prevSheetValue !== undefined && u.prevSheetValue !== null && restoredLead.statusCol >= 0) {
+        var directSheetId = u.sheetId || cfg.sheetId;
+        var directSheetTab = u.sheetTab || cfg.sheetTab || 'Sheet1';
+        if (directSheetId && directSheetTab && restoredLead.sheetRow && restoredLead.statusCol >= 0 && localStorage.getItem('ad_gt')) {
+          await gSheets.put(directSheetId, directSheetTab + '!' + a1Col(restoredLead.statusCol) + restoredLead.sheetRow, u.prevSheetValue ?? '');
+          step('Lead sheet revert synced', true);
+        } else if (u.prevSheetValue !== undefined && u.prevSheetValue !== null && restoredLead.statusCol >= 0) {
           await queueSheetValue(restoredLead, u.prevSheetValue);
+          step('Lead sheet revert queued', true);
         } else {
           await syncSheet(restoredLead, u.prevStatus || 'pending');
+          step('Lead sheet revert queued', true);
         }
-        step('Lead sheet revert queued', true);
       } catch (e) {
         step('Lead sheet revert queued', false, e?.message || 'failed');
       }
@@ -5786,22 +5885,22 @@ function App() {
         }
       } else step('Calendar event deleted', false, 'no event id saved');
       if (u.calEventId) setWeekEvents(prev => prev.filter(ev => ev.id !== u.calEventId));
-      if (lead) {
+      if (undoPhone) {
         try {
           var _d2 = JSON.parse(localStorage.getItem('_deletedApptIds') || '[]');
           if (u.calEventId) _d2.push(String(u.calEventId));
-          var _match = (appointments || []).find(a => a.phone === lead.phone && (!a.followUp || a.followUp === 'pending'));
+          var _match = (appointments || []).find(a => (a.id === u.apptId || normalizePhone(a.phone || '') === normalizePhone(undoPhone)) && (!a.followUp || a.followUp === 'pending'));
           if (_match?.id) _d2.push(String(_match.id));
           if (_match?.phone && _match?.createdAt) _d2.push(_match.phone + '_' + _match.createdAt);
           localStorage.setItem('_deletedApptIds', JSON.stringify([...new Set(_d2)].slice(-500)));
         } catch (_e) {}
-        setAppointments(p => p.filter(a => !(a.phone === lead.phone && (!a.followUp || a.followUp === 'pending')) && a.calEventId !== u.calEventId));
+        setAppointments(p => p.filter(a => !(a.id === u.apptId || normalizePhone(a.phone || '') === normalizePhone(undoPhone) && (!a.followUp || a.followUp === 'pending')) && a.calEventId !== u.calEventId));
         step('Local appointment removed', true);
-        if (_SB && lead.phone) {
+        if (_SB && undoPhone) {
           var db = await DB.deleteApptUndo({
             rowId: u.dbApptId,
             calEventId: u.calEventId,
-            phone: lead.phone,
+            phone: undoPhone,
             admin: myEmail
           });
           step('Supabase appointment removed', db.ok, db.errors?.join('; ') || '');
@@ -5811,20 +5910,33 @@ function App() {
         var sheetOk = await gSheets.markApptUndo(u.apptSheetId, u.apptSheetRange, userName);
         step('Appointment sheet marked undone', sheetOk, sheetOk ? '' : 'row range unavailable');
       } else step('Appointment sheet marked undone', false, 'no append row saved');
-      addSyncTrail('Set undo cleanup for ' + (undoInfo.name || lead?.name || 'lead'), steps);
+      addSyncTrail('Set undo cleanup for ' + (info.name || lead?.name || u.leadName || 'lead'), steps);
       toast('Set undone. Cleanup details added below.');
     } else {
-      addSyncTrail('Undo for ' + (undoInfo.name || lead?.name || 'lead'), steps);
-      toast('Undone - back to ' + undoInfo.name);
+      addSyncTrail('Undo for ' + (info.name || lead?.name || 'lead'), steps);
+      toast('Undone - back to ' + info.name);
     }
     setShowPostCall(null);
     setShowNextPreview(false);
     setNextPreviewIdx(-1);
-    setCurIdx(u.leadIdx);
-    setPhase('calling');
-    setRunning(true);
-    setUndoInfo(null);
-    appStateRef.current._lastUndo = null;
+    if (u.leadIdx >= 0) {
+      setCurIdx(u.leadIdx);
+      setPhase('calling');
+      setRunning(true);
+    }
+    setUndoInfo(p => p && p.ts === info.ts ? null : p);
+    if (!overrideUndo) appStateRef.current._lastUndo = null;
+  };
+  var undoIncompleteSetAppt = async a => {
+    var u = _undoPayloadForAppt(a);
+    if (!u) return toast('No appointment rollback found', 'err');
+    await doUndo({
+      leadIdx: u.leadIdx,
+      name: u.leadName || a?.name || 'lead',
+      status: 'set',
+      ts: Date.now(),
+      detail: 'Recovered from unfinished appointment details.'
+    }, u);
   };
   var [postCallNote, setPostCallNote] = useState('');
   var [sessionTarget, setSessionTarget] = useState(load('starget') || {
@@ -10140,6 +10252,17 @@ function App() {
         u.status = 'set';
         syncSheet(u, 'set');
         var _delSet = _getDelIds();
+        var _undoForPendingAppt = {
+          ...(appStateRef.current._pendingSetUndoBase || {}),
+          leadId: u.id,
+          leadName: u.name,
+          leadPhone: u.phone,
+          sheetRow: u.sheetRow || appStateRef.current._pendingSetUndoBase?.sheetRow || 0,
+          statusCol: u.statusCol ?? appStateRef.current._pendingSetUndoBase?.statusCol,
+          sheetId: u._sourceSheetId || appStateRef.current._pendingSetUndoBase?.sheetId || cfg.sheetId || '',
+          sheetTab: u._sourceSheetTab || appStateRef.current._pendingSetUndoBase?.sheetTab || cfg.sheetTab || 'Sheet1',
+          savedAt: new Date().toISOString()
+        };
         setAppointments(p => {
           var _scrubbed = p.filter(a => !isApptDeleted(a, _delSet));
           var existingIdx = _scrubbed.findIndex(a => (a.leadId === u.id || a.phone === u.phone && a.phone) && (!a.followUp || a.followUp === 'pending' || a.followUp === 'postponed'));
@@ -10153,11 +10276,22 @@ function App() {
                 followUpDate: null,
                 apptDate: '',
                 apptTime: '',
-                shaky: false
+                shaky: false,
+                needsDetails: true,
+                _setUndo: _undoForPendingAppt
               };
               return next;
             }
-            return _scrubbed;
+            var _nextExisting = _scrubbed.slice();
+            _nextExisting[existingIdx] = {
+              ..._ex,
+              needsDetails: !_ex.apptDate || !_ex.apptTime,
+              _setUndo: {
+                ...(_ex._setUndo || {}),
+                ..._undoForPendingAppt
+              }
+            };
+            return _nextExisting;
           }
           return [..._scrubbed, {
             id: Date.now() + Math.random(),
@@ -10175,7 +10309,9 @@ function App() {
             tip: 0,
             tipPaid: false,
             createdAt: new Date().toISOString(),
-            admin: myEmail
+            admin: myEmail,
+            needsDetails: true,
+            _setUndo: _undoForPendingAppt
           }];
         });
       } else if (status === 'ni') {
@@ -10421,10 +10557,16 @@ function App() {
       } : null;
       appStateRef.current._pendingSetUndoBase = {
         leadIdx,
+        leadId: lead?.id || '',
+        leadName: lead?.name || '',
+        leadPhone: lead?.phone || '',
         prevStatus: lead?.status || 'pending',
         prevNpCount: lead?.npCount || 0,
         prevSheetValue: lead?.sheetValue || lead?.notes || '',
-        statusCol: lead?.statusCol
+        statusCol: lead?.statusCol,
+        sheetRow: lead?.sheetRow || 0,
+        sheetId: lead?._sourceSheetId || cfg.sheetId || '',
+        sheetTab: lead?._sourceSheetTab || cfg.sheetTab || 'Sheet1'
       };
       applyOutcome(status, extra);
       setApptLead(lead);
@@ -11287,6 +11429,125 @@ function App() {
     }
   } catch (_opErr) {}
   var operatorCallbacks = priorityCallbacks.slice(0, 3);
+  var _isIncompleteSetAppt = a => {
+    if (!a || a._deleted) return false;
+    if (a.followUp && a.followUp !== 'pending') return false;
+    if (a.apptDate && a.apptTime) return false;
+    if (a.status && a.status !== 'set' && !a.needsDetails) return false;
+    var owner = (a.admin || myEmail || '').toLowerCase();
+    return !owner || owner === myEmail.toLowerCase();
+  };
+  var incompleteApptAlerts = (appointments || []).filter(_isIncompleteSetAppt).sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)).slice(0, 5);
+  var hasActionActivity = !!(syncTrail.length || undoInfo || importReview || incompleteApptAlerts.length);
+  var _renderIncompleteApptAlert = compact => incompleteApptAlerts.length ? React.createElement("div", {
+    className: "card",
+    style: {
+      marginBottom: compact ? 8 : 10,
+      padding: compact ? 10 : 12,
+      borderColor: 'rgba(240,180,41,.42)',
+      background: 'linear-gradient(135deg,rgba(240,180,41,.12),rgba(248,81,73,.05))',
+      boxShadow: '0 0 18px rgba(240,180,41,.08)'
+    }
+  }, React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+      marginBottom: 8
+    }
+  }, React.createElement("div", {
+    style: {
+      minWidth: 0
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: compact ? 12 : 13,
+      fontWeight: 900,
+      color: 'var(--amber)'
+    }
+  }, "Appointment details missing"), React.createElement("p", {
+    style: {
+      margin: '2px 0 0',
+      fontSize: 10,
+      color: 'var(--text3)',
+      lineHeight: 1.35
+    }
+  }, "A lead was marked Set, but no date/time was saved. Finish details or undo so Sheets stay clean.")), React.createElement("span", {
+    className: "pill",
+    style: {
+      background: 'var(--amdim)',
+      color: 'var(--amber)',
+      flexShrink: 0
+    }
+  }, incompleteApptAlerts.length, " open")), incompleteApptAlerts.map(a => React.createElement("div", {
+    key: a.id || a.phone || a.createdAt,
+    style: {
+      display: 'grid',
+      gridTemplateColumns: compact ? '1fr' : '1fr auto',
+      gap: 8,
+      alignItems: 'center',
+      padding: '9px 0',
+      borderTop: '1px solid rgba(240,180,41,.18)'
+    }
+  }, React.createElement("div", {
+    style: {
+      minWidth: 0
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: 0,
+      fontSize: 12,
+      fontWeight: 900,
+      color: '#f8fafc',
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      whiteSpace: 'nowrap'
+    }
+  }, a.name || 'Unnamed lead'), React.createElement("p", {
+    style: {
+      margin: '2px 0 0',
+      fontSize: 10,
+      color: 'var(--text3)'
+    }
+  }, a.phone || 'No phone', a.createdAt ? ' · set ' + new Date(a.createdAt).toLocaleString('en-SG', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit'
+  }) : '')), React.createElement("div", {
+    style: {
+      display: 'flex',
+      gap: 6,
+      justifyContent: compact ? 'stretch' : 'flex-end',
+      flexWrap: 'wrap'
+    }
+  }, React.createElement("button", {
+    onClick: () => _openIncompleteApptFlow(a),
+    style: {
+      padding: '8px 12px',
+      borderRadius: 10,
+      background: 'linear-gradient(135deg,#22c55e,#059669)',
+      color: '#fff',
+      fontSize: 11,
+      fontWeight: 900,
+      flex: compact ? 1 : undefined,
+      border: '1px solid rgba(187,247,208,.28)'
+    }
+  }, "Key details"), React.createElement("button", {
+    onClick: () => undoIncompleteSetAppt(a),
+    style: {
+      padding: '8px 12px',
+      borderRadius: 10,
+      background: 'rgba(248,81,73,.12)',
+      color: 'var(--red)',
+      fontSize: 11,
+      fontWeight: 900,
+      flex: compact ? 1 : undefined,
+      border: '1px solid rgba(248,81,73,.28)'
+    }
+  }, "Undo set"))))) : null;
   var getLiveActor = f => {
     var d = f?.data || {};
     var details = d.details || {};
@@ -11448,8 +11709,8 @@ function App() {
       width: 30,
       height: 30,
       borderRadius: 8,
-      background: syncTrail.length || undoInfo || importReview ? 'var(--amdim)' : 'var(--bg3)',
-      color: syncTrail.length || undoInfo || importReview ? 'var(--amber)' : 'var(--text3)',
+      background: hasActionActivity ? 'var(--amdim)' : 'var(--bg3)',
+      color: hasActionActivity ? 'var(--amber)' : 'var(--text3)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -11457,7 +11718,7 @@ function App() {
       padding: 0,
       fontSize: 13,
       fontWeight: 900,
-      border: '1px solid ' + (syncTrail.length || undoInfo || importReview ? 'rgba(210,153,34,.3)' : 'var(--border)')
+      border: '1px solid ' + (hasActionActivity ? 'rgba(210,153,34,.3)' : 'var(--border)')
     }
   }, "\u25F4"), syncing && React.createElement("span", {
     className: "pill",
@@ -11633,7 +11894,13 @@ function App() {
       background: isCallMode ? 'var(--gdim)' : 'var(--bdim)',
       color: isCallMode ? 'var(--green)' : 'var(--blue)'
     }
-  }, isCallMode ? 'CALL' : 'MGMT')), (isOffline || syncStatus === 'offline') && React.createElement("div", {
+  }, isCallMode ? 'CALL' : 'MGMT')), incompleteApptAlerts.length > 0 && React.createElement("div", {
+    className: "content-pad",
+    style: {
+      paddingTop: 10,
+      paddingBottom: 0
+    }
+  }, _renderIncompleteApptAlert(false)), (isOffline || syncStatus === 'offline') && React.createElement("div", {
     className: "mode-banner",
     style: {
       marginTop: -4,
@@ -20431,7 +20698,7 @@ function App() {
         fontWeight: 900,
         color: '#f1f5f9'
       }
-    }, "Undo timeline"), undoInfo && React.createElement("div", {
+    }, "Undo timeline"), incompleteApptAlerts.length > 0 && _renderIncompleteApptAlert(true), undoInfo && React.createElement("div", {
       style: {
         padding: '8px 10px',
         borderRadius: 10,
@@ -20461,7 +20728,7 @@ function App() {
         fontSize: 10,
         color: s.ok ? 'var(--green)' : 'var(--amber)'
       }
-    }, s.ok ? 'OK ' : 'Check ', s.label, s.msg ? ': ' + s.msg : '')))) : React.createElement("p", {
+    }, s.ok ? 'OK ' : 'Check ', s.label, s.msg ? ': ' + s.msg : '')))) : !incompleteApptAlerts.length && React.createElement("p", {
       style: {
         margin: 0,
         fontSize: 11,
@@ -27371,7 +27638,8 @@ WHERE p.id IS NULL;`;
               calEventId: evt?.id || '',
               location: apptLocation,
               remarks: apptObs,
-              shaky: apptShaky
+              shaky: apptShaky,
+              needsDetails: false
             };
             return next;
           }
@@ -27395,7 +27663,8 @@ WHERE p.id IS NULL;`;
             createdAt: new Date().toISOString(),
             admin: myEmail,
             calEventId: evt?.id || '',
-            shaky: apptShaky
+            shaky: apptShaky,
+            needsDetails: false
           }];
         });
         try {
