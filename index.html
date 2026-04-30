@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.01.0002';
+window.APP_VERSION='2026.05.01.0003';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -26099,6 +26099,7 @@ WHERE p.id IS NULL;`;
       mins: s._hardDuration || apptCoreMin,
       hours: (s._hardDuration || apptCoreMin) / 60
     } : _slotBookableWindow(s, slotBeforeMin, slotAfterMin);
+    var preferredFitForWindow = win => !apptHardOverride && preferredApptMinutes.length ? preferredApptMinutes.filter(mins => mins <= win.mins).sort((a, b) => b - a)[0] || 0 : 0;
     return React.createElement("div", {
       style: {
         marginBottom: 14,
@@ -26388,6 +26389,8 @@ WHERE p.id IS NULL;`;
           var hh = String(bookStart.getHours()).padStart(2, '0');
           var mm = String(bookStart.getMinutes()).padStart(2, '0');
           var isSelectedSlot = selectedOnDay && apptTime === hh + ':' + mm;
+          var preferredFitMin = preferredFitForWindow(win);
+          var hasPreferredFit = preferredFitMin > 0;
           return React.createElement("div", {
             key: 'fs-' + si,
             onClick: () => {
@@ -26415,12 +26418,23 @@ WHERE p.id IS NULL;`;
               fontWeight: 700,
               overflow: 'hidden',
               cursor: 'pointer',
-              border: '1px solid ' + (isSelectedSlot ? '#22c55e' : 'rgba(34,197,94,.5)'),
-              background: isSelectedSlot ? 'linear-gradient(135deg,#22c55e,#10b981)' : undefined,
-              color: isSelectedSlot ? '#fff' : '#86efac',
-              boxShadow: isSelectedSlot ? '0 0 10px rgba(34,197,94,.5)' : '0 0 4px rgba(34,197,94,.18)'
+              border: '1px solid ' + (isSelectedSlot ? '#22c55e' : hasPreferredFit ? 'rgba(74,222,128,.85)' : 'rgba(34,197,94,.5)'),
+              background: isSelectedSlot ? 'linear-gradient(135deg,#22c55e,#10b981)' : hasPreferredFit ? 'linear-gradient(135deg,rgba(34,197,94,.42),rgba(14,165,233,.2))' : undefined,
+              color: isSelectedSlot ? '#fff' : hasPreferredFit ? '#dcfce7' : '#86efac',
+              boxShadow: isSelectedSlot ? '0 0 10px rgba(34,197,94,.5)' : hasPreferredFit ? '0 0 14px rgba(34,197,94,.42), inset 0 0 0 1px rgba(255,255,255,.08)' : '0 0 4px rgba(34,197,94,.18)'
             }
-          }, React.createElement("div", {
+          }, hasPreferredFit && React.createElement("div", {
+            style: {
+              fontSize: 7,
+              fontWeight: 900,
+              color: '#fff',
+              lineHeight: 1.05,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              textShadow: '0 1px 6px rgba(0,0,0,.45)'
+            }
+          }, "\u2B50 ", _formatSlotMinutes(preferredFitMin), " OK"), React.createElement("div", {
             style: {
               fontSize: 8,
               fontWeight: 800,
@@ -26433,7 +26447,7 @@ WHERE p.id IS NULL;`;
               fontSize: 7,
               opacity: .85
             }
-          }, _formatSlotMinutes(win.mins)));
+          }, hasPreferredFit ? "preferred available" : _formatSlotMinutes(win.mins)));
         }), (apptHardOverride ? [] : shakyOnDay.filter(sa => sa.apptTime)).map((sa, si) => {
           var sh = new Date(d.key + 'T' + sa.apptTime);
           var dur = sa.duration || 90;
@@ -26672,6 +26686,8 @@ WHERE p.id IS NULL;`;
         var eh = String(bookEnd.getHours()).padStart(2, '0');
         var em = String(bookEnd.getMinutes()).padStart(2, '0');
         var isSelectedSlot = selectedOnDay && apptTime === hh + ':' + mm;
+        var preferredFitMin = preferredFitForWindow(win);
+        var hasPreferredFit = preferredFitMin > 0;
         return React.createElement("button", {
           key: 'f' + si,
           onClick: () => {
@@ -26687,25 +26703,42 @@ WHERE p.id IS NULL;`;
             toast('Slot locked · adjust time/details below', 'info');
           },
           style: {
-            padding: '5px 4px',
-            borderRadius: 6,
-            background: isSelectedSlot ? 'linear-gradient(135deg,#22c55e,#10b981)' : 'linear-gradient(135deg,rgba(34,197,94,.25),rgba(16,185,129,.15))',
-            border: '1px solid ' + (isSelectedSlot ? '#22c55e' : 'rgba(34,197,94,.5)'),
-            color: isSelectedSlot ? '#fff' : '#22c55e',
+            padding: hasPreferredFit ? '7px 5px' : '5px 4px',
+            borderRadius: hasPreferredFit ? 8 : 6,
+            background: isSelectedSlot ? 'linear-gradient(135deg,#22c55e,#10b981)' : hasPreferredFit ? 'linear-gradient(135deg,rgba(34,197,94,.48),rgba(14,165,233,.18))' : 'linear-gradient(135deg,rgba(34,197,94,.25),rgba(16,185,129,.15))',
+            border: '1px solid ' + (isSelectedSlot ? '#22c55e' : hasPreferredFit ? 'rgba(74,222,128,.9)' : 'rgba(34,197,94,.5)'),
+            color: isSelectedSlot || hasPreferredFit ? '#fff' : '#22c55e',
             fontSize: 8,
             fontWeight: 800,
             cursor: 'pointer',
             textAlign: 'center',
-            boxShadow: isSelectedSlot ? '0 0 10px rgba(34,197,94,.5)' : '0 0 4px rgba(34,197,94,.18)'
+            boxShadow: isSelectedSlot ? '0 0 10px rgba(34,197,94,.5)' : hasPreferredFit ? '0 0 18px rgba(34,197,94,.45), inset 0 0 0 1px rgba(255,255,255,.08)' : '0 0 4px rgba(34,197,94,.18)'
           }
-        }, hh, ":", mm, "\u2013", eh, ":", em, React.createElement("div", {
+        }, hasPreferredFit && React.createElement("div", {
+          style: {
+            display: 'inline-flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 3,
+            width: '100%',
+            marginBottom: 2,
+            padding: '2px 4px',
+            borderRadius: 999,
+            background: 'rgba(5,46,22,.42)',
+            color: '#bbf7d0',
+            fontSize: 8,
+            fontWeight: 1000,
+            lineHeight: 1.1,
+            boxShadow: '0 0 10px rgba(34,197,94,.3)'
+          }
+        }, "\u2B50 ", _formatSlotMinutes(preferredFitMin), " available"), React.createElement("div", null, hh, ":", mm, "\u2013", eh, ":", em), React.createElement("div", {
           style: {
             fontSize: 7,
             fontWeight: 600,
             opacity: .85,
             marginTop: 1
           }
-        }, _formatSlotMinutes(win.mins)));
+        }, hasPreferredFit ? 'preferred appointment fit' : _formatSlotMinutes(win.mins)));
       }), shakySlots.map((s, si) => {
         var hh = String(s.start.getHours()).padStart(2, '0');
         var mm = String(s.start.getMinutes()).padStart(2, '0');
