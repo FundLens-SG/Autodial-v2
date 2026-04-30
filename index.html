@@ -331,7 +331,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.30.0005';
+window.APP_VERSION='2026.04.30.0006';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1760,6 +1760,24 @@ function _slotBookableWindow(slot,beforeMin,afterMin){
   var mins=Math.max(0,Math.round((end-start)/60000));
   return {start:start,end:end,mins:mins,hours:mins/60};
 }
+function _calendarDateValue(raw,dateOnly){
+  if(!raw)return null;
+  if(dateOnly&&/^\d{4}-\d{2}-\d{2}$/.test(raw)){
+    var p=raw.split('-').map(Number);
+    return new Date(p[0],p[1]-1,p[2],0,0,0,0);
+  }
+  var dt=new Date(raw);
+  return isNaN(dt.getTime())?null:dt;
+}
+function _calendarEventBusyRange(ev){
+  if(!ev||ev.status==='cancelled'||ev.transparency==='transparent'||!ev.start)return null;
+  var allDay=!!(ev.start.date&&!ev.start.dateTime);
+  var start=_calendarDateValue(ev.start.dateTime||ev.start.date,allDay);
+  var end=_calendarDateValue(ev.end?.dateTime||ev.end?.date,allDay);
+  if(!start)return null;
+  if(!end||end<=start)end=new Date(start.getTime()+(allDay?1440:30)*60000);
+  return {ev:ev,start:start,end:end,allDay:allDay,name:ev.summary||'calendar item'};
+}
 function _normalizePreferredApptTimes(raw){
   var source=Array.isArray(raw)?raw:(raw!==undefined&&raw!==null?[raw]:[]);
   if(!source.length)source=['90','120'];
@@ -1778,11 +1796,9 @@ function _preferredAppointmentFit(dateKey,timeStr,durationMin,calendarEvents,lea
   var protectedEnd=new Date(start.getTime()+(dur+_slotMinutes(afterMin,0,0,1440))*60000);
   var blockers=[];
   (calendarEvents||[]).forEach(function(ev){
-    if(!ev||!ev.start||!ev.start.dateTime)return;
-    var s=new Date(ev.start.dateTime);
-    var e=new Date(ev.end?.dateTime||ev.start.dateTime);
-    if(isNaN(s.getTime())||isNaN(e.getTime()))return;
-    if(protectedStart<e&&protectedEnd>s)blockers.push({start:s,end:e,name:ev.summary||'calendar item'});
+    var busy=_calendarEventBusyRange(ev);
+    if(!busy)return;
+    if(protectedStart<busy.end&&protectedEnd>busy.start)blockers.push(busy);
   });
   (leadList||[]).forEach(function(l){
     if(l?.status!=='cb'||l?.cbDate!==dateKey||!l?.cbTime||l?.cbFlexible)return;
@@ -4391,7 +4407,7 @@ function App() {
   var _autodialRole = window._prof?.autodial_role;
   var _isCreator = isCreator(_profEmail);
   var role = _isCreator || _autodialRole === 'main' ? 'main' : 'admin';
-  console.log('[AutoDial] Role resolved:', {
+  DBG('[AutoDial] Role resolved:', {
     email: _profEmail,
     resolved: role,
     isCreator: _isCreator,
@@ -15089,11 +15105,7 @@ function App() {
           borderTop: '1px solid var(--border)'
         }
       }, h > 12 ? h - 12 : h, h >= 12 ? 'p' : 'a'))), days.map(d => {
-        var _evT = d.events.filter(ev => ev.start?.dateTime).map(ev => ({
-          ev,
-          start: new Date(ev.start.dateTime),
-          end: new Date(ev.end?.dateTime || ev.start.dateTime)
-        }));
+        var _evT = d.events.map(_calendarEventBusyRange).filter(Boolean);
         var isToday = d.key === todayKey;
         var isPastDay = d.key < todayKey;
         var _slotEvs = _evT.map(({
@@ -15271,10 +15283,7 @@ function App() {
       var isToday = d.key === todayKey;
       var isPast = d.key < todayKey;
       var dayLabel = fmtLongDay(d.date);
-      var _evWithTimes = d.events.filter(ev => ev.start?.dateTime).map(ev => ({
-        start: new Date(ev.start.dateTime),
-        end: new Date(ev.end?.dateTime || ev.start.dateTime)
-      }));
+      var _evWithTimes = d.events.map(_calendarEventBusyRange).filter(Boolean);
       var freeSlots = isPast ? [] : findFreeSlots(d.date, _evWithTimes, BIZ_START, BIZ_END);
       var bigSlots = freeSlots.filter(s => _slotBookableWindow(s, slotBeforeMin, slotAfterMin).mins >= apptCoreMin);
       var totalFreeHrs = bigSlots.reduce((a, s) => a + _slotBookableWindow(s, slotBeforeMin, slotAfterMin).hours, 0);
@@ -26305,10 +26314,7 @@ WHERE p.id IS NULL;`;
         var isToday = d.key === todayKey;
         var isPast = d.key < todayKey;
         var dayEvents = (byDay[d.key] || []).slice();
-        var _evWithTimes = dayEvents.filter(ev => ev.start?.dateTime).map(ev => ({
-          start: new Date(ev.start.dateTime),
-          end: new Date(ev.end?.dateTime || ev.start.dateTime)
-        }));
+        var _evWithTimes = dayEvents.map(_calendarEventBusyRange).filter(Boolean);
         var shakyOnDay = shakyByDay[d.key] || [];
         var nonShakyBusy = _evWithTimes.filter(bt => !shakyOnDay.some(sa => {
           if (!sa.apptTime) return false;
@@ -26525,10 +26531,7 @@ WHERE p.id IS NULL;`;
       var isToday = d.key === todayKey;
       var isPast = d.key < todayKey;
       var dayEvents = (byDay[d.key] || []).slice().sort((a, b) => new Date(a.start?.dateTime || a.start?.date || 0) - new Date(b.start?.dateTime || b.start?.date || 0));
-      var _evWithTimes = dayEvents.filter(ev => ev.start?.dateTime).map(ev => ({
-        start: new Date(ev.start.dateTime),
-        end: new Date(ev.end?.dateTime || ev.start.dateTime)
-      }));
+      var _evWithTimes = dayEvents.map(_calendarEventBusyRange).filter(Boolean);
       var shakyOnDay = shakyByDay[d.key] || [];
       var nonShakyBusy = _evWithTimes.filter(bt => !shakyOnDay.some(sa => {
         if (!sa.apptTime) return false;
@@ -26545,8 +26548,8 @@ WHERE p.id IS NULL;`;
           _name: l.name
         };
       });
-        var allBusy = apptHardOverride ? [] : [...nonShakyBusy, ...cbBusy];
-        var freeSlots = isPast ? [] : apptHardOverride ? makeHardOverrideSlots(d.date, BIZ_START, BIZ_END, apptCoreMin, overrideStepMin) : findFreeSlots(d.date, allBusy, BIZ_START, BIZ_END);
+      var allBusy = apptHardOverride ? [] : [...nonShakyBusy, ...cbBusy];
+      var freeSlots = isPast ? [] : apptHardOverride ? makeHardOverrideSlots(d.date, BIZ_START, BIZ_END, apptCoreMin, overrideStepMin) : findFreeSlots(d.date, allBusy, BIZ_START, BIZ_END);
       var bigSlots = freeSlots.filter(s => pickerWindowForSlot(s).mins >= apptCoreMin);
       var shakySlots = apptHardOverride ? [] : shakyOnDay.filter(sa => sa.apptTime).map(sa => {
         var sh = new Date(d.key + 'T' + sa.apptTime);
