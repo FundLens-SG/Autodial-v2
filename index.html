@@ -331,7 +331,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.30.0002';
+window.APP_VERSION='2026.04.30.0003';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -2761,6 +2761,32 @@ function findFreeSlots(dayDate, events, bizStartHour, bizEndHour) {
   }
   return slots;
 }
+function makeHardOverrideSlots(dayDate, bizStartHour, bizEndHour, durationMin, stepMin) {
+  var bs = bizStartHour ?? 9;
+  var be = bizEndHour ?? 21;
+  var dur = _slotMinutes(durationMin, 60, 15, 480);
+  var step = _slotMinutes(stepMin, 30, 15, 120);
+  var dayStart = new Date(dayDate);
+  dayStart.setHours(bs, 0, 0, 0);
+  var dayEnd = new Date(dayDate);
+  dayEnd.setHours(be, 0, 0, 0);
+  var now = new Date();
+  var cursor = dayDate.toDateString() === now.toDateString() && now > dayStart ? new Date(Math.ceil(now.getTime() / (15 * 60000)) * (15 * 60000)) : new Date(dayStart);
+  var slots = [];
+  while (cursor.getTime() + dur * 60000 <= dayEnd.getTime()) {
+    var start = new Date(cursor);
+    var end = new Date(Math.min(dayEnd.getTime(), start.getTime() + step * 60000));
+    slots.push({
+      start,
+      end,
+      hours: step / 60,
+      _hard: true,
+      _hardDuration: dur
+    });
+    cursor = new Date(cursor.getTime() + step * 60000);
+  }
+  return slots;
+}
 var StarRow = ({
   filled,
   total,
@@ -4374,6 +4400,7 @@ function App() {
   useEffect(() => {
     save('pickerVM', pickerViewMode);
   }, [pickerViewMode]);
+  var [apptHardOverride, setApptHardOverride] = useState(false);
   var [apptShaky, setApptShaky] = useState(false);
   var [pendingShakyKey, setPendingShakyKey] = useState(null);
   var [rescheduleTargetAppt, setRescheduleTargetAppt] = useState(null);
@@ -4397,6 +4424,7 @@ function App() {
     setApptInvite(a.inviteEmails || '');
     setApptDuration(a.duration || 60);
     setApptShaky(false);
+    setApptHardOverride(false);
     setPickerWeekIdx(0);
     setPickerCollapsed(false);
     setShowAppt(true);
@@ -10170,6 +10198,7 @@ function App() {
       setApptDuration(() => _slotMinutes(load('apptDur'), 60, 15, 480));
       setApptTravelAfter(() => _slotMinutes(load('apptTravelAfter'), 0, 0, 240));
       setPendingShakyKey(null);
+      setApptHardOverride(false);
       setPickerCollapsed(false);
       setPickerWeekIdx(0);
       setShowAppt(true);
@@ -11999,7 +12028,7 @@ function App() {
   }, running ? 'LIVE' : pending.length + ' READY')), React.createElement("div", {
     style: {
       display: 'grid',
-      gridTemplateColumns: '1.4fr .9fr',
+      gridTemplateColumns: '1fr',
       gap: 8,
       marginBottom: 8
     }
@@ -12051,7 +12080,7 @@ function App() {
       fontSize: 12,
       color: 'var(--text3)'
     }
-  }, pending.length ? 'Ready to start' : 'No callable leads')), React.createElement("div", {
+  }, pending.length ? 'Ready to start' : 'No callable leads')), false && React.createElement("div", {
     style: {
       display: 'grid',
       gap: 6
@@ -12140,7 +12169,7 @@ function App() {
       fontSize: 9,
       color: 'var(--text3)'
     }
-  }, l)))), React.createElement("div", {
+  }, l)))), false && React.createElement("div", {
     style: {
       display: 'grid',
       gridTemplateColumns: '1fr 1fr',
@@ -12243,7 +12272,7 @@ function App() {
       fontSize: 11,
       color: 'var(--text3)'
     }
-  }, "None due"))), undoInfo && React.createElement("div", {
+  }, "None due"))), false && undoInfo && React.createElement("div", {
     style: {
       display: 'flex',
       alignItems: 'center',
@@ -25386,7 +25415,8 @@ WHERE p.id IS NULL;`;
     onClose: () => setShowAppt(false),
     align: "stretch",
     bg: ".88",
-    zIndex: 100
+    zIndex: 100,
+    scope: "pane"
   }, React.createElement("div", {
     style: {
       width: '100%',
@@ -25447,6 +25477,7 @@ WHERE p.id IS NULL;`;
       setPendingShakyKey(null);
       setRescheduleTargetAppt(null);
       setApptShaky(false);
+      setApptHardOverride(false);
     },
     style: {
       padding: '8px 14px',
@@ -25615,6 +25646,13 @@ WHERE p.id IS NULL;`;
     var BIZ_START = 9,
       BIZ_END = 21,
       MIN_HRS = Math.max(.25, slotFootprintMin / 60);
+    var overrideStepMin = 30;
+    var pickerWindowForSlot = s => s?._hard ? {
+      start: s.start,
+      end: s.end,
+      mins: s._hardDuration || apptCoreMin,
+      hours: (s._hardDuration || apptCoreMin) / 60
+    } : _slotBookableWindow(s, slotBeforeMin, slotAfterMin);
     return React.createElement("div", {
       style: {
         marginBottom: 14,
@@ -25767,7 +25805,28 @@ WHERE p.id IS NULL;`;
         borderRadius: 2,
         background: 'rgba(148,163,184,.3)'
       }
-    }), "Busy")), pickerLoading && !pickerEvents.length ? React.createElement("div", {
+    }), "Busy"), React.createElement("button", {
+      onClick: () => setApptHardOverride(p => !p),
+      style: {
+        padding: '7px 10px',
+        borderRadius: 9,
+        background: apptHardOverride ? 'var(--rdim)' : 'var(--bg2)',
+        color: apptHardOverride ? 'var(--red)' : 'var(--text2)',
+        fontSize: 10,
+        fontWeight: 900,
+        border: '1px solid ' + (apptHardOverride ? 'rgba(248,81,73,.42)' : 'var(--border)'),
+        boxShadow: apptHardOverride ? '0 0 12px rgba(248,81,73,.18)' : 'none'
+      }
+    }, apptHardOverride ? 'Hard Override ON' : 'Hard Override'), apptHardOverride && React.createElement("p", {
+      style: {
+        flexBasis: '100%',
+        margin: '-2px 0 0',
+        fontSize: 9,
+        color: 'var(--red)',
+        fontWeight: 800,
+        textAlign: 'center'
+      }
+    }, "Showing every 30-min start time. Busy calendars and travel buffers are ignored.")), pickerLoading && !pickerEvents.length ? React.createElement("div", {
       style: {
         textAlign: 'center',
         padding: 30,
@@ -25857,8 +25916,8 @@ WHERE p.id IS NULL;`;
             _name: l.name
           };
         });
-        var allBusy = [...nonShakyBusy, ...cbBusy];
-        var freeSlots = isPast ? [] : findFreeSlots(d.date, allBusy, BIZ_START, BIZ_END);
+        var allBusy = apptHardOverride ? [] : [...nonShakyBusy, ...cbBusy];
+        var freeSlots = isPast ? [] : apptHardOverride ? makeHardOverrideSlots(d.date, BIZ_START, BIZ_END, apptCoreMin, overrideStepMin) : findFreeSlots(d.date, allBusy, BIZ_START, BIZ_END);
         var selectedOnDay = apptDate === d.key;
         return React.createElement("div", {
           key: 'gc-' + d.key,
@@ -25875,7 +25934,7 @@ WHERE p.id IS NULL;`;
             borderTop: '1px solid var(--border)'
           }
         })), freeSlots.map((s, si) => {
-          var win = _slotBookableWindow(s, slotBeforeMin, slotAfterMin);
+          var win = pickerWindowForSlot(s);
           if (win.mins < apptCoreMin) return null;
           var sh = win.start.getHours() + win.start.getMinutes() / 60;
           var eh = win.end.getHours() + win.end.getMinutes() / 60;
@@ -25932,7 +25991,7 @@ WHERE p.id IS NULL;`;
               opacity: .85
             }
           }, _formatSlotMinutes(win.mins)));
-        }), shakyOnDay.filter(sa => sa.apptTime).map((sa, si) => {
+        }), (apptHardOverride ? [] : shakyOnDay.filter(sa => sa.apptTime)).map((sa, si) => {
           var sh = new Date(d.key + 'T' + sa.apptTime);
           var dur = sa.duration || 90;
           var endH = sh.getHours() + sh.getMinutes() / 60 + dur / 60;
@@ -25979,7 +26038,7 @@ WHERE p.id IS NULL;`;
               whiteSpace: 'nowrap'
             }
           }, sa.name || 'shaky'));
-        }), _evWithTimes.map((bt, bi) => {
+        }), (apptHardOverride ? [] : _evWithTimes).map((bt, bi) => {
           var startH = bt.start.getHours() + bt.start.getMinutes() / 60;
           var endH = bt.end.getHours() + bt.end.getMinutes() / 60;
           if (endH <= HR_START || startH >= HR_END) return null;
@@ -26010,7 +26069,7 @@ WHERE p.id IS NULL;`;
               whiteSpace: 'nowrap'
             }
           }, String(bt.start.getHours()).padStart(2, '0'), ":", String(bt.start.getMinutes()).padStart(2, '0')));
-        }), cbOnDay.map((l, ci) => {
+        }), (apptHardOverride ? [] : cbOnDay).map((l, ci) => {
           var cs = new Date(d.key + 'T' + l.cbTime);
           var startH = cs.getHours() + cs.getMinutes() / 60;
           var endH = startH + 0.5;
@@ -26077,10 +26136,10 @@ WHERE p.id IS NULL;`;
           _name: l.name
         };
       });
-      var allBusy = [...nonShakyBusy, ...cbBusy];
-      var freeSlots = isPast ? [] : findFreeSlots(d.date, allBusy, BIZ_START, BIZ_END);
-      var bigSlots = freeSlots.filter(s => _slotBookableWindow(s, slotBeforeMin, slotAfterMin).mins >= apptCoreMin);
-      var shakySlots = shakyOnDay.filter(sa => sa.apptTime).map(sa => {
+        var allBusy = apptHardOverride ? [] : [...nonShakyBusy, ...cbBusy];
+        var freeSlots = isPast ? [] : apptHardOverride ? makeHardOverrideSlots(d.date, BIZ_START, BIZ_END, apptCoreMin, overrideStepMin) : findFreeSlots(d.date, allBusy, BIZ_START, BIZ_END);
+      var bigSlots = freeSlots.filter(s => pickerWindowForSlot(s).mins >= apptCoreMin);
+      var shakySlots = apptHardOverride ? [] : shakyOnDay.filter(sa => sa.apptTime).map(sa => {
         var sh = new Date(d.key + 'T' + sa.apptTime);
         var dur = sa.duration || 90;
         return {
@@ -26165,7 +26224,7 @@ WHERE p.id IS NULL;`;
           paddingTop: 6
         }
       }, "Past"), bigSlots.map((s, si) => {
-        var win = _slotBookableWindow(s, slotBeforeMin, slotAfterMin);
+        var win = pickerWindowForSlot(s);
         var bookStart = win.start;
         var bookEnd = new Date(bookStart.getTime() + apptCoreMin * 60000);
         var hh = String(bookStart.getHours()).padStart(2, '0');
@@ -26312,7 +26371,7 @@ WHERE p.id IS NULL;`;
             whiteSpace: 'nowrap'
           }
         }, s.name || 'shaky'));
-      }), cbOnDay.map((l, ci) => {
+      }), (apptHardOverride ? [] : cbOnDay).map((l, ci) => {
         var hh = (l.cbTime || '').slice(0, 5);
         return React.createElement("div", {
           key: 'cb' + ci,
@@ -26336,7 +26395,7 @@ WHERE p.id IS NULL;`;
             whiteSpace: 'nowrap'
           }
         }, l.name));
-      }), dayEvents.length > 0 && React.createElement("div", {
+      }), !apptHardOverride && dayEvents.length > 0 && React.createElement("div", {
         style: {
           marginTop: 4,
           paddingTop: 4,
