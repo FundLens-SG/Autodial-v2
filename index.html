@@ -92,11 +92,11 @@ if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.
 html,body{height:100%;font-family:'Inter',system-ui,sans-serif;background:var(--bg);color:var(--text);overflow-x:hidden}
 *,*::before,*::after{box-sizing:border-box}
 ::-webkit-scrollbar{width:0}
-input,select{font-family:inherit;background:var(--bg2);color:var(--text);border:1px solid var(--border2);border-radius:12px;padding:12px 16px;font-size:14px;outline:none;width:100%;box-sizing:border-box;transition:all .2s;backdrop-filter:blur(10px)}
+input,select{font-family:inherit;background:var(--bg2);color:var(--text);border:1px solid var(--border2);border-radius:12px;padding:12px 16px;font-size:14px;outline:none;width:100%;box-sizing:border-box;transition:border-color .18s,box-shadow .18s,background-color .18s,color .18s;backdrop-filter:blur(10px)}
 input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(99,102,241,.15)}
 input::placeholder{color:var(--text3)}
-button{font-family:inherit;cursor:pointer;border:none;transition:all .2s;border-radius:12px}
-button:active{transform:scale(.97)}
+button{font-family:inherit;cursor:pointer;border:none;transition:background-color .18s,border-color .18s,color .18s,box-shadow .18s,opacity .18s;border-radius:12px}
+button:active{transform:none}
 .mono{font-family:'JetBrains Mono',monospace}
 @keyframes pulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.06);opacity:.7}}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -117,7 +117,7 @@ button:active{transform:scale(.97)}
 @keyframes slideDown{from{opacity:0;transform:translateY(-10px);max-height:0}to{opacity:1;transform:translateY(0);max-height:200px}}
 @keyframes firePulse{0%,100%{text-shadow:0 0 10px rgba(240,180,41,.5)}50%{text-shadow:0 0 30px rgba(240,180,41,.8)}}
 @keyframes borderGlow{0%,100%{border-color:rgba(99,102,241,.3)}50%{border-color:rgba(99,102,241,.6)}}
-.card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;backdrop-filter:blur(20px);transition:all .2s}
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;backdrop-filter:blur(20px);transition:border-color .18s,background-color .18s,box-shadow .18s}
 .card:hover{border-color:var(--border2)}
 .pill{display:inline-block;padding:3px 10px;border-radius:8px;font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:.3px}
 .glass{background:var(--glass);backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.05)}
@@ -155,7 +155,7 @@ button:active{transform:scale(.97)}
   .script-panel .sp-header select{min-width:0;max-width:100%;flex:1 1 150px}
   .script-panel .sp-body{flex:1;overflow-y:auto;padding:16px}
   .script-panel .sp-lead{padding:12px 16px;border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0}
-  .script-toggle{position:fixed;right:max(calc((100vw - 1920px)/2 + 8px),8px);top:14px;z-index:50;width:36px;height:36px;border-radius:10px;background:var(--bg3);border:1px solid var(--border2);color:var(--accent2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:all .2s}
+  .script-toggle{position:fixed;right:max(calc((100vw - 1920px)/2 + 8px),8px);top:14px;z-index:50;width:36px;height:36px;border-radius:10px;background:var(--bg3);border:1px solid var(--border2);color:var(--accent2);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:16px;transition:background-color .18s,border-color .18s,color .18s,box-shadow .18s}
   .script-toggle:hover{background:var(--adim);border-color:var(--accent)}
   .script-toggle.open{background:var(--adim);border-color:var(--accent);box-shadow:0 0 12px rgba(99,102,241,.2)}
 }
@@ -164,7 +164,7 @@ button:active{transform:scale(.97)}
   .script-panel .sp-col{width:100%;max-width:760px;margin:0 auto}
 }
 .sp-toolbar{display:flex;gap:3px;padding:8px 16px;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;align-items:center}
-.sp-toolbar button{width:28px;height:28px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text2);display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;padding:0;transition:all .15s}
+.sp-toolbar button{width:28px;height:28px;border-radius:6px;background:var(--bg);border:1px solid var(--border);color:var(--text2);display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;padding:0;transition:background-color .15s,border-color .15s,color .15s,box-shadow .15s}
 .sp-toolbar button:hover{background:var(--bg3);border-color:var(--accent)}
 .sp-toolbar button.active{background:var(--adim);border-color:var(--accent);color:var(--accent2)}
 .sp-split{display:flex;flex:1;overflow:hidden;min-width:0}
@@ -214,11 +214,11 @@ button:active{transform:scale(.97)}
 .analytics-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px}
 .dupe-card{background:linear-gradient(135deg,rgba(248,81,73,.05),transparent)}
 @media(max-width:959px){.script-panel{display:none!important}.script-toggle{display:none!important}}
-.hdr-row1{display:flex;align-items:flex-start;gap:8px;padding:14px 14px 0;flex-wrap:wrap}
+.hdr-row1{display:flex;align-items:center;gap:8px;padding:14px 14px 0;flex-wrap:wrap;min-height:46px;contain:layout paint}
 .hdr-row1>button{flex-shrink:0}
-.hdr-row1>.pill{flex-shrink:0;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hdr-row2{position:relative;z-index:4;display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px;gap:10px}
-.app-tabs{position:relative;z-index:5;display:flex;padding:8px 14px 10px;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:1px solid var(--border);background:var(--bg);margin-bottom:8px}
+.hdr-row1>.pill{flex:0 0 auto;min-width:72px;max-width:104px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hdr-row2{position:relative;z-index:4;display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px;gap:10px;min-height:44px;contain:layout paint}
+.app-tabs{position:relative;z-index:5;display:flex;padding:8px 14px 10px;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:1px solid var(--border);background:var(--bg);margin-bottom:8px;min-height:62px;contain:layout paint}
 .app-tabs::-webkit-scrollbar{display:none}
 .app-tabs button{flex:1 1 0;min-width:0;min-height:44px;padding:12px 8px;border-radius:12px;font-size:13px;font-weight:700;white-space:nowrap;background:transparent;color:var(--text3);display:flex;align-items:center;justify-content:center;gap:6px;overflow:hidden;text-overflow:ellipsis}
 .app-tabs button.active{background:var(--adim);color:var(--accent2)}
@@ -254,6 +254,13 @@ button:active{transform:scale(.97)}
   .app-tabs button{min-width:76px;min-height:48px;padding:13px 9px;font-size:13px;flex:1 0 auto}
   .readiness-grid{grid-template-columns:1fr}
   .touch-action-row{grid-template-columns:1fr!important}
+}
+@media(max-width:480px){
+  .hdr-row1{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
+  .hdr-row1::-webkit-scrollbar{display:none}
+  .hdr-row1 h1{white-space:nowrap}
+  .hdr-row1>span:not(.pill){display:none!important}
+  .hdr-row1>.pill{min-width:74px;max-width:86px}
 }
 </style>
 </head>
@@ -331,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.04.30.0006';
+window.APP_VERSION='2026.05.01.0001';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -7961,7 +7968,7 @@ function App() {
   var [pullGate, setPullGate] = useState(false);
   var [, setSyncTick] = useState(0);
   useEffect(() => {
-    var t = setInterval(() => setSyncTick(x => x + 1), 3000);
+    var t = setInterval(() => setSyncTick(x => x + 1), 30000);
     return () => clearInterval(t);
   }, []);
   var _hashLeads = ls => {
@@ -9865,7 +9872,7 @@ function App() {
   var startSession = chosenSlot => {
     if (callAssist) {
       requestWakeLock();
-      ensureNotifyPermission().then(ok => setCallAssistStatus(ok ? 'Notifications ready' : 'Notifications off'));
+      setCallAssistStatus('Notification' in window && Notification.permission === 'granted' ? 'Notifications ready' : 'Call assist on');
     }
     var startedAt = Date.now();
     var sessionId = 'sess_' + startedAt + '_' + Math.random().toString(36).slice(2, 8);
@@ -11626,18 +11633,18 @@ function App() {
       background: isCallMode ? 'var(--gdim)' : 'var(--bdim)',
       color: isCallMode ? 'var(--green)' : 'var(--blue)'
     }
-  }, isCallMode ? 'CALL' : 'MGMT')), (isOffline || syncStatus === 'offline' || syncStatus === 'pushing' || syncStatus === 'pulling') && React.createElement("div", {
+  }, isCallMode ? 'CALL' : 'MGMT')), (isOffline || syncStatus === 'offline') && React.createElement("div", {
     className: "mode-banner",
     style: {
       marginTop: -4,
-      borderColor: isOffline || syncStatus === 'offline' ? 'rgba(248,81,73,.25)' : 'rgba(210,153,34,.25)',
-      background: isOffline || syncStatus === 'offline' ? 'var(--rdim)' : 'var(--amdim)'
+      borderColor: 'rgba(248,81,73,.25)',
+      background: 'var(--rdim)'
     }
-  }, React.createElement("div", null, React.createElement("strong", null, isOffline || syncStatus === 'offline' ? 'Offline mode' : 'Sync in progress'), React.createElement("span", {
+  }, React.createElement("div", null, React.createElement("strong", null, "Offline mode"), React.createElement("span", {
     style: {
       display: 'block'
     }
-  }, isOffline || syncStatus === 'offline' ? 'Changes stay local until connection returns' : 'Cloud state is updating across devices'))), tab === 'home' && isManageMode && (() => {
+  }, "Changes stay local until connection returns"))), tab === 'home' && isManageMode && (() => {
     var _adminEntriesH = Object.entries(adminSessions || {}).filter(([em]) => (em || '').toLowerCase() !== myEmail.toLowerCase()).map(([em, v]) => [em, Array.isArray(v) ? v : []]);
     var _todayKey = new Date().toDateString();
     var _oneDay = 86400000;
