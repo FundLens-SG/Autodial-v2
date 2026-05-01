@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js?v=2026.05.02.0001').then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js?v=2026.05.02.0002').then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0001';
+window.APP_VERSION='2026.05.02.0002';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1071,6 +1071,29 @@ window.gSheets={
       await this.put(id,tab+'!O'+row,new Date().toLocaleString('en-SG'));
       return true
     }catch(e){return false}
+  },
+  async deleteApptRow(id,appt,appendRange){
+    try{
+      if(!id)return false;
+      var tab='';
+      var row=0;
+      var m=String(appendRange||'').match(/!A(\d+):/);
+      if(m)row=+m[1];
+      var tabMatch=String(appendRange||'').match(/^'?([^'!]+)'?!/);
+      tab=tabMatch?tabMatch[1]:await this.ensureApptSheet(id);
+      if(!row)row=await this.findApptRow(id,appt);
+      if(!tab||!row)return false;
+      try{
+        var meta=await this.meta(id);
+        var sheet=meta.find(s=>s.title===tab);
+        if(sheet&&sheet.id!=null){
+          await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:[{deleteDimension:{range:{sheetId:sheet.id,dimension:'ROWS',startIndex:row-1,endIndex:row}}}]})});
+          return true;
+        }
+      }catch(_e){}
+      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab+'!A'+row+':O'+row)+':clear',{method:'POST',body:JSON.stringify({})});
+      return true
+    }catch(e){console.warn('[deleteApptRow]',e?.message||e);return false}
   },
   async findApptRow(id,appt){
     try{
@@ -5443,10 +5466,18 @@ function App() {
     }
     save('activeSession', session);
   }, [session]);
+  var liveSessionDialFocusRef = useRef(false);
   useEffect(() => {
     if (role !== 'main' || mainMode !== 'call') return;
     var hasLiveSession = running || !!(session && !session.ended);
-    if (hasLiveSession && tab !== 'dial') setTab('dial');
+    if (!hasLiveSession) {
+      liveSessionDialFocusRef.current = false;
+      return;
+    }
+    if (!liveSessionDialFocusRef.current) {
+      liveSessionDialFocusRef.current = true;
+      if (tab !== 'dial') setTab('dial');
+    }
   }, [role, mainMode, running, session && session.startTime, session && session.ended, tab]);
   var [totalSets, setTotalSets] = useState(load('ts') || 0);
   var [totalStars, setTotalStars] = useState(load('totalStars') || 0);
@@ -6250,6 +6281,88 @@ function App() {
       calendarId: a.calendarId || raw.calendarId || 'primary'
     };
   };
+  var _apptHardMatch = (row, target) => {
+    if (!row || !target) return false;
+    if (target.id && String(row.id || '') === String(target.id)) return true;
+    if (target.dbApptId && String(row.dbApptId || row.rowId || '') === String(target.dbApptId)) return true;
+    if (target.calEventId && String(row.calEventId || '') === String(target.calEventId)) return true;
+    var p1 = normalizePhone(row.phone || row.lead_phone || '');
+    var p2 = normalizePhone(target.phone || target.leadPhone || '');
+    if (!p1 || !p2 || p1 !== p2) return false;
+    if (target.apptDate && row.apptDate && String(row.apptDate) !== String(target.apptDate)) return false;
+    if (target.apptTime && row.apptTime && String(row.apptTime).slice(0, 5) !== String(target.apptTime).slice(0, 5)) return false;
+    return !row.followUp || ['pending', 'postponed'].includes(String(row.followUp).toLowerCase());
+  };
+  var _syncDeletedApptIdsCloud = async ids => {
+    if (!_SB || !_user) return false;
+    try {
+      await _SB.from('autodial_admin_config').upsert({
+        admin_email: 'dappt_' + (_user.email || '').toLowerCase(),
+        biz_name: JSON.stringify((ids || []).slice(-500))
+      }, {
+        onConflict: 'admin_email'
+      });
+      try {
+        window._bumpSyncVer && window._bumpSyncVer();
+      } catch (_e) {}
+      return true;
+    } catch (_e) {
+      return false;
+    }
+  };
+  var _purgeCloudAppointment = async target => {
+    if (!_SB || !target) return false;
+    var owners = [...new Set([target.admin, myEmail, window._user?.email].filter(x => x && String(x).includes('@')).map(x => String(x).toLowerCase()))];
+    var changed = false;
+    for (var oi = 0; oi < owners.length; oi++) {
+      var owner = owners[oi];
+      try {
+        var jobs = [{
+          key: 'sharedappt_' + owner,
+          wrap: list => ({
+            data: list,
+            ts: Date.now(),
+            devId: window._devId
+          })
+        }, {
+          key: 'apptlive_' + owner,
+          wrap: list => ({
+            appts: list,
+            count: list.length,
+            ts: Date.now(),
+            devId: window._devId
+          })
+        }, {
+          key: 'appts_' + owner,
+          wrap: list => list
+        }, {
+          key: 'shared_appts_' + owner,
+          wrap: list => list
+        }];
+        for (var ji = 0; ji < jobs.length; ji++) {
+          var job = jobs[ji];
+          var r = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', job.key).maybeSingle();
+          if (!r.data?.biz_name) continue;
+          var parsed = JSON.parse(r.data.biz_name);
+          var list = Array.isArray(parsed?.data) ? parsed.data : Array.isArray(parsed?.appts) ? parsed.appts : Array.isArray(parsed) ? parsed : [];
+          if (!Array.isArray(list) || !list.length) continue;
+          var cleaned = list.filter(x => !_apptHardMatch(x, target));
+          if (cleaned.length === list.length) continue;
+          changed = true;
+          await _SB.from('autodial_admin_config').upsert({
+            admin_email: job.key,
+            biz_name: JSON.stringify(job.wrap(cleaned))
+          }, {
+            onConflict: 'admin_email'
+          });
+        }
+      } catch (_e) {}
+    }
+    if (changed) try {
+      window._bumpSyncVer && window._bumpSyncVer();
+    } catch (_e) {}
+    return changed;
+  };
   var doUndo = async (overrideInfo, overrideUndo) => {
     var info = overrideInfo || undoInfo;
     if (!info) return;
@@ -6334,16 +6447,33 @@ function App() {
         }
       } else step('Calendar event deleted', false, 'no event id saved');
       if (u.calEventId) setWeekEvents(prev => prev.filter(ev => ev.id !== u.calEventId));
+      var _matchedAppt = null;
       if (undoPhone) {
         try {
           var _d2 = _readDeletedApptIds();
           if (u.calEventId) _d2.push(String(u.calEventId));
-          var _match = (appointments || []).find(a => (a.id === u.apptId || normalizePhone(a.phone || '') === normalizePhone(undoPhone)) && (!a.followUp || a.followUp === 'pending'));
-          if (_match?.id) _d2.push(String(_match.id));
-          if (_match?.phone && _match?.createdAt) _d2.push(_match.phone + '_' + _match.createdAt);
-          _writeDeletedApptIds(_d2);
+          _matchedAppt = (appointments || []).find(a => _apptHardMatch(a, {
+            id: u.apptId,
+            dbApptId: u.dbApptId,
+            calEventId: u.calEventId,
+            phone: undoPhone,
+            apptDate: u.apptDate,
+            apptTime: u.apptTime
+          }));
+          if (_matchedAppt?.id) _d2.push(String(_matchedAppt.id));
+          if (_matchedAppt?.calEventId) _d2.push(String(_matchedAppt.calEventId));
+          if (_matchedAppt?.phone && _matchedAppt?.createdAt) _d2.push(_matchedAppt.phone + '_' + _matchedAppt.createdAt);
+          var _savedDelIds = _writeDeletedApptIds(_d2);
+          _syncDeletedApptIdsCloud(_savedDelIds);
         } catch (_e) {}
-        setAppointments(p => p.filter(a => !(a.id === u.apptId || normalizePhone(a.phone || '') === normalizePhone(undoPhone) && (!a.followUp || a.followUp === 'pending')) && a.calEventId !== u.calEventId));
+        setAppointments(p => p.filter(a => !_apptHardMatch(a, {
+          id: u.apptId,
+          dbApptId: u.dbApptId,
+          calEventId: u.calEventId,
+          phone: undoPhone,
+          apptDate: u.apptDate,
+          apptTime: u.apptTime
+        })));
         step('Local appointment removed', true);
         if (_SB && undoPhone) {
           var db = await DB.deleteApptUndo({
@@ -6354,11 +6484,32 @@ function App() {
           });
           step('Supabase appointment removed', db.ok, db.errors?.join('; ') || '');
         } else step('Supabase appointment removed', false, 'not connected');
+        var cloudGone = await _purgeCloudAppointment({
+          ...(_matchedAppt || {}),
+          id: u.apptId || _matchedAppt?.id,
+          dbApptId: u.dbApptId || _matchedAppt?.dbApptId,
+          calEventId: u.calEventId || _matchedAppt?.calEventId,
+          phone: undoPhone,
+          admin: _matchedAppt?.admin || myEmail
+        });
+        step('Cloud appointment cache removed', cloudGone || !_SB, cloudGone ? '' : 'no matching cloud row');
       }
-      if (u.apptSheetId && u.apptSheetRange && localStorage.getItem('ad_gt')) {
-        var sheetOk = await gSheets.markApptUndo(u.apptSheetId, u.apptSheetRange, userName);
-        step('Appointment sheet marked undone', sheetOk, sheetOk ? '' : 'row range unavailable');
-      } else step('Appointment sheet marked undone', false, 'no append row saved');
+      var _sheetTarget = {
+        ...(_matchedAppt || {}),
+        id: u.apptId || _matchedAppt?.id,
+        dbApptId: u.dbApptId || _matchedAppt?.dbApptId,
+        apptSheetAutoId: u.apptSheetAutoId || _matchedAppt?.apptSheetAutoId || u.apptId,
+        calEventId: u.calEventId || _matchedAppt?.calEventId,
+        phone: undoPhone,
+        name: u.leadName || _matchedAppt?.name,
+        apptDate: u.apptDate || _matchedAppt?.apptDate,
+        apptTime: u.apptTime || _matchedAppt?.apptTime
+      };
+      var _sheetId = u.apptSheetId || _matchedAppt?.apptSheetId || myCfg.timesheetId || cfg.sheetId;
+      if (_sheetId && localStorage.getItem('ad_gt')) {
+        var sheetGone = await gSheets.deleteApptRow(_sheetId, _sheetTarget, u.apptSheetRange || _matchedAppt?.apptSheetRange || '');
+        step('Appointment sheet row removed', sheetGone, sheetGone ? '' : 'row not found');
+      } else step('Appointment sheet row removed', false, 'no sheet access');
       addSyncTrail('Set undo cleanup for ' + (info.name || lead?.name || u.leadName || 'lead'), steps);
       toast('Set undone. Cleanup details added below.');
     } else {
@@ -16306,7 +16457,7 @@ function App() {
           var isShaky = (appointments || []).some(a => a.calEventId === ev.id && isApptShaky(a));
           return React.createElement("div", {
             key: 'e-' + ei,
-            title: 'Click to edit: ' + (ev.summary || 'Busy'),
+            title: 'Open event: ' + (ev.summary || 'Busy'),
             onClick: e => {
               e.stopPropagation();
               _openCalEdit(ev);
@@ -16343,25 +16494,7 @@ function App() {
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap'
             }
-          }, String(start.getHours()).padStart(2, '0'), ":", String(start.getMinutes()).padStart(2, '0')), height > 26 && React.createElement("button", {
-            onClick: e => {
-              e.stopPropagation();
-              _openCalEdit(ev);
-            },
-            style: {
-              position: 'absolute',
-              top: 3,
-              right: 3,
-              padding: '2px 5px',
-              borderRadius: 5,
-              background: 'rgba(15,23,42,.82)',
-              color: '#bfdbfe',
-              border: '1px solid rgba(96,165,250,.45)',
-              fontSize: 7,
-              fontWeight: 900,
-              lineHeight: 1
-            }
-          }, "Edit"));
+          }, String(start.getHours()).padStart(2, '0'), ":", String(start.getMinutes()).padStart(2, '0')));
         }));
       })), React.createElement("p", {
         style: {
@@ -16370,7 +16503,7 @@ function App() {
           color: 'var(--text3)',
           textAlign: 'center'
         }
-      }, "Grid view \xB7 7am\u201310pm \xB7 Tap a green slot to book \xB7 Tap an event to edit"));
+        }, "Grid view \xB7 7am\u201310pm \xB7 Tap a green slot to book \xB7 Tap an event to adjust"));
     })(), calViewMode === 'list' && React.createElement(React.Fragment, null, days.map(d => {
       var isToday = d.key === todayKey;
       var isPast = d.key < todayKey;
@@ -16529,22 +16662,7 @@ function App() {
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap'
               }
-            }, "\uD83D\uDCC1 ", ev._calName)), React.createElement("button", {
-              onClick: e => {
-                e.stopPropagation();
-                _openCalEdit(ev);
-              },
-              style: {
-                padding: '5px 8px',
-                borderRadius: 8,
-                background: 'rgba(59,130,246,.12)',
-                color: '#93c5fd',
-                border: '1px solid rgba(96,165,250,.35)',
-                fontSize: 10,
-                fontWeight: 900,
-                flexShrink: 0
-              }
-            }, "Edit"));
+            }, "\uD83D\uDCC1 ", ev._calName)));
           }
           var s = item.slot;
           var win = item.win || _slotBookableWindow(s, slotBeforeMin, slotAfterMin);
@@ -28348,8 +28466,8 @@ WHERE p.id IS NULL;`;
     onClick: async () => {
       if (!apptDate || !apptTime) return toast('Pick a slot above or set date & time', 'err');
       if (apptSaving) return;
-      setApptSaving(true);
       try {
+      setApptSaving(true);
       var dur = _slotMinutes(apptSlotDuration, apptCoreMin, 1, 480);
       var lead = apptLead;
       if (rescheduleTargetAppt) {
@@ -28528,12 +28646,14 @@ WHERE p.id IS NULL;`;
           }
         });
         if (_conflicts.length) {
+          setApptSaving(false);
           var _msg = '⚠ Conflict — this slot overlaps:\n\n' + _conflicts.slice(0, 5).map(c => '• ' + c).join('\n') + (_conflicts.length > 5 ? '\n• ...and ' + (_conflicts.length - 5) + ' more' : '') + '\n\nCreate appointment anyway?';
           if (!(await confirmAsync(_msg, {
             title: 'Appointment conflict',
             confirmLabel: 'Create anyway',
             danger: false
           }))) return;
+          setApptSaving(true);
         }
       } catch (_ce) {
         console.warn('[Conflict check]', _ce?.message || _ce);
@@ -30326,7 +30446,7 @@ WHERE p.id IS NULL;`;
       fontWeight: 800,
       color: '#f1f5f9'
     }
-  }, "\uD83D\uDCDD Edit Event"), React.createElement("button", {
+    }, "\uD83D\uDCDD Calendar Event"), React.createElement("button", {
     onClick: () => setCalEditEvent(null),
     style: {
       width: 30,
@@ -30706,23 +30826,26 @@ WHERE p.id IS NULL;`;
         _liveSyncRef.current.localApptsGuardUntil = Date.now() + 6000;
       } catch (_e) {}
       await _wipeCalEvent();
-      await syncApptSheet(_a, {
-        status: 'Deleted',
-        followUp: 'Deleted',
-        notes: 'Deleted by ' + userName + ' ' + new Date().toLocaleString('en-SG')
-      });
+      var _sheetId = _a.apptSheetId || myCfg.timesheetId || cfg.sheetId;
+      if (_sheetId && localStorage.getItem('ad_gt')) {
+        var _sheetGone = await gSheets.deleteApptRow(_sheetId, _a, _a.apptSheetRange || '');
+        if (!_sheetGone) toast('Appointment sheet row not found - check sheet manually', 'warn');
+      }
       var delIds = _readDeletedApptIds();
       if (_a.id) delIds.push(String(_a.id));
       if (_a.calEventId) delIds.push(String(_a.calEventId));
       if (_a.phone && (_a.apptDate || _a.createdAt)) delIds.push(_a.phone + '_' + (_a.apptDate || _a.createdAt));
       var savedDelIds = _writeDeletedApptIds(delIds);
-      if (_SB && _user) _SB.from('autodial_admin_config').upsert({
-        admin_email: 'dappt_' + _user.email.toLowerCase(),
-        biz_name: JSON.stringify(savedDelIds)
-      }, {
-        onConflict: 'admin_email'
-      }).catch(() => {});
-      setAppointments(p => p.filter(x => x.id !== _a.id));
+      await _syncDeletedApptIdsCloud(savedDelIds);
+      setAppointments(p => p.filter(x => !_apptHardMatch(x, _a)));
+      if (_SB) await DB.deleteApptUndo({
+        rowId: _a.dbApptId,
+        calEventId: _a.calEventId,
+        phone: _a.phone,
+        admin: _a.admin || myEmail
+      }).catch(() => ({
+        ok: false
+      }));
       if (_a.followUp !== 'closed') {
         setTotalSets(p => Math.max(0, p - 1));
         try {
@@ -30734,50 +30857,7 @@ WHERE p.id IS NULL;`;
           }
         } catch (_e) {}
       }
-      if (_SB && _a.admin && _a.phone && role === 'main') {
-        (async () => {
-          try {
-            var adminLow = _a.admin.toLowerCase();
-            var r = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'sharedappt_' + adminLow).maybeSingle();
-            if (r.data?.biz_name) {
-              var parsed = JSON.parse(r.data.biz_name) || {};
-              var list = Array.isArray(parsed.data) ? parsed.data : Array.isArray(parsed) ? parsed : [];
-              var cleaned = list.filter(x => String(x.id || '') !== String(_a.id || '') && String(x.calEventId || '') !== String(_a.calEventId || ''));
-              if (cleaned.length !== list.length) {
-                await _SB.from('autodial_admin_config').upsert({
-                  admin_email: 'sharedappt_' + adminLow,
-                  biz_name: JSON.stringify({
-                    data: cleaned,
-                    ts: Date.now(),
-                    devId: window._devId
-                  })
-                }, {
-                  onConflict: 'admin_email'
-                });
-              }
-            }
-            var r2 = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'apptlive_' + adminLow).maybeSingle();
-            if (r2.data?.biz_name) {
-              var parsed2 = JSON.parse(r2.data.biz_name) || {};
-              var list2 = Array.isArray(parsed2.appts) ? parsed2.appts : [];
-              var cleaned2 = list2.filter(x => String(x.id || '') !== String(_a.id || '') && String(x.calEventId || '') !== String(_a.calEventId || ''));
-              if (cleaned2.length !== list2.length) {
-                await _SB.from('autodial_admin_config').upsert({
-                  admin_email: 'apptlive_' + adminLow,
-                  biz_name: JSON.stringify({
-                    appts: cleaned2,
-                    count: cleaned2.length,
-                    ts: Date.now(),
-                    devId: window._devId
-                  })
-                }, {
-                  onConflict: 'admin_email'
-                });
-              }
-            }
-          } catch (e) {}
-        })();
-      }
+      await _purgeCloudAppointment(_a);
       toast('🗑 Appointment deleted — count reversed');
       _close();
     };
