@@ -1,4 +1,4 @@
-const APP_VERSION = '2026.05.01.0013';
+const APP_VERSION = '2026.05.02.0001';
 const CACHE_NAME = `autodial-v2-${APP_VERSION}`;
 const ASSETS = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png'];
 
@@ -10,6 +10,10 @@ self.addEventListener('activate', e => {
   e.waitUntil(caches.keys().then(keys => Promise.all(
     keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
   )).then(() => self.clients.claim()));
+});
+
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('notificationclick', e => {
