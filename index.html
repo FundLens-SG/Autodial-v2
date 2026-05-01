@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.01.0007';
+window.APP_VERSION='2026.05.01.0008';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1436,6 +1436,7 @@ window.incDailySets=function(){var today=getTodaySGT();var ds=JSON.parse(localSt
 window.setDailySetsCount=function(n){var ds={date:getTodaySGT(),count:n};localStorage.setItem('autodial_daily_sets',JSON.stringify(ds))};
 window.detectGender=function(l){if(l.gender){var g=l.gender.toLowerCase();if(/^(m|male|mr)$/i.test(g))return'male';if(/^(f|female|mrs|ms|miss|mdm)$/i.test(g))return'female'}var n=(l.name||'');if(/^(mr\.?|encik)\s/i.test(n))return'male';if(/^(mrs\.?|ms\.?|miss|mdm)\s/i.test(n))return'female';return null};
 window.parseAgeRange=function(a){if(!a)return null;var s=String(a).trim(),d=parseInt(s);if(!isNaN(d)&&s.length<=3)return{min:d,max:d};var m=s.match(/(\d+)\s*(?:to|-)\s*(\d+)/i);return m?{min:+m[1],max:+m[2]}:null};
+function leadAgeText(lead){var raw=String(lead?.age||lead?.computed_age||'').trim();if(!raw)return'Age ?';var parsed=parseAgeRange(raw);if(parsed&&parsed.min===parsed.max)return'Age '+parsed.min;return'Age '+raw}
 window.getNextDialable=function(leads,after,f){f=f||{};var now=new Date();
   var priority=f.queuePriority||['blank','cb_due','np_retry'];
   function isEligible(l){
@@ -10869,6 +10870,31 @@ function App() {
       if (l) dial(l.phone);
     }, 300);
   }, [dial, dialFilters, checkClaim, claimLead, blockIfNotReady]);
+  var releaseClaim = useCallback(lead => {
+    if (!_SB || !lead?.phone) return;
+    try {
+      _SB.from('autodial_admin_config').delete().eq('admin_email', 'claim_' + lead.phone).then(() => {}, () => {});
+    } catch (_e) {}
+  }, []);
+  var skipCurrentLead = useCallback(() => {
+    var curLeads = leadsRef.current || [];
+    if (!running || curIdx < 0 || curIdx >= curLeads.length) return;
+    var skipped = curLeads[curIdx];
+    var nextIdx = getNextDialable(curLeads, curIdx, {
+      ...dialFilters()
+    });
+    releaseClaim(skipped);
+    if (nextIdx === -1) {
+      setRunning(false);
+      setPhase('idle');
+      setCurIdx(-1);
+      setShowNextPreview(false);
+      toast('No more leads', 'info');
+      return;
+    }
+    toast('Skipped ' + (skipped?.name || skipped?.phone || 'lead'));
+    proceedToLead(nextIdx);
+  }, [running, curIdx, dialFilters, releaseClaim, proceedToLead]);
   var handleOutcome = useCallback((status, extra = {}) => {
     var leadIdx = curIdx;
     if (status === 'pending') {
@@ -12979,7 +13005,14 @@ function App() {
       textTransform: 'uppercase',
       letterSpacing: '.08em'
     }
-  }, "Current lead"), cur && running ? React.createElement(React.Fragment, null, React.createElement("h3", {
+  }, "Current lead"), cur && running ? React.createElement(React.Fragment, null, React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 8,
+      minWidth: 0
+    }
+  }, React.createElement("h3", {
     style: {
       margin: 0,
       fontSize: 18,
@@ -12987,9 +13020,22 @@ function App() {
       color: '#fff',
       overflow: 'hidden',
       textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap'
+      whiteSpace: 'nowrap',
+      flex: 1,
+      minWidth: 0
     }
-  }, cur.name || 'Unnamed'), React.createElement("p", {
+  }, cur.name || 'Unnamed'), React.createElement("span", {
+    style: {
+      padding: '5px 9px',
+      borderRadius: 999,
+      background: cur.age || cur.computed_age ? 'rgba(88,166,255,.14)' : 'rgba(210,153,34,.12)',
+      color: cur.age || cur.computed_age ? 'var(--blue)' : 'var(--amber)',
+      border: '1px solid ' + (cur.age || cur.computed_age ? 'rgba(88,166,255,.32)' : 'rgba(210,153,34,.28)'),
+      fontSize: 12,
+      fontWeight: 1000,
+      flexShrink: 0
+    }
+  }, leadAgeText(cur))), React.createElement("p", {
     className: "mono",
     style: {
       margin: '2px 0 0',
@@ -13071,7 +13117,20 @@ function App() {
       border: '1px solid rgba(255,255,255,.06)',
       opacity: s === 'set' && (setDone || showPostCall?.status === 'set') ? .5 : 1
     }
-  }, label))), session && !session.ended && React.createElement("div", {
+  }, label))), cur && running && phase === 'calling' && React.createElement("button", {
+    onClick: skipCurrentLead,
+    style: {
+      width: '100%',
+      padding: '11px 12px',
+      marginBottom: 8,
+      borderRadius: 12,
+      background: 'rgba(88,166,255,.10)',
+      color: 'var(--blue)',
+      fontSize: 13,
+      fontWeight: 900,
+      border: '1px solid rgba(88,166,255,.26)'
+    }
+  }, "Skip lead \u2192"), session && !session.ended && React.createElement("div", {
     style: {
       display: 'grid',
       gridTemplateColumns: 'repeat(5,1fr)',
