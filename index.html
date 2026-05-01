@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js?v=2026.05.02.0002').then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js?v=2026.05.02.0003').then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0002';
+window.APP_VERSION='2026.05.02.0003';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -5336,6 +5336,38 @@ function App() {
     });
     setCalEditEvent(ev);
   };
+  var calEventOpenTimerRef = useRef(null);
+  var _openCalEditSafe = (ev, domEvent) => {
+    if (domEvent) {
+      domEvent.preventDefault?.();
+      domEvent.stopPropagation?.();
+    }
+    if (!ev) return;
+    if (calEventOpenTimerRef.current) clearTimeout(calEventOpenTimerRef.current);
+    calEventOpenTimerRef.current = setTimeout(() => {
+      try {
+        _openCalEdit(ev);
+      } catch (e) {
+        console.warn('[Calendar event open]', e);
+        toast('Could not open this calendar event: ' + (e?.message || e), 'err');
+      }
+    }, 0);
+  };
+  useEffect(() => {
+    var openFromDom = e => {
+      var el = e.target?.closest?.('[data-cal-event-id]');
+      if (!el) return;
+      var id = el.getAttribute('data-cal-event-id');
+      var ev = (weekEvents || []).find(x => String(x.id || '') === String(id || ''));
+      if (ev) _openCalEditSafe(ev, e);
+    };
+    document.addEventListener('click', openFromDom, true);
+    document.addEventListener('pointerup', openFromDom, true);
+    return () => {
+      document.removeEventListener('click', openFromDom, true);
+      document.removeEventListener('pointerup', openFromDom, true);
+    };
+  }, [weekEvents]);
   var isApptShaky = a => !!(a && a.shaky);
   var _stripStatusPrefix = title => (title || '').replace(/^\[(?:POSTPONED(?::\s*NO\s*DATE)?|FLY\s*KITE|MET|CLOSED)\]\s*/i, '');
   var _withStatusPrefix = (title, status, hasDate) => {
@@ -15751,8 +15783,8 @@ function App() {
       });
     }
     var todayKey = localDateKey(new Date());
-    var BIZ_START = 9,
-      BIZ_END = 21;
+    var BIZ_START = 7,
+      BIZ_END = 22;
     return React.createElement(React.Fragment, null, React.createElement("div", {
       className: "card",
       style: {
@@ -16415,7 +16447,7 @@ function App() {
               overflow: 'hidden',
               color: '#86efac',
               cursor: gOk || role === 'admin' ? 'pointer' : 'default',
-              zIndex: 0
+              zIndex: 1
             }
           }, React.createElement("div", {
             style: {
@@ -16457,10 +16489,16 @@ function App() {
           var isShaky = (appointments || []).some(a => a.calEventId === ev.id && isApptShaky(a));
           return React.createElement("div", {
             key: 'e-' + ei,
+            role: "button",
+            tabIndex: 0,
+            "data-cal-event-id": ev.id || '',
             title: 'Open event: ' + (ev.summary || 'Busy'),
+            onPointerUp: e => _openCalEditSafe(ev, e),
             onClick: e => {
-              e.stopPropagation();
-              _openCalEdit(ev);
+              _openCalEditSafe(ev, e);
+            },
+            onKeyDown: e => {
+              if (e.key === 'Enter' || e.key === ' ') _openCalEditSafe(ev, e);
             },
             style: {
               position: 'absolute',
@@ -16478,7 +16516,8 @@ function App() {
               color: isShaky ? '#fb923c' : '#a5b4fc',
               boxShadow: isShaky ? '0 0 8px rgba(251,146,60,.3)' : 'none',
               cursor: 'pointer',
-              zIndex: 3
+              zIndex: 30,
+              pointerEvents: 'auto'
             }
           }, React.createElement("div", {
             style: {
@@ -16595,9 +16634,15 @@ function App() {
             var _isShaky = (appointments || []).some(a => a.calEventId && a.calEventId === ev.id && isApptShaky(a));
             return React.createElement("div", {
               key: 'e' + i,
+              role: "button",
+              tabIndex: 0,
+              "data-cal-event-id": ev.id || '',
+              onPointerUp: e => _openCalEditSafe(ev, e),
               onClick: e => {
-                e.stopPropagation();
-                _openCalEdit(ev);
+                _openCalEditSafe(ev, e);
+              },
+              onKeyDown: e => {
+                if (e.key === 'Enter' || e.key === ' ') _openCalEditSafe(ev, e);
               },
               style: {
                 display: 'flex',
@@ -27377,8 +27422,8 @@ WHERE p.id IS NULL;`;
       if (!cbByDay[l.cbDate]) cbByDay[l.cbDate] = [];
       cbByDay[l.cbDate].push(l);
     });
-    var BIZ_START = 9,
-      BIZ_END = 21,
+    var BIZ_START = 7,
+      BIZ_END = 22,
       MIN_HRS = Math.max(.25, slotFootprintMin / 60);
     var overrideStepMin = 30;
     var pickerWindowForSlot = s => s?._hard ? {
@@ -30422,7 +30467,8 @@ WHERE p.id IS NULL;`;
     onClose: () => setCalEditEvent(null),
     align: "center",
     bg: ".85",
-    zIndex: 101
+    zIndex: 360,
+    scope: "pane"
   }, React.createElement("div", {
     style: {
       width: '100%',
