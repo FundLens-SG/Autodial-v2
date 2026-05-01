@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.01.0010';
+window.APP_VERSION='2026.05.01.0011';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1121,6 +1121,68 @@ window.gSheets={
   },
   async meta(id){return(await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'?fields=sheets.properties')).json()).sheets?.map(function(s){return{id:s.properties.sheetId,title:s.properties.title,rows:s.properties.gridProperties?.rowCount}})||[]},async vals(id,range){return(await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(range))).json()).values||[]},async put(id,range,val){await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(range)+'?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[[val]]})})}};
 window.gCal={async create(sum,desc,s,e,att,calId){var cid=calId||'primary';var b={summary:sum,description:desc,start:{dateTime:s,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone},end:{dateTime:e,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}};if(att?.length){b.attendees=att.map(function(e){return{email:e}});/* ═══ Auto-add Google Meet link when there are invitees. The lead gets a clickable Meet link in their calendar invite, increasing show-up rate. requestId must be unique per event. ═══ */b.conferenceData={createRequest:{requestId:'autodial-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),conferenceSolutionKey:{type:'hangoutsMeet'}}}}var _qs='?sendUpdates=all'+(att?.length?'&conferenceDataVersion=1':'');return(await(await gF('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cid)+'/events'+_qs,{method:'POST',body:JSON.stringify(b)})).json())},async events(min,max){return(await(await gF('https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin='+min+'&timeMax='+max+'&singleEvents=true&orderBy=startTime&maxResults=250&showDeleted=false')).json()).items||[]},async eventsFromCal(calId,min,max){try{return(await(await gF('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(calId)+'/events?timeMin='+min+'&timeMax='+max+'&singleEvents=true&orderBy=startTime&maxResults=250&showDeleted=false')).json()).items||[]}catch(e){return[]}},async loadWeek(calIds){var now=new Date();var min=new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();var max=new Date(now.getTime()+7*86400000).toISOString();var all=[];for(var i=0;i<(calIds||['primary']).length;i++){var cid=calIds[i];var evs=cid==='primary'?await this.events(min,max):await this.eventsFromCal(cid,min,max);evs.forEach(function(e){e._calId=cid});all=all.concat(evs)}all.sort(function(a,b){var ta=new Date(a.start?.dateTime||a.start?.date||0).getTime();var tb=new Date(b.start?.dateTime||b.start?.date||0).getTime();return ta-tb});return all},async del(eventId,calId){if(!eventId)return false;var cid=calId||'primary';try{await gF('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cid)+'/events/'+encodeURIComponent(eventId)+'?sendUpdates=all',{method:'DELETE'});return true}catch(e){console.warn('[gCal.del]',e?.message||e);return false}},async update(eventId,patch,calId){if(!eventId)return null;var cid=calId||'primary';try{return await(await gF('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cid)+'/events/'+encodeURIComponent(eventId)+'?sendUpdates=all',{method:'PATCH',body:JSON.stringify(patch)})).json()}catch(e){console.warn('[gCal.update]',e?.message||e);return null}},async loadRange(calIds,minD,maxD){var all=[];var list=(calIds||['primary']);for(var i=0;i<list.length;i++){var cid=list[i];try{var evs=cid==='primary'?await this.events(minD.toISOString(),maxD.toISOString()):await this.eventsFromCal(cid,minD.toISOString(),maxD.toISOString());evs.forEach(function(e){e._calId=cid});all=all.concat(evs)}catch(e){}}all.sort(function(a,b){var ta=new Date(a.start?.dateTime||a.start?.date||0).getTime();var tb=new Date(b.start?.dateTime||b.start?.date||0).getTime();return ta-tb});return all}};
+(function hardenCalendarFetch(){
+  if(!window.gCal||window.gCal._hardened)return;
+  window.gCal.create=async function(sum,desc,s,e,att,calId){
+    var cid=calId||'primary';
+    var owner=(window._user?.email||window._prof?.email||'').toLowerCase();
+    var b={summary:sum,description:desc,start:{dateTime:s,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone},end:{dateTime:e,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone},extendedProperties:{private:{autodialOwner:owner,autodialCreatedAt:String(Date.now())}}};
+    if(att?.length){
+      b.attendees=att.map(function(e){return{email:e}});
+      b.conferenceData={createRequest:{requestId:'autodial-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),conferenceSolutionKey:{type:'hangoutsMeet'}}};
+    }
+    var _qs='?sendUpdates=all'+(att?.length?'&conferenceDataVersion=1':'');
+    var r=await gF('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cid)+'/events'+_qs,{method:'POST',body:JSON.stringify(b)});
+    if(!r.ok){var err=new Error('Calendar create failed: '+r.status);err.status=r.status;throw err}
+    return await r.json();
+  };
+  async function readEvents(calId,min,max){
+    var cid=calId||'primary';
+    var url='https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cid)+'/events?timeMin='+min+'&timeMax='+max+'&singleEvents=true&orderBy=startTime&maxResults=250&showDeleted=false';
+    var r=await gF(url);
+    if(!r.ok){
+      var err=new Error('Calendar fetch failed: '+r.status);
+      err.status=r.status;
+      err.calendarId=cid;
+      throw err;
+    }
+    var data=await r.json();
+    return data.items||[];
+  }
+  window.gCal.events=function(min,max){return readEvents('primary',min,max)};
+  window.gCal.eventsFromCal=function(calId,min,max){return readEvents(calId,min,max)};
+  window.gCal.loadWeek=async function(calIds){
+    var now=new Date();
+    var min=new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();
+    var max=new Date(now.getTime()+7*86400000).toISOString();
+    var all=[];
+    for(var i=0;i<(calIds||['primary']).length;i++){
+      var cid=calIds[i];
+      try{
+        var evs=await readEvents(cid,min,max);
+        evs.forEach(function(e){e._calId=cid});
+        all=all.concat(evs);
+      }catch(e){if(e.status!==403&&e.status!==404)throw e}
+    }
+    all.sort(function(a,b){var ta=new Date(a.start?.dateTime||a.start?.date||0).getTime();var tb=new Date(b.start?.dateTime||b.start?.date||0).getTime();return ta-tb});
+    return all;
+  };
+  window.gCal.loadRange=async function(calIds,minD,maxD){
+    var all=[];
+    var list=calIds||['primary'];
+    for(var i=0;i<list.length;i++){
+      var cid=list[i];
+      try{
+        var evs=await readEvents(cid,minD.toISOString(),maxD.toISOString());
+        evs.forEach(function(e){e._calId=cid});
+        all=all.concat(evs);
+      }catch(e){if(e.status!==403&&e.status!==404)throw e}
+    }
+    all.sort(function(a,b){var ta=new Date(a.start?.dateTime||a.start?.date||0).getTime();var tb=new Date(b.start?.dateTime||b.start?.date||0).getTime();return ta-tb});
+    return all;
+  };
+  window.gCal._hardened=true;
+})();
 window.gDrive={async search(q){var fq="mimeType='application/vnd.google-apps.spreadsheet'";if(q)fq+=" and name contains '"+q.replace(/'/g,"\\'")+"'";return(await(await gF('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(fq)+'&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&pageSize=20')).json()).files||[]}};
 
 // ══════ AI PROMPTS — centralized ══════
@@ -2785,7 +2847,7 @@ function Modal({
   var _alignItems = _pane && align === 'bottom' ? 'flex-start' : _ai;
   var _justifyContent = _pane && align === 'bottom' ? 'flex-end' : 'center';
   var _padding = _pane && align === 'bottom' ? '136px 14px 0' : align === 'stretch' ? 0 : padding;
-  return React.createElement("div", {
+  var content = React.createElement("div", {
     onClick: onClose,
     style: {
       position: 'fixed',
@@ -2807,6 +2869,7 @@ function Modal({
       display: 'contents'
     }
   }, children));
+  return typeof ReactDOM !== 'undefined' && ReactDOM.createPortal ? ReactDOM.createPortal(content, document.body) : content;
 }
 function Btn({
   variant = 'ghost',
@@ -4754,6 +4817,7 @@ function App() {
   var [apptLead, setApptLead] = useState(null);
   var [apptDate, setApptDate] = useState('');
   var [apptTime, setApptTime] = useState('');
+  var [apptSlotDuration, setApptSlotDuration] = useState(() => _slotMinutes(load('apptDur'), 60, 1, 480));
   var [apptInvite, setApptInvite] = useState('');
   var [apptLocation, setApptLocation] = useState('');
   var [apptObs, setApptObs] = useState('');
@@ -4813,11 +4877,12 @@ function App() {
       apptLocation,
       apptObs,
       apptInvite,
+      apptSlotDuration,
       apptShaky,
       ts: Date.now()
     }), 250);
     return () => clearTimeout(t);
-  }, [showAppt, apptLead, apptDate, apptTime, apptLocation, apptObs, apptInvite, apptShaky]);
+  }, [showAppt, apptLead, apptDate, apptTime, apptLocation, apptObs, apptInvite, apptSlotDuration, apptShaky]);
   var _openRescheduleFlow = a => {
     if (!a) return;
     var leadObj = {
@@ -4838,7 +4903,7 @@ function App() {
     setApptLocation(draft.apptLocation || a.location || '');
     setApptObs(draft.apptObs || a.remarks || '');
     setApptInvite(draft.apptInvite || a.inviteEmails || '');
-    setApptDuration(a.duration || 60);
+    setApptSlotDuration(_slotMinutes(draft.apptSlotDuration ?? a.duration, 60, 1, 480));
     setApptShaky(draft.apptShaky ?? false);
     setApptHardOverride(false);
     setPickerWeekIdx(0);
@@ -4866,7 +4931,7 @@ function App() {
     setApptObs(draft.apptObs || a.remarks || '');
     setApptInvite(draft.apptInvite || a.inviteEmails || '');
     setApptTravelBefore(() => _slotMinutes(load('apptTravelBefore'), 0, 0, 240));
-    setApptDuration(() => _slotMinutes(load('apptDur'), a.duration || 60, 1, 480));
+    setApptSlotDuration(() => _slotMinutes(draft.apptSlotDuration ?? a.duration, _slotMinutes(load('apptDur'), 60, 1, 480), 1, 480));
     setApptTravelAfter(() => _slotMinutes(load('apptTravelAfter'), 0, 0, 240));
     setApptShaky(draft.apptShaky ?? !!a.shaky);
     setApptHardOverride(false);
@@ -5230,6 +5295,20 @@ function App() {
     ts: 0,
     data: null
   });
+  var blockedCalendarIdsRef = useRef(new Set());
+  var shouldSkipCalendarFetch = c => !!(c && c.id && blockedCalendarIdsRef.current.has(c.id));
+  var rememberBlockedCalendar = (c, err) => {
+    var id = c?.id || '';
+    var status = Number(err?.status || err?.code || 0);
+    if (!id || id === 'primary' || ![403, 404].includes(status)) return;
+    blockedCalendarIdsRef.current.add(id);
+    pickerEventsCacheRef.current = {
+      key: '',
+      ts: 0,
+      data: null
+    };
+    console.warn('[Calendar] Skipping inaccessible calendar for this session:', c.summary || id, status);
+  };
   var _autoCreateGCalRef = useRef(new Set());
   var [detailId, setDetailId] = useState(null);
   var [showAdd, setShowAdd] = useState(false);
@@ -6336,6 +6415,22 @@ function App() {
   var slotFootprintMin = slotBeforeMin + apptCoreMin + slotAfterMin;
   var preferredApptMinutes = _preferredApptMinutes(effectivePreferredApptTimes);
   var preferredApptTimesKey = effectivePreferredApptTimes.join('|');
+  var preferredMetaForMinutes = mins => {
+    var val = _slotMinutes(mins, 0, 0, 1440);
+    var uniq = Array.from(new Set((preferredApptMinutes || []).filter(Boolean))).sort((a, b) => a - b);
+    if (!val || !uniq.includes(val)) return {
+      stars: '',
+      label: '',
+      title: ''
+    };
+    var superPreferred = uniq.length > 1 && val >= uniq[uniq.length - 1];
+    return {
+      stars: superPreferred ? '★★' : '★',
+      label: superPreferred ? 'Super preferred' : 'Preferred',
+      title: superPreferred ? 'Super Preferred Timing' : 'Preferred Timing'
+    };
+  };
+  var formatApptOutcomeMinutes = mins => _slotMinutes(mins, apptCoreMin, 1, 1440) + ' mins';
   var timingPalette = {
     before: {
       bg: 'linear-gradient(135deg,rgba(56,139,253,.95),rgba(14,165,233,.62))',
@@ -7345,6 +7440,7 @@ function App() {
       var seen = new Set();
       calFetchList = calFetchList.filter(c => {
         if (seen.has(c.id)) return false;
+        if (shouldSkipCalendarFetch(c)) return false;
         seen.add(c.id);
         return true;
       });
@@ -7369,7 +7465,8 @@ function App() {
             _calName: c.summary,
             _calColor: c.backgroundColor
           }));
-        } catch (_) {
+        } catch (e) {
+          rememberBlockedCalendar(c, e);
           return [];
         }
       }));
@@ -8206,6 +8303,7 @@ function App() {
       var seen = new Set();
       calFetchList = calFetchList.filter(c => {
         if (seen.has(c.id)) return false;
+        if (shouldSkipCalendarFetch(c)) return false;
         seen.add(c.id);
         return true;
       });
@@ -8232,14 +8330,15 @@ function App() {
         }
         var results = await Promise.all(calFetchList.map(async c => {
           try {
-            var evs = c.id === 'primary' ? await gCal.events(start.toISOString(), end.toISOString()) : await gCal.eventsFromCal(c.id, start.toISOString(), end.toISOString());
-            return evs.map(e => ({
-              ...e,
-              _calId: c.id,
-              _calName: c.summary,
-              _calColor: c.backgroundColor
-            }));
-          } catch (_) {
+          var evs = c.id === 'primary' ? await gCal.events(start.toISOString(), end.toISOString()) : await gCal.eventsFromCal(c.id, start.toISOString(), end.toISOString());
+          return evs.map(e => ({
+            ...e,
+            _calId: c.id,
+            _calName: c.summary,
+            _calColor: c.backgroundColor
+          }));
+          } catch (e) {
+            rememberBlockedCalendar(c, e);
             return [];
           }
         }));
@@ -10145,18 +10244,30 @@ function App() {
     };
   }, [isMob, myEmail, handlePhoneDialRequest]);
   useEffect(() => {
-    var _start = session?.startTime;
-    if (!_start || session?.ended) return;
-    var tick = () => setElapsed(Math.floor((Date.now() - _start) / 1000));
+    var _start = Number(session?.startTime || 0);
+    if (!_start || session?.ended) {
+      timerRef.current = null;
+      if (!session) setElapsed(0);
+      return;
+    }
+    var tick = () => {
+      var next = Math.max(0, Math.floor((Date.now() - _start) / 1000));
+      setElapsed(prev => prev === next ? prev : next);
+    };
     tick();
-    timerRef.current = setInterval(tick, 1000);
+    var intervalId = setInterval(tick, 1000);
+    timerRef.current = intervalId;
     var onVis = () => {
       if (document.visibilityState === 'visible') tick();
     };
+    var onFocus = () => tick();
     document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onFocus);
     return () => {
-      clearInterval(timerRef.current);
+      clearInterval(intervalId);
+      if (timerRef.current === intervalId) timerRef.current = null;
       document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onFocus);
     };
   }, [session?.startTime, session?.ended]);
   useEffect(() => {
@@ -10419,11 +10530,12 @@ function App() {
   var endSession = () => {
     if (!session) return;
     var endedAt = Date.now();
+    var finalElapsed = Math.max(elapsed || 0, Math.floor((endedAt - (Number(session.startTime) || endedAt)) / 1000));
     var s = {
       ...session,
       ended: true,
       endTime: endedAt,
-      elapsed
+      elapsed: finalElapsed
     };
     s.id = s.id || 'sess_' + (s.startTime || Date.now()) + '_' + Math.random().toString(36).slice(2, 8);
     s.timesheetAutoId = s.timesheetAutoId || s.id;
@@ -10435,7 +10547,7 @@ function App() {
     s.monthlyAppts = monthlyAppts;
     s.role = role;
     var isAdminCallingSession = role === 'admin';
-    var actualH = elapsed / 3600;
+    var actualH = finalElapsed / 3600;
     var slots = (myCfg.sessionSlots || [{
       hours: n(myCfg.sessionDur, 5),
       apptsBar: n(myCfg.mThresh, 2),
@@ -11039,7 +11151,7 @@ function App() {
       setApptObs(draft.apptObs || '');
       setApptInvite(draft.apptInvite || '');
       setApptTravelBefore(() => _slotMinutes(load('apptTravelBefore'), 0, 0, 240));
-      setApptDuration(() => _slotMinutes(load('apptDur'), 60, 1, 480));
+      setApptSlotDuration(() => _slotMinutes(load('apptDur'), 60, 1, 480));
       setApptTravelAfter(() => _slotMinutes(load('apptTravelAfter'), 0, 0, 240));
       setPendingShakyKey(null);
       setApptHardOverride(false);
@@ -22075,7 +22187,7 @@ function App() {
         color: 'var(--text3)',
         lineHeight: 1.35
       }
-    }, "Used to highlight 2 ideal meeting lengths when the slot has enough protected travel time.")));
+    }, "Used to highlight 2 ideal meeting lengths when the slot has enough travel buffer time.")));
   })(), React.createElement("div", {
     style: {
       marginBottom: 8,
@@ -22907,7 +23019,7 @@ function App() {
     }
     }, "\uD83D\uDCC5 Share Calendars with ", em.split('@')[0]), React.createElement(InfoHint, {
       label: "Shared calendars"
-    }, "Admins can see shared calendars while booking. Busy only hides titles and locations, but still blocks protected travel and appointment time."), !calList.length && React.createElement("button", {
+    }, "Admins can see shared calendars while booking. Busy only hides titles and locations, but still respects travel buffers and appointment time."), !calList.length && React.createElement("button", {
     onClick: () => gCalShare.listCalendars().then(setCalList),
     style: {
       padding: '3px 8px',
@@ -26876,7 +26988,14 @@ WHERE p.id IS NULL;`;
     }
   }, (() => {
     try {
-      return fmtLongDay(apptDate + 'T' + apptTime) + ' · ' + apptTime + ' · ' + _formatSlotMinutes(apptCoreMin) + ' minimum / ' + _formatSlotMinutes(slotFootprintMin) + ' slot footprint';
+      var _chosenStart = new Date(apptDate + 'T' + apptTime);
+      var _chosenMins = _slotMinutes(apptSlotDuration, apptCoreMin, 1, 1440);
+      var _chosenEnd = new Date(_chosenStart.getTime() + _chosenMins * 60000);
+      var _eh = String(_chosenEnd.getHours()).padStart(2, '0');
+      var _em = String(_chosenEnd.getMinutes()).padStart(2, '0');
+      var _meta = preferredMetaForMinutes(_chosenMins);
+      var _outcome = _meta.title || 'Minimum timing';
+      return fmtLongDay(apptDate + 'T' + apptTime) + ' · ' + apptTime + '–' + _eh + ':' + _em + ' · ' + formatApptOutcomeMinutes(_chosenMins) + ', ' + _outcome;
     } catch (e) {
       return apptDate + ' ' + apptTime;
     }
@@ -26915,54 +27034,7 @@ WHERE p.id IS NULL;`;
       textTransform: 'none',
       letterSpacing: 0
     }
-  }, "Pick another time"))), apptDate && apptTime && preferredApptMinutes.length > 0 && (() => {
-    var prefChecks = preferredApptMinutes.map(function(mins){return _preferredAppointmentFit(apptDate, apptTime, mins, pickerEvents, leads, slotBeforeMin, slotAfterMin)});
-    return React.createElement("div", {
-      style: {
-        margin: '-4px 0 12px',
-        padding: '10px 12px',
-        borderRadius: 12,
-        background: 'var(--bg3)',
-        border: '1px solid var(--border)'
-      }
-    }, React.createElement("p", {
-      style: {
-        margin: '0 0 8px',
-        fontSize: 11,
-        fontWeight: 900,
-        color: 'var(--blue)'
-      }
-    }, "Preferred appointment times"), React.createElement("div", {
-      style: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(2,minmax(0,1fr))',
-        gap: 8
-      }
-    }, prefChecks.map((fit, idx) => React.createElement("div", {
-      key: idx,
-      style: {
-        padding: '9px 10px',
-        borderRadius: 10,
-        background: fit.ok ? 'linear-gradient(135deg,rgba(34,197,94,.2),rgba(16,185,129,.08))' : 'linear-gradient(135deg,rgba(251,146,60,.22),rgba(234,88,12,.08))',
-        border: '1px solid ' + (fit.ok ? 'rgba(34,197,94,.55)' : 'rgba(251,146,60,.6)'),
-        boxShadow: fit.ok ? '0 0 16px rgba(34,197,94,.2)' : '0 0 16px rgba(251,146,60,.22)'
-      }
-    }, React.createElement("p", {
-      style: {
-        margin: 0,
-        fontSize: 12,
-        fontWeight: 900,
-        color: fit.ok ? '#22c55e' : '#fb923c'
-      }
-    }, _formatSlotMinutes(fit.mins), fit.ok ? " preferred" : " blocked"), React.createElement("p", {
-      style: {
-        margin: '2px 0 0',
-        fontSize: 10,
-        color: fit.ok ? '#86efac' : '#fdba74',
-        fontWeight: 800
-      }
-    }, fit.ok ? 'available with travel protected' : fit.alert)))));
-  })(), gOk && !pickerCollapsed && (() => {
+  }, "Pick another time"))), gOk && !pickerCollapsed && (() => {
     var now = new Date();
     var todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     var todayKey = localDateKey(todayMid);
@@ -27130,7 +27202,7 @@ WHERE p.id IS NULL;`;
       }
     }), "Smart fit ", _formatSlotMinutes(slotFootprintMin), "+ ", React.createElement(InfoHint, {
       label: "Smart slots"
-    }, "This slot has enough room for protected travel before, the minimum appointment time, and protected travel after. Hard Override hides this protection and shows every start time.")), React.createElement("span", {
+    }, "This slot has enough room for travel before, the minimum appointment time, and travel after. Hard Override hides this protection and shows every start time.")), React.createElement("span", {
       style: {
         display: 'inline-flex',
         alignItems: 'center',
@@ -27308,11 +27380,17 @@ WHERE p.id IS NULL;`;
           var isSelectedSlot = selectedOnDay && apptTime === hh + ':' + mm;
           var preferredFitMin = preferredFitForWindow(win);
           var hasPreferredFit = preferredFitMin > 0;
+          var displayMins = preferredFitMin || apptCoreMin;
+          var displayEnd = new Date(bookStart.getTime() + displayMins * 60000);
+          var ehTxt = String(displayEnd.getHours()).padStart(2, '0');
+          var emTxt = String(displayEnd.getMinutes()).padStart(2, '0');
+          var prefMeta = preferredMetaForMinutes(preferredFitMin);
           return React.createElement("div", {
             key: 'fs-' + si,
             onClick: () => {
               setApptDate(d.key);
               setApptTime(hh + ':' + mm);
+              setApptSlotDuration(displayMins);
               setPickerCollapsed(true);
               setTimeout(() => {
                 document.getElementById('appt-form-section')?.scrollIntoView({
@@ -27351,7 +27429,7 @@ WHERE p.id IS NULL;`;
               whiteSpace: 'nowrap',
               textShadow: '0 1px 6px rgba(0,0,0,.45)'
             }
-          }, "\u2B50 ", _formatSlotMinutes(preferredFitMin), " OK"), React.createElement("div", {
+          }, prefMeta.stars, " ", _formatSlotMinutes(preferredFitMin), " ", prefMeta.label), React.createElement("div", {
             style: {
               fontSize: 8,
               fontWeight: 800,
@@ -27359,17 +27437,12 @@ WHERE p.id IS NULL;`;
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap'
             }
-          }, hh, ":", mm), height > 22 && React.createElement("div", {
+          }, hh, ":", mm, "\u2013", ehTxt, ":", emTxt), height > 22 && React.createElement("div", {
             style: {
               fontSize: 7,
               opacity: .85
             }
-          }, hasPreferredFit ? _formatSlotMinutes(preferredFitMin) + " preferred" : _formatSlotMinutes(win.mins) + " available"), height > 34 && !apptHardOverride && React.createElement("div", {
-            style: {
-              fontSize: 6,
-              opacity: .78
-            }
-          }, "Travel protected"));
+          }, hasPreferredFit ? prefMeta.title : _formatSlotMinutes(win.mins) + " available"));
         }), (apptHardOverride ? [] : shakyOnDay.filter(sa => sa.apptTime)).map((sa, si) => {
           var sh = new Date(d.key + 'T' + sa.apptTime);
           var dur = sa.duration || 90;
@@ -27602,19 +27675,22 @@ WHERE p.id IS NULL;`;
       }, "Past"), bigSlots.map((s, si) => {
         var win = pickerWindowForSlot(s);
         var bookStart = win.start;
-        var bookEnd = new Date(bookStart.getTime() + apptCoreMin * 60000);
         var hh = String(bookStart.getHours()).padStart(2, '0');
         var mm = String(bookStart.getMinutes()).padStart(2, '0');
-        var eh = String(bookEnd.getHours()).padStart(2, '0');
-        var em = String(bookEnd.getMinutes()).padStart(2, '0');
         var isSelectedSlot = selectedOnDay && apptTime === hh + ':' + mm;
         var preferredFitMin = preferredFitForWindow(win);
         var hasPreferredFit = preferredFitMin > 0;
+        var displayMins = preferredFitMin || apptCoreMin;
+        var bookEnd = new Date(bookStart.getTime() + displayMins * 60000);
+        var eh = String(bookEnd.getHours()).padStart(2, '0');
+        var em = String(bookEnd.getMinutes()).padStart(2, '0');
+        var prefMeta = preferredMetaForMinutes(preferredFitMin);
         return React.createElement("button", {
           key: 'f' + si,
           onClick: () => {
             setApptDate(d.key);
             setApptTime(hh + ':' + mm);
+            setApptSlotDuration(displayMins);
             setPickerCollapsed(true);
             setTimeout(() => {
               document.getElementById('appt-form-section')?.scrollIntoView({
@@ -27653,21 +27729,14 @@ WHERE p.id IS NULL;`;
             lineHeight: 1.1,
             boxShadow: '0 0 10px rgba(34,197,94,.3)'
           }
-        }, "\u2B50 ", _formatSlotMinutes(preferredFitMin), " available"), React.createElement("div", null, hh, ":", mm, "\u2013", eh, ":", em), React.createElement("div", {
+        }, prefMeta.stars, " ", _formatSlotMinutes(preferredFitMin), " ", prefMeta.label), React.createElement("div", null, hh, ":", mm, "\u2013", eh, ":", em), React.createElement("div", {
           style: {
             fontSize: 7,
             fontWeight: 600,
             opacity: .85,
             marginTop: 1
           }
-        }, hasPreferredFit ? _formatSlotMinutes(preferredFitMin) + ' preferred' : _formatSlotMinutes(win.mins) + ' available'), !apptHardOverride && React.createElement("div", {
-          style: {
-            fontSize: 7,
-            fontWeight: 700,
-            opacity: .72,
-            marginTop: 1
-          }
-        }, "Travel protected"));
+        }, hasPreferredFit ? prefMeta.title : _formatSlotMinutes(win.mins) + ' available'));
       }), shakySlots.map((s, si) => {
         var hh = String(s.start.getHours()).padStart(2, '0');
         var mm = String(s.start.getMinutes()).padStart(2, '0');
@@ -27703,7 +27772,7 @@ WHERE p.id IS NULL;`;
               var slotMins = Math.round(s.hours * 60);
               setApptDate(d.key);
               setApptTime(hh + ':' + mm);
-              setApptDuration(prev => {
+              setApptSlotDuration(prev => {
                 var saved = Number(prev) || 60;
                 return Math.min(saved, slotMins);
               });
@@ -28095,7 +28164,7 @@ WHERE p.id IS NULL;`;
     disabled: !apptDate || !apptTime,
     onClick: async () => {
       if (!apptDate || !apptTime) return toast('Pick a slot above or set date & time', 'err');
-      var dur = apptCoreMin;
+      var dur = _slotMinutes(apptSlotDuration, apptCoreMin, 1, 480);
       var lead = apptLead;
       if (rescheduleTargetAppt) {
         try {
@@ -28322,6 +28391,7 @@ WHERE p.id IS NULL;`;
               apptSheetAutoId: _localApptId,
               apptDate,
               apptTime,
+              duration: dur,
               calEventId: evt?.id || '',
               location: apptLocation,
               remarks: apptObs,
@@ -28341,6 +28411,7 @@ WHERE p.id IS NULL;`;
             age: lead.age || '',
             apptDate,
             apptTime,
+            duration: dur,
             location: apptLocation,
             industry: '',
             remarks: apptObs,
@@ -30069,9 +30140,9 @@ WHERE p.id IS NULL;`;
   }, "\u26A0 This event is on a non-primary calendar. Changes may not sync."), (() => {
     var _row = (appointments || []).find(a => a.calEventId === calEditEvent.id);
     var _isMain = role !== 'admin';
-    var _isOwn = !!(_row && (_row.admin || '').toLowerCase() === myEmail.toLowerCase());
-    var _isShaky = !!(_row && isApptShaky(_row));
-    var _canEdit = _isMain || _isOwn || _isShaky;
+    var _eventOwner = (calEditEvent.extendedProperties?.private?.autodialOwner || calEditEvent.creator?.email || '').toLowerCase();
+    var _isOwn = !!(_row && (_row.admin || '').toLowerCase() === myEmail.toLowerCase()) || !!(_eventOwner && _eventOwner === myEmail.toLowerCase());
+    var _canEdit = _isMain || _isOwn;
     if (!_canEdit) return React.createElement("p", {
       style: {
         margin: '0 0 10px',
@@ -30083,19 +30154,7 @@ WHERE p.id IS NULL;`;
         background: 'var(--rdim)',
         border: '1px solid rgba(248,81,73,.3)'
       }
-    }, "\uD83D\uDD12 You can only edit or delete events you created, or appointments your manager has marked as shaky. Ask the manager to change this one.");
-    if (!_isMain && !_isOwn && _isShaky) return React.createElement("p", {
-      style: {
-        margin: '0 0 10px',
-        fontSize: 10,
-        color: '#fb923c',
-        textAlign: 'center',
-        padding: '8px',
-        borderRadius: 8,
-        background: 'rgba(251,146,60,.08)',
-        border: '1px solid rgba(251,146,60,.35)'
-      }
-    }, "\uD83D\uDFE0 This is a shaky appointment from your manager \u2014 you can reschedule or delete it.");
+    }, "\uD83D\uDD12 Admins can only edit or delete appointments they created. Main can edit all calendar appointments.");
     return null;
   })(), React.createElement("div", {
     style: {
@@ -30106,9 +30165,9 @@ WHERE p.id IS NULL;`;
     disabled: calEditSaving || (() => {
       if (role !== 'admin') return false;
       var _r = (appointments || []).find(a => a.calEventId === calEditEvent.id);
-      var _own = !!(_r && (_r.admin || '').toLowerCase() === myEmail.toLowerCase());
-      var _sh = !!(_r && isApptShaky(_r));
-      return !(_own || _sh);
+      var _eventOwner = (calEditEvent.extendedProperties?.private?.autodialOwner || calEditEvent.creator?.email || '').toLowerCase();
+      var _own = !!(_r && (_r.admin || '').toLowerCase() === myEmail.toLowerCase()) || !!(_eventOwner && _eventOwner === myEmail.toLowerCase());
+      return !_own;
     })(),
     onClick: async () => {
       if (!calEditForm.summary.trim()) {
@@ -30218,17 +30277,17 @@ WHERE p.id IS NULL;`;
     disabled: calEditSaving || (() => {
       if (role !== 'admin') return false;
       var _r = (appointments || []).find(a => a.calEventId === calEditEvent.id);
-      var _own = !!(_r && (_r.admin || '').toLowerCase() === myEmail.toLowerCase());
-      var _sh = !!(_r && isApptShaky(_r));
-      return !(_own || _sh);
+      var _eventOwner = (calEditEvent.extendedProperties?.private?.autodialOwner || calEditEvent.creator?.email || '').toLowerCase();
+      var _own = !!(_r && (_r.admin || '').toLowerCase() === myEmail.toLowerCase()) || !!(_eventOwner && _eventOwner === myEmail.toLowerCase());
+      return !_own;
     })(),
     onClick: async () => {
       if (role === 'admin') {
         var _r = (appointments || []).find(a => a.calEventId === calEditEvent.id);
-        var _own = !!(_r && (_r.admin || '').toLowerCase() === myEmail.toLowerCase());
-        var _sh = !!(_r && isApptShaky(_r));
-        if (!_own && !_sh) {
-          toast('You can only delete events you created or shaky appointments', 'err');
+        var _eventOwner = (calEditEvent.extendedProperties?.private?.autodialOwner || calEditEvent.creator?.email || '').toLowerCase();
+        var _own = !!(_r && (_r.admin || '').toLowerCase() === myEmail.toLowerCase()) || !!(_eventOwner && _eventOwner === myEmail.toLowerCase());
+        if (!_own) {
+          toast('Admins can only delete appointments they created', 'err');
           return;
         }
       }
