@@ -1,51 +1,104 @@
-# AutoDial Architecture Notes
+# Autodial Architecture
 
-AutoDial currently deploys as a pre-compiled single-file React app in `index.html`.
-That is convenient for GitHub Pages, but it makes larger changes risky because
-source components, build output, runtime constants, and deployment cache behavior
-all live in one generated file.
+## Purpose
+Autodial helps CK manage calling workflows, lead follow-ups, call queues, statuses, notes, and possibly AI-assisted outbound calling.
 
-## Current Rules For Production Fixes
+## Main concepts
 
-- Keep `index.html` edits surgical.
-- Bump `window.APP_VERSION` in `index.html` and `APP_VERSION` in `sw.js` together.
-- Keep `manifest.json` as the single PWA manifest source.
-- Sanitize any rich HTML before storing, syncing, or rendering it.
-- Keep user API keys in per-user rows only, never in shared/global config.
+### Contact / Lead
+A person or prospect to be called.
 
-## Recommended Source Layout
+A lead may have:
+- name
+- phone number
+- source
+- status
+- notes
+- tags
+- last contacted date
+- next follow-up date
 
-```text
-src/
-  app/
-    App.jsx
-    auth.js
-    cloud-sync.js
-    lead-import.js
-    rich-text.js
-    settings.jsx
-  styles/
-    app.css
-public/
-  manifest.json
-  sw.js
-  icon-180.png
-  icon-192.png
-  icon-512.png
-dist/
-  index.html
-```
+### Call queue
+An ordered list of leads to call.
 
-## Migration Path
+The queue should have:
+- predictable order
+- current index
+- paused/running/stopped state
+- retry handling
+- completed/skipped/failed status
 
-1. Add a build tool such as Vite while keeping GitHub Pages output compatible.
-2. Move pure helpers first: rich-text sanitization, cloud sync, key sync, lead
-   parsing, status detection, and service-worker version constants.
-3. Move UI sections into components only after helper extraction is stable.
-4. Keep generated `dist/index.html` out of manual editing once the build exists.
-5. Add a small smoke test that checks app version parity, manifest presence, and
-   basic syntax before publishing.
+### Call session
+A single call attempt.
 
-The goal is not to rewrite the app in one pass. The safer path is to make each
-future feature land in source files, compile to the deployed page, and leave the
-current monolith as a compatibility bridge until it can be retired.
+A call session may have:
+- contact ID
+- phone number
+- provider call ID
+- start time
+- end time
+- status
+- notes
+- recording/transcript references if applicable
+
+### Call provider
+The external service or local call mechanism used to make calls.
+
+Provider-specific logic should be isolated.
+
+### Script
+The call guide or talk track used for the call.
+
+Scripts should not be mixed with call execution logic.
+
+## Expected separation of concerns
+
+### UI layer
+Responsible for:
+- displaying contacts
+- displaying queue
+- displaying current call
+- buttons for start/pause/resume/stop
+- showing errors clearly
+
+Not responsible for:
+- direct provider-specific call logic
+- low-level persistence rules
+- billing calculations
+
+### State layer
+Responsible for:
+- queue state
+- selected contact
+- call status
+- pause/resume/stop state
+
+### Persistence layer
+Responsible for:
+- saving contacts
+- saving lead statuses
+- saving notes
+- saving queue state if required
+- restoring state after refresh
+
+### Provider/API layer
+Responsible for:
+- outbound call request
+- call status updates
+- webhooks
+- errors and retries
+
+### Billing/usage layer
+Responsible for:
+- tracking usage
+- call duration
+- provider cost
+- customer billing if applicable
+
+## Architecture rule
+Do not mix UI display status with real call execution status.
+
+The app must distinguish:
+- what the user sees
+- what the app believes is happening
+- what the provider confirms happened
