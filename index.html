@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.01.0006';
+window.APP_VERSION='2026.05.01.0007';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1940,6 +1940,74 @@ var save = (k, v) => {
   try {
     localStorage.setItem(LS(k), JSON.stringify(v));
   } catch {}
+};
+var SESSION_END_GUARD_KEY = '_sessionEndGuard';
+var SESSION_END_GUARD_TTL = 7 * 86400000;
+var _sessionIdentityValues = s => {
+  if (!s || typeof s !== 'object') return [];
+  var vals = [];
+  ['id', 'timesheetAutoId', 'sessionKey', 'session_key', 'dbSessionId', 'sessionDbId', 'supabaseId'].forEach(k => {
+    if (s[k] !== undefined && s[k] !== null && String(s[k]).trim()) vals.push(k + ':' + String(s[k]));
+  });
+  ['startTime', 'start_time'].forEach(k => {
+    if (s[k] !== undefined && s[k] !== null && String(s[k]).trim()) vals.push('start:' + String(s[k]));
+  });
+  return [...new Set(vals)];
+};
+var _sessionEndGuardFrom = (s, ts) => {
+  if (!s || typeof s !== 'object') return null;
+  var keys = _sessionIdentityValues(s);
+  if (!keys.length) return null;
+  var now = ts || Date.now();
+  return {
+    keys,
+    id: s.id || s.timesheetAutoId || '',
+    sessionKey: s.sessionKey || s.session_key || '',
+    startTime: s.startTime || s.start_time || null,
+    endTime: s.endTime || now,
+    ts: now,
+    devId: window._devId || ''
+  };
+};
+var _normalizeSessionEndGuard = guard => {
+  if (!guard || typeof guard !== 'object') return null;
+  var keys = Array.isArray(guard.keys) ? guard.keys.filter(Boolean).map(String) : _sessionIdentityValues(guard);
+  if (!keys.length) return null;
+  return {
+    ...guard,
+    keys: [...new Set(keys)],
+    ts: +guard.ts || +guard.endTime || Date.now(),
+    endTime: +guard.endTime || +guard.ts || Date.now()
+  };
+};
+var _getSessionEndGuard = () => {
+  var guard = _normalizeSessionEndGuard(load(SESSION_END_GUARD_KEY));
+  if (!guard) return null;
+  if (Date.now() - guard.ts > SESSION_END_GUARD_TTL) {
+    save(SESSION_END_GUARD_KEY, null);
+    return null;
+  }
+  return guard;
+};
+var _rememberSessionEndGuard = (s, ts) => {
+  var next = _normalizeSessionEndGuard(_sessionEndGuardFrom(s, ts) || s);
+  if (!next) return null;
+  var cur = _getSessionEndGuard();
+  if (!cur || next.ts >= cur.ts) save(SESSION_END_GUARD_KEY, next);
+  return next;
+};
+var _clearSessionEndGuard = () => save(SESSION_END_GUARD_KEY, null);
+var _sessionMatchesEndGuard = (s, guard) => {
+  var g = _normalizeSessionEndGuard(guard);
+  if (!s || !g) return false;
+  var vals = new Set(_sessionIdentityValues(s));
+  return g.keys.some(k => vals.has(k));
+};
+var _shouldRejectRemoteSession = (s, remoteTs) => {
+  var guard = _getSessionEndGuard();
+  if (!s || !guard) return false;
+  if (_sessionMatchesEndGuard(s, guard)) return true;
+  return !!(remoteTs && guard.ts && remoteTs <= guard.ts);
 };
 var SYNC_MAP = {
   data: 'leads',
@@ -4540,6 +4608,11 @@ function App() {
   }, [isOffline]);
   var [running, setRunning] = useState(() => {
     var s = load('activeSession');
+    if (s && s.ended) {
+      _rememberSessionEndGuard(s, s.endTime || Date.now());
+      save('activeSession', null);
+      return false;
+    }
     if (s && !s.ended && (!s.startTime || Date.now() - s.startTime > 86400000)) {
       save('activeSession', null);
       return false;
@@ -5185,12 +5258,21 @@ function App() {
   var [sheetSearching, setSheetSearching] = useState(false);
   var [session, setSession] = useState(() => {
     var s = load('activeSession');
+    if (s && s.ended) {
+      _rememberSessionEndGuard(s, s.endTime || Date.now());
+      save('activeSession', null);
+      return null;
+    }
     if (s && !s.ended && (!s.startTime || Date.now() - s.startTime > 86400000)) {
       save('activeSession', null);
       return null;
     }
     return s || null;
   });
+  var sessionRef = useRef(session);
+  useEffect(() => {
+    sessionRef.current = session;
+  }, [session]);
   var [streak, setStreak] = useState(0);
   var [bestStreak, setBestStreak] = useState(load('bestStreak') || 0);
   var [achievements, setAchievements] = useState(load('achievements') || []);
@@ -5200,6 +5282,11 @@ function App() {
     save('achievements', achievements);
   }, [bestStreak, achievements]);
   useEffect(() => {
+    if (session && session.ended) {
+      _rememberSessionEndGuard(session, session.endTime || Date.now());
+      save('activeSession', null);
+      return;
+    }
     save('activeSession', session);
   }, [session]);
   var [totalSets, setTotalSets] = useState(load('ts') || 0);
@@ -7746,7 +7833,11 @@ function App() {
         }));
         _hsJobs.push(_hs('sess_' + myEmail, d => {
           if (!d) return;
-          if (d.ended && d.endTime && session && !session.ended && d.endTime > session.startTime) {
+          if (d.ended) {
+            _rememberSessionEndGuard(d.endedSession || d, d.ts || d.endTime || Date.now());
+          }
+          var localSession = sessionRef.current;
+          if (d.ended && d.endTime && localSession && !localSession.ended && d.endTime > localSession.startTime) {
             setSession(null);
             setRunning(false);
             setPhase('idle');
@@ -7755,7 +7846,11 @@ function App() {
             return;
           }
           if (!d.ended && d.session && d.session.startTime) {
-            var _local = session;
+            if (_shouldRejectRemoteSession(d.session, d.ts)) {
+              DBG('[AutoDial] Ignored stale session restore after local end');
+              return;
+            }
+            var _local = sessionRef.current;
             var _cloudNewer = !_local || _local.ended || d.ts > (_local._syncedAt || 0) && d.session.startTime === _local.startTime;
             if (_cloudNewer || !_local && d.session.startTime && Date.now() - d.session.startTime < 86400000) {
               setSession({
@@ -8555,6 +8650,18 @@ function App() {
       _liveSyncRef.current.suppressNextPush = true;
       setSyncStatus('synced');
       setLastSyncAt(Date.now());
+      var remoteEndGuard = _normalizeSessionEndGuard(remote.endedSession || (remote.ended ? remote : null));
+      if (remoteEndGuard) {
+        _rememberSessionEndGuard(remoteEndGuard, remoteEndGuard.ts);
+        var localSession = sessionRef.current;
+        if (localSession && !localSession.ended && _sessionMatchesEndGuard(localSession, remoteEndGuard)) {
+          setSession(null);
+          setRunning(false);
+          setPhase('idle');
+          setCurIdx(-1);
+          save('activeSession', null);
+        }
+      }
       if (role === 'admin' && !adminLeadLinked) {
         setRunning(false);
         setPhase('idle');
@@ -8571,7 +8678,19 @@ function App() {
           setRunning(false);
           setPhase('idle');
           setCurIdx(-1);
+        } else if (remote.session.ended) {
+          _rememberSessionEndGuard(remote.session, remote.session.endTime || remote.ts || Date.now());
+          setSession(null);
+          setRunning(false);
+          setPhase('idle');
+          setCurIdx(-1);
+          save('activeSession', null);
         } else {
+          if (_shouldRejectRemoteSession(remote.session, remote.ts)) {
+            DBG('[LiveSync] ignored stale active session after an end tombstone');
+            save('activeSession', null);
+            return;
+          }
           setSession(remote.session);
           if (typeof remote.curIdx === 'number') setCurIdx(remote.curIdx);
           if (typeof remote.phase === 'string') setPhase(remote.phase);
@@ -9140,12 +9259,16 @@ function App() {
         var leadsHash = _hashLeads(leadsRef.current);
         var apptsHash = _hashAppts(appointments);
         _liveSyncRef.current.lastLeadsHash = leadsHash;
+        var liveSession = session && !session.ended ? session : null;
+        var endedSession = session && session.ended ? _rememberSessionEndGuard(session, session.endTime || ts) : _getSessionEndGuard();
         var _delIds = [];
         try {
           _delIds = JSON.parse(localStorage.getItem('_deletedApptIds') || '[]').slice(-300);
         } catch (e) {}
         var payload = {
-          session: session || null,
+          session: liveSession,
+          ended: !!(session && session.ended),
+          endedSession,
           curIdx: typeof curIdx === 'number' ? curIdx : -1,
           phase: phase || 'idle',
           running: !!running,
@@ -10196,6 +10319,7 @@ function App() {
     };
   }, []);
   var startSession = chosenSlot => {
+    _clearSessionEndGuard();
     if (callAssist) {
       requestWakeLock();
       setCallAssistStatus('Notification' in window && Notification.permission === 'granted' ? 'Notifications ready' : 'Call assist on');
@@ -10226,10 +10350,11 @@ function App() {
   };
   var endSession = () => {
     if (!session) return;
+    var endedAt = Date.now();
     var s = {
       ...session,
       ended: true,
-      endTime: Date.now(),
+      endTime: endedAt,
       elapsed
     };
     s.id = s.id || 'sess_' + (s.startTime || Date.now()) + '_' + Math.random().toString(36).slice(2, 8);
@@ -10295,6 +10420,10 @@ function App() {
     s.bonusMult = n(myCfg.bonusMult, 1.5);
     s.hourlyRate = isAdminCallingSession ? hourlyRate : 0;
     s.tier = isAdminCallingSession ? tier.label : '';
+    var endGuard = _rememberSessionEndGuard(s, endedAt);
+    try {
+      save('activeSession', null);
+    } catch (_e) {}
     var _prevSess = sessionLog[0];
     if (isAdminCallingSession && _prevSess && _prevSess.tier && _prevSess.tier !== tier.label) {
       var _tierOrder = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Platinum Ruby', 'Platinum Elite'];
@@ -10353,15 +10482,40 @@ function App() {
       session: s,
       email: myEmail
     });
-    if (_SB && _user) _SB.from('autodial_admin_config').upsert({
-      admin_email: 'sess_' + _user.email.toLowerCase(),
-      biz_name: JSON.stringify({
-        ended: true,
-        endTime: Date.now()
-      })
-    }, {
-      onConflict: 'admin_email'
-    }).catch(function () {});
+    if (_SB && _user) {
+      var meLow = _user.email.toLowerCase();
+      _SB.from('autodial_admin_config').upsert({
+        admin_email: 'live_' + meLow,
+        biz_name: JSON.stringify({
+          session: null,
+          ended: true,
+          endedSession: endGuard,
+          curIdx: -1,
+          phase: 'idle',
+          running: false,
+          leadsCount: (leadsRef.current || []).length,
+          ts: endedAt + 1,
+          devId: window._devId,
+          email: meLow
+        })
+      }, {
+        onConflict: 'admin_email'
+      }).catch(function () {});
+      _SB.from('autodial_admin_config').upsert({
+        admin_email: 'sess_' + meLow,
+        biz_name: JSON.stringify({
+          ended: true,
+          endTime: endedAt,
+          ts: endedAt,
+          sessionId: s.id,
+          sessionKey: s.sessionKey,
+          startTime: s.startTime,
+          endedSession: endGuard
+        })
+      }, {
+        onConflict: 'admin_email'
+      }).catch(function () {});
+    }
     if (isAdminCallingSession && localStorage.getItem('ad_gt')) {
       var tsId = myCfg.timesheetId || cfg.sheetId || '';
       if (tsId) {
