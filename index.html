@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.01.0008';
+window.APP_VERSION='2026.05.01.0009';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -4634,8 +4634,9 @@ function App() {
     save('_dialPhase', phase);
     save('_dialRunning', running);
   }, [curIdx, phase, running]);
-  var [tab, setTab] = useState(role === 'admin' ? 'dial' : 'leads');
-  var [mainMode, setMainMode] = useState(load('mainMode') || 'manage');
+  var _initialMainMode = load('mainMode') || 'manage';
+  var [tab, setTab] = useState(role === 'admin' || _initialMainMode === 'call' ? 'dial' : 'leads');
+  var [mainMode, setMainMode] = useState(_initialMainMode);
   var [search, setSearch] = useState('');
   var [histF, setHistF] = useState('all');
   var [showCb, setShowCb] = useState(false);
@@ -5290,6 +5291,11 @@ function App() {
     }
     save('activeSession', session);
   }, [session]);
+  useEffect(() => {
+    if (role !== 'main' || mainMode !== 'call') return;
+    var hasLiveSession = running || !!(session && !session.ended);
+    if (hasLiveSession && tab !== 'dial') setTab('dial');
+  }, [role, mainMode, running, session && session.startTime, session && session.ended, tab]);
   var [totalSets, setTotalSets] = useState(load('ts') || 0);
   var [totalStars, setTotalStars] = useState(load('totalStars') || 0);
   var [starBank, setStarBank] = useState(Math.round(load('starBank') || 0));
