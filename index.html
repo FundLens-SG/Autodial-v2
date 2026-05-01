@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.01.0005';
+window.APP_VERSION='2026.05.01.0006';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1816,8 +1816,9 @@ function _preferredAppointmentFit(dateKey,timeStr,durationMin,calendarEvents,lea
   blockers.sort(function(a,b){return a.start-b.start});
   var clash=blockers.find(function(b){return protectedStart<b.end&&protectedEnd>b.start});
   var next=blockers.find(function(b){return b.start>=start});
-  var alert=clash&&next&&protectedEnd>next.start?'will clash with next appointment!':clash?'will clash with calendar item!':'available';
-  return {ok:!clash,mins:dur,alert:alert,next:next};
+  var namedClash=clash?((clash.name||clash._name||clash.ev?.summary||'calendar item')+' at '+String(clash.start.getHours()).padStart(2,'0')+':'+String(clash.start.getMinutes()).padStart(2,'0')):'';
+  var alert=clash&&next&&protectedEnd>next.start?'will clash with '+namedClash:clash?'will clash with '+namedClash:'available';
+  return {ok:!clash,mins:dur,alert:alert,next:next,conflict:clash,conflictLabel:namedClash,protectedStart:protectedStart,protectedEnd:protectedEnd};
 }
 
 // ══════════════════════════════════════════════════════
@@ -2898,6 +2899,66 @@ function TimingTimeline({
       }
     }, _formatSlotMinutes(mins))));
   })));
+}
+function InfoHint({
+  label = 'Why?',
+  title = 'Why am I seeing this?',
+  children
+}) {
+  var [open, setOpen] = React.useState(false);
+  return React.createElement("span", {
+    style: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      position: 'relative'
+    }
+  }, React.createElement("button", {
+    type: "button",
+    onClick: e => {
+      e.stopPropagation();
+      setOpen(v => !v);
+    },
+    title,
+    style: {
+      width: 22,
+      height: 22,
+      borderRadius: 999,
+      padding: 0,
+      background: open ? 'var(--adim)' : 'var(--bg3)',
+      color: open ? 'var(--accent2)' : 'var(--text3)',
+      border: '1px solid ' + (open ? 'rgba(99,102,241,.38)' : 'var(--border)'),
+      fontSize: 11,
+      fontWeight: 900,
+      lineHeight: 1,
+      cursor: 'pointer'
+    }
+  }, "?"), open && React.createElement("span", {
+    style: {
+      position: 'absolute',
+      top: 28,
+      right: 0,
+      zIndex: 50,
+      width: 260,
+      maxWidth: '70vw',
+      padding: '10px 12px',
+      borderRadius: 10,
+      background: 'var(--bg2)',
+      border: '1px solid rgba(99,102,241,.28)',
+      boxShadow: '0 14px 40px rgba(0,0,0,.42)',
+      color: 'var(--text2)',
+      fontSize: 11,
+      fontWeight: 600,
+      lineHeight: 1.45,
+      textAlign: 'left'
+    }
+  }, React.createElement("b", {
+    style: {
+      display: 'block',
+      color: 'var(--accent2)',
+      marginBottom: 4
+    }
+  }, label), children));
 }
 function findFreeSlots(dayDate, events, bizStartHour, bizEndHour) {
   var bs = bizStartHour ?? 9;
@@ -4584,6 +4645,7 @@ function App() {
   var [apptLocation, setApptLocation] = useState('');
   var [apptObs, setApptObs] = useState('');
   var [savedInvitees, setSavedInvitees] = useState(load('invitees') || []);
+  var [recentApptLocations, setRecentApptLocations] = useState(() => Array.isArray(load('apptRecentLocations')) ? load('apptRecentLocations') : []);
   var [pickerEvents, setPickerEvents] = useState([]);
   var [pickerLoading, setPickerLoading] = useState(false);
   var [pickerWeekIdx, setPickerWeekIdx] = useState(0);
@@ -4595,10 +4657,57 @@ function App() {
   var [apptShaky, setApptShaky] = useState(false);
   var [pendingShakyKey, setPendingShakyKey] = useState(null);
   var [rescheduleTargetAppt, setRescheduleTargetAppt] = useState(null);
+  useEffect(() => {
+    save('apptRecentLocations', recentApptLocations);
+  }, [recentApptLocations]);
+  var _apptDraftKey = lead => {
+    var ident = normalizePhone(lead?.phone || '') || String(lead?.id || lead?.leadId || '').trim();
+    return ident ? 'apptDraft_' + ident : '';
+  };
+  var _readApptDraft = lead => {
+    var key = _apptDraftKey(lead);
+    if (!key) return null;
+    var d = load(key);
+    return d && typeof d === 'object' ? d : null;
+  };
+  var _clearApptDraft = lead => {
+    var key = _apptDraftKey(lead);
+    if (key) save(key, null);
+  };
+  var _rememberApptLocation = (loc, lead) => {
+    var clean = String(loc || '').trim();
+    if (!clean) return;
+    var tag = String(lead?.race || lead?.gender || lead?.industry || 'general').trim().toLowerCase() || 'general';
+    setRecentApptLocations(prev => {
+      var next = [{
+        loc: clean,
+        admin: myEmail,
+        tag,
+        ts: Date.now()
+      }, ...(Array.isArray(prev) ? prev : []).filter(x => String(x?.loc || '').toLowerCase() !== clean.toLowerCase())];
+      return next.slice(0, 12);
+    });
+  };
+  useEffect(() => {
+    if (!showAppt || !apptLead) return;
+    var key = _apptDraftKey(apptLead);
+    if (!key) return;
+    var hasDraft = !!(apptDate || apptTime || String(apptLocation || '').trim() || String(apptObs || '').trim() || String(apptInvite || '').trim() || apptShaky);
+    if (!hasDraft) return;
+    var t = setTimeout(() => save(key, {
+      apptDate,
+      apptTime,
+      apptLocation,
+      apptObs,
+      apptInvite,
+      apptShaky,
+      ts: Date.now()
+    }), 250);
+    return () => clearTimeout(t);
+  }, [showAppt, apptLead, apptDate, apptTime, apptLocation, apptObs, apptInvite, apptShaky]);
   var _openRescheduleFlow = a => {
     if (!a) return;
-    setRescheduleTargetAppt(a);
-    setApptLead({
+    var leadObj = {
       id: a.leadId || a.id,
       name: a.name,
       phone: a.phone,
@@ -4607,14 +4716,17 @@ function App() {
       gender: a.gender || '',
       race: a.race || '',
       notes: a.remarks || ''
-    });
-    setApptDate('');
-    setApptTime('');
-    setApptLocation(a.location || '');
-    setApptObs(a.remarks || '');
-    setApptInvite(a.inviteEmails || '');
+    };
+    var draft = _readApptDraft(leadObj) || {};
+    setRescheduleTargetAppt(a);
+    setApptLead(leadObj);
+    setApptDate(draft.apptDate || '');
+    setApptTime(draft.apptTime || '');
+    setApptLocation(draft.apptLocation || a.location || '');
+    setApptObs(draft.apptObs || a.remarks || '');
+    setApptInvite(draft.apptInvite || a.inviteEmails || '');
     setApptDuration(a.duration || 60);
-    setApptShaky(false);
+    setApptShaky(draft.apptShaky ?? false);
     setApptHardOverride(false);
     setPickerWeekIdx(0);
     setPickerCollapsed(false);
@@ -4622,8 +4734,7 @@ function App() {
   };
   var _openIncompleteApptFlow = a => {
     if (!a) return;
-    setRescheduleTargetAppt(null);
-    setApptLead({
+    var leadObj = {
       id: a.leadId || a._setUndo?.leadId || a.id,
       name: a.name,
       phone: a.phone,
@@ -4632,16 +4743,19 @@ function App() {
       gender: a.gender || '',
       race: a.race || '',
       notes: a.remarks || ''
-    });
-    setApptDate('');
-    setApptTime('');
-    setApptLocation(a.location || '');
-    setApptObs(a.remarks || '');
-    setApptInvite(a.inviteEmails || '');
+    };
+    var draft = _readApptDraft(leadObj) || {};
+    setRescheduleTargetAppt(null);
+    setApptLead(leadObj);
+    setApptDate(draft.apptDate || '');
+    setApptTime(draft.apptTime || '');
+    setApptLocation(draft.apptLocation || a.location || '');
+    setApptObs(draft.apptObs || a.remarks || '');
+    setApptInvite(draft.apptInvite || a.inviteEmails || '');
     setApptTravelBefore(() => _slotMinutes(load('apptTravelBefore'), 0, 0, 240));
     setApptDuration(() => _slotMinutes(load('apptDur'), a.duration || 60, 1, 480));
     setApptTravelAfter(() => _slotMinutes(load('apptTravelAfter'), 0, 0, 240));
-    setApptShaky(!!a.shaky);
+    setApptShaky(draft.apptShaky ?? !!a.shaky);
     setApptHardOverride(false);
     setPendingShakyKey(null);
     setPickerWeekIdx(0);
@@ -5255,6 +5369,7 @@ function App() {
     }
   };
   var [editingAdmin, setEditingAdmin] = useState(null);
+  var [adminDetailEmail, setAdminDetailEmail] = useState(null);
   var [newAdminEmail, setNewAdminEmail] = useState('');
   var [showInvoice, setShowInvoice] = useState(null);
   var [showPaymentDetail, setShowPaymentDetail] = useState(null);
@@ -10669,12 +10784,13 @@ function App() {
       };
       applyOutcome(status, extra);
       setApptLead(lead);
-      setApptShaky(false);
-      setApptDate('');
-      setApptTime('');
-      setApptLocation('');
-      setApptObs('');
-      setApptInvite('');
+      var draft = _readApptDraft(lead) || {};
+      setApptShaky(draft.apptShaky ?? false);
+      setApptDate(draft.apptDate || '');
+      setApptTime(draft.apptTime || '');
+      setApptLocation(draft.apptLocation || '');
+      setApptObs(draft.apptObs || '');
+      setApptInvite(draft.apptInvite || '');
       setApptTravelBefore(() => _slotMinutes(load('apptTravelBefore'), 0, 0, 240));
       setApptDuration(() => _slotMinutes(load('apptDur'), 60, 1, 480));
       setApptTravelAfter(() => _slotMinutes(load('apptTravelAfter'), 0, 0, 240));
@@ -10841,6 +10957,49 @@ function App() {
     clearTimeout(cdRef.current);
     syncSend('pause', {});
   };
+  useEffect(() => {
+    var onKey = e => {
+      var target = e.target;
+      var tag = String(target?.tagName || '').toLowerCase();
+      var typing = tag === 'input' || tag === 'textarea' || tag === 'select' || target?.isContentEditable;
+      if (typing) return;
+      if (e.key === '/') {
+        e.preventDefault();
+        var searchBox = document.querySelector('input[type="search"], input[placeholder*="Search"], input[placeholder*="search"], input[placeholder*="Type to search"]');
+        if (searchBox) searchBox.focus();
+        else {
+          setTab('leads');
+          setTimeout(() => document.querySelector('input[placeholder*="Search"], input[placeholder*="search"], input[placeholder*="Type to search"]')?.focus(), 80);
+        }
+        return;
+      }
+      if (dialogRequest || showAppt || showCb || showWA || showPostCall || showNextPreview) return;
+      if (e.code === 'Space' && running) {
+        e.preventDefault();
+        pauseDial();
+        toast('Paused');
+        return;
+      }
+      if (!(tab === 'dial' && isCallMode && running && phase === 'calling' && cur)) return;
+      if (e.key === '1') {
+        e.preventDefault();
+        handleOutcome('np');
+      } else if (e.key === '2') {
+        e.preventDefault();
+        setShowCb(true);
+        setCbDate('');
+        setCbTime('');
+      } else if (e.key === '3') {
+        e.preventDefault();
+        handleOutcome('ni');
+      } else if (e.key === '4') {
+        e.preventDefault();
+        if (!(setDone || showPostCall?.status === 'set')) handleOutcome('set');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [dialogRequest, showAppt, showCb, showWA, showPostCall, showNextPreview, running, tab, isCallMode, phase, cur, setDone, handleOutcome]);
   var connectG = () => {
     if (role === 'admin') return toast('Google workspace is managed by Main', 'info');
     window._gOkCb = setGOk;
@@ -11433,62 +11592,73 @@ function App() {
   var columnsSetupReady = !!detectedColMap || leadsHaveParsedColumns;
   var columnsSetupDetail = detectedColMap ? 'Name, phone, status map ready' : leadsHaveParsedColumns ? 'Auto-detected from fetched leads' : 'Review after fetching leads';
   var buildGuidedSetupItems = () => {
-    var adminLinked = !!(myCfg.timesheetId || cfg.sheetId || myCfg.sheetTab || cfg.sheetTab);
+    var adminLeadReady = !!((myCfg.timesheetId || cfg.sheetId) && (myCfg.sheetTab || cfg.sheetTab || adminOwnedCfg?.sheetTab));
+    var adminCalendarReady = !!(myCfg.targetCalendarId || adminOwnedCfg?.targetCalendarId || calShares.length || weekEvents.length);
+    var adminScriptReady = !!(adminOwnedCfg?.shareScript || scriptContent || cfg.callingScript || scriptVersions.length);
+    var adminWAReady = !!(adminOwnedCfg?.shareWaTemplates || waTemplates.length);
+    var anyAdminScriptShared = Object.values(adminConfigs || {}).some(ac => ac?.shareScript);
+    var anyAdminWAShared = Object.values(adminConfigs || {}).some(ac => ac?.shareWaTemplates);
+    var mainLeadReady = !!((cfg.sheetId || myCfg.timesheetId) && (cfg.sheetTab || myCfg.sheetTab));
+    var mainCalendarReady = !!(gOk && (calList.length || myCfg.targetCalendarId || weekEvents.length || Object.values(adminConfigs || {}).some(ac => (ac?.sharedCals || []).length || ac?.targetCalendarId)));
     if (role === 'admin') return [{
-      key: 'main',
-      label: 'Main workspace',
-      detail: adminLinked ? 'Leads and rules synced by Main' : 'Waiting for Main to assign workspace',
-      done: adminLinked
-    }, {
       key: 'sheet',
-      label: 'Leads sheet',
-      detail: myCfg._tsName || cfg._sheetName || (adminLinked ? 'Shared by Main' : 'Not linked yet'),
-      done: !!(myCfg.timesheetId || cfg.sheetId)
+      label: 'Google connected',
+      detail: 'Managed by Main; synced when your workspace loads',
+      done: !!(gOk || myCfg.timesheetId || cfg.sheetId)
     }, {
-      key: 'tab',
-      label: 'Leads tab',
-      detail: myCfg.sheetTab || cfg.sheetTab || 'Main has not selected a tab',
-      done: !!(myCfg.sheetTab || cfg.sheetTab)
-    }, {
-      key: 'columns',
-      label: 'Detected columns',
-      detail: detectedColMap ? 'Column map synced' : leadsHaveParsedColumns ? 'Auto-detected from fetched leads' : 'Pending Main review or next fetch',
-      done: columnsSetupReady
+      key: 'lead-sheet',
+      label: 'Lead sheet linked',
+      detail: myCfg.sheetTab || cfg.sheetTab || 'Waiting for Main to assign a tab',
+      done: adminLeadReady,
+      action: () => setSettingsSubtab('integr')
     }, {
       key: 'calendar',
-      label: 'Calendar',
-      detail: myCfg.targetCalendarId || calShares[0]?.calendar_name || (weekEvents.length ? weekEvents.length + ' events loaded' : 'Main controls calendar access'),
-      done: !!(myCfg.targetCalendarId || calShares.length || weekEvents.length)
+      label: 'Calendar access',
+      detail: myCfg.targetCalendarId || adminOwnedCfg?.targetCalendarId || calShares[0]?.calendar_name || (weekEvents.length ? weekEvents.length + ' events loaded' : 'Waiting for shared calendar'),
+      done: adminCalendarReady,
+      action: () => setTab('cal')
+    }, {
+      key: 'script',
+      label: 'Script shared',
+      detail: adminOwnedCfg?.scriptShareName || cfg.scriptShareName || cfg.scriptVersionName || 'Calling script from Main',
+      done: adminScriptReady,
+      action: () => setSettingsSubtab('prefs')
+    }, {
+      key: 'wa',
+      label: 'WA template shared',
+      detail: adminOwnedCfg?.waTemplateShareNames || (waTemplates.length ? waTemplates.length + ' template(s) available' : 'Waiting for Main to share'),
+      done: adminWAReady,
+      action: () => setSettingsSubtab('prefs')
     }];
     return [{
       key: 'google',
-      label: 'Google workspace',
+      label: 'Google connected',
       detail: 'Sheets, Drive, and Calendar access',
       done: gOk,
-      action: connectG
+      action: () => connectG()
     }, {
       key: 'sheet',
-      label: 'Leads source',
+      label: 'Lead sheet linked',
       detail: cfg.sheetTab ? 'Sheet tab: ' + cfg.sheetTab : 'Pick sheet and tab',
-      done: !!((cfg.sheetId || myCfg.timesheetId) && (cfg.sheetTab || myCfg.sheetTab)),
+      done: mainLeadReady,
       action: () => setSettingsSubtab('integr')
     }, {
-      key: 'columns',
-      label: 'Detected columns',
-      detail: columnsSetupDetail,
-      done: columnsSetupReady,
-      action: () => rawSheet ? setShowColMap(true) : setTab('leads')
-    }, {
       key: 'calendar',
-      label: 'Calendar destination',
-      detail: myCfg.targetCalendarId || (calList.length ? calList.length + ' calendars loaded' : 'Choose calendar sharing'),
-      done: !!(gOk && (calList.length || myCfg.targetCalendarId)),
+      label: 'Calendar access',
+      detail: myCfg.targetCalendarId || (calList.length ? calList.length + ' calendars loaded' : 'Load calendars and share access'),
+      done: mainCalendarReady,
       action: () => setTab('cal')
     }, {
-      key: 'team',
-      label: 'Admin staff access',
-      detail: Object.keys(adminConfigs || {}).length + ' staff configured',
-      done: Object.keys(adminConfigs || {}).length > 0,
+      key: 'script',
+      label: 'Script shared',
+      detail: anyAdminScriptShared ? Object.values(adminConfigs || {}).filter(ac => ac?.shareScript).length + ' admin(s) receiving a saved script' : 'Choose a saved script per admin',
+      done: anyAdminScriptShared,
+      action: () => isManageMode ? setSettingsSubtab('team') : setMainMode('manage')
+    }, {
+      key: 'wa',
+      label: 'WA template shared',
+      detail: anyAdminWAShared ? Object.values(adminConfigs || {}).filter(ac => ac?.shareWaTemplates).length + ' admin(s) receiving a WhatsApp template' : 'Choose a WhatsApp template per admin',
+      done: anyAdminWAShared,
       action: () => isManageMode ? setSettingsSubtab('team') : setMainMode('manage')
     }];
   };
@@ -20538,63 +20708,7 @@ function App() {
       whiteSpace: 'nowrap'
     }
   }, _lbl))), settingsSubtab === 'setup' && (() => {
-    var adminLinked = !!(myCfg.timesheetId || cfg.sheetId || myCfg.sheetTab || cfg.sheetTab);
-    var setupItems = role === 'admin' ? [{
-      label: 'Main workspace',
-      detail: adminLinked ? 'Leads and rules are synced by Main' : 'Waiting for Main to assign workspace',
-      done: adminLinked,
-      readyLabel: 'Synced',
-      waitLabel: 'Waiting'
-    }, {
-      label: 'Leads sheet',
-      detail: myCfg._tsName || cfg._sheetName || (adminLinked ? 'Shared by Main' : 'Not linked yet'),
-      done: !!(myCfg.timesheetId || cfg.sheetId),
-      readyLabel: 'Linked',
-      waitLabel: 'Waiting'
-    }, {
-      label: 'Leads tab',
-      detail: myCfg.sheetTab || cfg.sheetTab || 'Main has not selected a tab',
-      done: !!(myCfg.sheetTab || cfg.sheetTab),
-      readyLabel: 'Linked',
-      waitLabel: 'Waiting'
-    }, {
-      label: 'Detected columns',
-      detail: detectedColMap ? 'Column map synced' : leadsHaveParsedColumns ? 'Auto-detected from fetched leads' : 'Pending Main review or next fetch',
-      done: columnsSetupReady,
-      readyLabel: 'Synced',
-      waitLabel: 'Waiting'
-    }, {
-      label: 'Calendar',
-      detail: myCfg.targetCalendarId || calShares[0]?.calendar_name || (weekEvents.length ? weekEvents.length + ' events loaded' : 'Main controls calendar access'),
-      done: !!(myCfg.targetCalendarId || calShares.length || weekEvents.length),
-      readyLabel: 'Linked',
-      waitLabel: 'Waiting'
-    }] : [{
-      label: 'Google workspace',
-      detail: 'Main connects Sheets, Drive, and Calendar',
-      done: gOk,
-      action: connectG
-    }, {
-      label: 'Leads source',
-      detail: cfg.sheetTab ? 'Sheet tab: ' + cfg.sheetTab : 'Pick sheet and tab',
-      done: !!((cfg.sheetId || myCfg.timesheetId) && (cfg.sheetTab || myCfg.sheetTab)),
-      action: () => setSettingsSubtab('integr')
-    }, {
-      label: 'Detected columns',
-      detail: columnsSetupDetail,
-      done: columnsSetupReady,
-      action: () => rawSheet ? setShowColMap(true) : setTab('leads')
-    }, {
-      label: 'Calendar destination',
-      detail: myCfg.targetCalendarId || (calList.length ? calList.length + ' calendars loaded' : 'Choose calendar sharing'),
-      done: !!(gOk && (calList.length || myCfg.targetCalendarId)),
-      action: () => setTab('cal')
-    }, {
-      label: 'Admin staff access',
-      detail: Object.keys(adminConfigs || {}).length + ' staff configured',
-      done: Object.keys(adminConfigs || {}).length > 0,
-      action: () => isManageMode ? setSettingsSubtab('team') : setSettingsSubtab('integr')
-    }];
+    var setupItems = guidedSetupItems;
     var doneCount = setupItems.filter(x => x.done).length;
     return React.createElement("div", {
       className: "card",
@@ -21103,6 +21217,11 @@ function App() {
       gap: 4
     }
   }, React.createElement(Btn, {
+    variant: "ghost",
+    size: "sm",
+    weight: 600,
+    onClick: () => setAdminDetailEmail(em)
+  }, "Details"), React.createElement(Btn, {
     variant: "primary",
     size: "sm",
     weight: 600,
@@ -22186,7 +22305,9 @@ function App() {
       fontWeight: 700,
       color: 'var(--accent2)'
     }
-  }, "\uD83D\uDD0D Optional detected tabs"), React.createElement("p", {
+    }, "\uD83D\uDD0D Optional detected tabs ", React.createElement(InfoHint, {
+      label: "Detected tabs"
+    }, "AutoDial only guesses system tabs from their names. The selected Leads tab remains the active calling source unless you explicitly import old appointment or pay records.")), React.createElement("p", {
     style: {
       margin: '0 0 6px',
       fontSize: 9,
@@ -22504,7 +22625,9 @@ function App() {
       color: '#4285f4',
       fontWeight: 700
     }
-  }, "\uD83D\uDCC5 Share Calendars with ", em.split('@')[0]), !calList.length && React.createElement("button", {
+    }, "\uD83D\uDCC5 Share Calendars with ", em.split('@')[0]), React.createElement(InfoHint, {
+      label: "Shared calendars"
+    }, "Admins can see shared calendars while booking. Busy only hides titles and locations, but still blocks protected travel and appointment time."), !calList.length && React.createElement("button", {
     onClick: () => gCalShare.listCalendars().then(setCalList),
     style: {
       padding: '3px 8px',
@@ -23966,7 +24089,9 @@ function App() {
       fontWeight: 400,
       color: 'var(--text3)'
     }
-  }, role === 'admin' ? '(auto-applied by manager)' : '(free alternative)')), role === 'admin' ? React.createElement(React.Fragment, null, React.createElement("input", {
+  }, role === 'admin' ? '(auto-applied by manager)' : '(free alternative)'), " ", React.createElement(InfoHint, {
+    label: "AI analysis"
+  }, "AI is only used to classify messy lead imports and suggest column matches. It does not change rows until you approve or fetch with the selected mapping.")), role === 'admin' ? React.createElement(React.Fragment, null, React.createElement("input", {
     value: cfg.sharedGeminiKey || localStorage.getItem('autodial_gemini') ? '••••••••••••••••••••••••••••••••••••••••••' : '',
     disabled: true,
     placeholder: "Waiting for manager to share key\u2026",
@@ -24067,7 +24192,9 @@ function App() {
       fontWeight: 400,
       color: 'var(--text3)'
     }
-  }, "(Main only)")), role === 'admin' ? React.createElement(React.Fragment, null, React.createElement("input", {
+  }, "(Main only)"), " ", React.createElement(InfoHint, {
+    label: "AI analysis"
+  }, "Claude is an optional stronger analysis path for imports and column matching. Admins see shared results, while Main controls the key.")), role === 'admin' ? React.createElement(React.Fragment, null, React.createElement("input", {
     value: cfg.sharedClaudeKey || localStorage.getItem('autodial_claude_key') ? '••••••••••••••••••••••••••••••••••••••••••' : '',
     disabled: true,
     placeholder: "Waiting for manager to share key\u2026",
@@ -24150,7 +24277,9 @@ function App() {
       marginBottom: 8,
       color: '#4285f4'
     }
-  }, "\uD83D\uDCC5 Calendar Defaults"), React.createElement("p", {
+  }, "\uD83D\uDCC5 Calendar Defaults ", React.createElement(InfoHint, {
+    label: "Smart slots"
+  }, "Smart slots protect travel before the meeting, the minimum appointment time, and travel after it. Green slots satisfy the whole footprint; orange preferred times explain the exact clash.")), React.createElement("p", {
     style: {
       fontSize: 10,
       color: 'var(--text3)',
@@ -26322,8 +26451,6 @@ WHERE p.id IS NULL;`;
   }, apptLead?.name || 'lead'), apptLead?.phone ? ' · ' + apptLead.phone : '')), React.createElement("button", {
     onClick: () => {
       setShowAppt(false);
-      setApptLocation('');
-      setApptObs('');
       setPendingShakyKey(null);
       setRescheduleTargetAppt(null);
       setApptShaky(false);
@@ -26396,7 +26523,43 @@ WHERE p.id IS NULL;`;
       fontSize: 10,
       color: 'var(--amber)'
     }
-  }, "\uD83D\uDCDD ", apptLead.notes)), apptDate && apptTime && React.createElement("div", {
+  }, "\uD83D\uDCDD ", apptLead.notes)), (() => {
+    var steps = [{
+      label: 'Pick slot',
+      done: !!(apptDate && apptTime)
+    }, {
+      label: 'Add location',
+      done: !!String(apptLocation || '').trim()
+    }, {
+      label: 'Create appointment',
+      done: false
+    }, {
+      label: 'WhatsApp',
+      done: false
+    }];
+    var activeIdx = apptDate && apptTime ? String(apptLocation || '').trim() ? 2 : 1 : 0;
+    return React.createElement("div", {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4,minmax(0,1fr))',
+        gap: 6,
+        margin: '0 0 12px'
+      }
+    }, steps.map((s, idx) => React.createElement("div", {
+      key: s.label,
+      style: {
+        padding: '8px 6px',
+        borderRadius: 10,
+        background: s.done ? 'var(--gdim)' : idx === activeIdx ? 'var(--adim)' : 'var(--bg3)',
+        border: '1px solid ' + (s.done ? 'rgba(63,185,80,.28)' : idx === activeIdx ? 'rgba(99,102,241,.35)' : 'var(--border)'),
+        color: s.done ? 'var(--green)' : idx === activeIdx ? 'var(--accent2)' : 'var(--text3)',
+        textAlign: 'center',
+        fontSize: 9,
+        fontWeight: 900,
+        lineHeight: 1.2
+      }
+    }, idx + 1, ". ", s.label)));
+  })(), apptDate && apptTime && React.createElement("div", {
     style: {
       display: 'flex',
       alignItems: 'center',
@@ -26511,14 +26674,14 @@ WHERE p.id IS NULL;`;
         fontWeight: 900,
         color: fit.ok ? '#22c55e' : '#fb923c'
       }
-    }, fit.mins, " minutes"), React.createElement("p", {
+    }, _formatSlotMinutes(fit.mins), fit.ok ? " preferred" : " blocked"), React.createElement("p", {
       style: {
         margin: '2px 0 0',
         fontSize: 10,
         color: fit.ok ? '#86efac' : '#fdba74',
         fontWeight: 800
       }
-    }, fit.ok ? 'available' : fit.alert)))));
+    }, fit.ok ? 'available with travel protected' : fit.alert)))));
   })(), gOk && !pickerCollapsed && (() => {
     var now = new Date();
     var todayMid = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -26685,7 +26848,9 @@ WHERE p.id IS NULL;`;
         borderRadius: 2,
         background: 'linear-gradient(135deg,#22c55e,#10b981)'
       }
-    }), "Smart fit ", _formatSlotMinutes(slotFootprintMin), "+"), React.createElement("span", {
+    }), "Smart fit ", _formatSlotMinutes(slotFootprintMin), "+ ", React.createElement(InfoHint, {
+      label: "Smart slots"
+    }, "This slot has enough room for protected travel before, the minimum appointment time, and protected travel after. Hard Override hides this protection and shows every start time.")), React.createElement("span", {
       style: {
         display: 'inline-flex',
         alignItems: 'center',
@@ -26919,7 +27084,12 @@ WHERE p.id IS NULL;`;
               fontSize: 7,
               opacity: .85
             }
-          }, hasPreferredFit ? "preferred available" : _formatSlotMinutes(win.mins)));
+          }, hasPreferredFit ? _formatSlotMinutes(preferredFitMin) + " preferred" : _formatSlotMinutes(win.mins) + " available"), height > 34 && !apptHardOverride && React.createElement("div", {
+            style: {
+              fontSize: 6,
+              opacity: .78
+            }
+          }, "Travel protected"));
         }), (apptHardOverride ? [] : shakyOnDay.filter(sa => sa.apptTime)).map((sa, si) => {
           var sh = new Date(d.key + 'T' + sa.apptTime);
           var dur = sa.duration || 90;
@@ -27210,7 +27380,14 @@ WHERE p.id IS NULL;`;
             opacity: .85,
             marginTop: 1
           }
-        }, hasPreferredFit ? 'preferred appointment fit' : _formatSlotMinutes(win.mins)));
+        }, hasPreferredFit ? _formatSlotMinutes(preferredFitMin) + ' preferred' : _formatSlotMinutes(win.mins) + ' available'), !apptHardOverride && React.createElement("div", {
+          style: {
+            fontSize: 7,
+            fontWeight: 700,
+            opacity: .72,
+            marginTop: 1
+          }
+        }, "Travel protected"));
       }), shakySlots.map((s, si) => {
         var hh = String(s.start.getHours()).padStart(2, '0');
         var mm = String(s.start.getMinutes()).padStart(2, '0');
@@ -27421,7 +27598,31 @@ WHERE p.id IS NULL;`;
     style: {
       marginBottom: 8
     }
-  }), React.createElement("input", {
+  }), (() => {
+    var tag = String(apptLead?.race || apptLead?.gender || apptLead?.industry || 'general').trim().toLowerCase() || 'general';
+    var suggestions = (recentApptLocations || []).filter(x => x?.loc && (!x.admin || x.admin === myEmail || x.tag === tag)).slice(0, 5);
+    if (!suggestions.length) return null;
+    return React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 6,
+        flexWrap: 'wrap',
+        margin: '-2px 0 8px'
+      }
+    }, suggestions.map((x, idx) => React.createElement("button", {
+      key: x.loc + idx,
+      onClick: () => setApptLocation(x.loc),
+      style: {
+        padding: '5px 9px',
+        borderRadius: 999,
+        background: 'rgba(88,166,255,.08)',
+        color: 'var(--blue)',
+        border: '1px solid rgba(88,166,255,.22)',
+        fontSize: 10,
+        fontWeight: 800
+      }
+    }, x.loc)));
+  })(), React.createElement("input", {
     value: apptInvite,
     onChange: ev => setApptInvite(ev.target.value),
     placeholder: "Invite emails (comma sep)",
@@ -27565,6 +27766,7 @@ WHERE p.id IS NULL;`;
         notes: (_updated.remarks || '') + ' [Postponed no date ' + new Date().toLocaleString('en-SG') + ']'
       });
       toast(_target.name + ' — postponed without date ⏸');
+      _clearApptDraft(_target);
       setShowAppt(false);
       setApptLocation('');
       setApptObs('');
@@ -27598,8 +27800,6 @@ WHERE p.id IS NULL;`;
   }, React.createElement("button", {
     onClick: () => {
       setShowAppt(false);
-      setApptLocation('');
-      setApptObs('');
       setRescheduleTargetAppt(null);
       setApptShaky(false);
     },
@@ -27702,6 +27902,8 @@ WHERE p.id IS NULL;`;
             ts: 0,
             data: null
           };
+          _rememberApptLocation(apptLocation, _target);
+          _clearApptDraft(_target);
           toast('✓ Rescheduled ' + (_target.name || 'appointment') + ' to ' + apptDate + ' ' + apptTime);
           setShowAppt(false);
           setApptLocation('');
@@ -27880,6 +28082,8 @@ WHERE p.id IS NULL;`;
           ts: 0,
           data: null
         };
+        _rememberApptLocation(apptLocation, lead);
+        _clearApptDraft(lead);
         setShowWA({
           name: lead?.name,
           phone: lead?.phone,
@@ -31694,6 +31898,187 @@ WHERE p.id IS NULL;`;
         border: '1px solid rgba(248,81,73,.22)'
       }
     }, "Stop")))));
+  })()), React.createElement(Modal, {
+    show: !!adminDetailEmail,
+    onClose: () => setAdminDetailEmail(null),
+    align: "center",
+    bg: ".86",
+    zIndex: 260
+  }, adminDetailEmail && (() => {
+    var ac = adminConfigs[adminDetailEmail] || {};
+    var rows = [{
+      label: 'Google connected',
+      ok: gOk,
+      detail: gOk ? 'Main Google workspace is active' : 'Connect Google as Main'
+    }, {
+      label: 'Lead sheet linked',
+      ok: !!(ac.timesheetId && ac.sheetTab),
+      detail: ac._tsName ? ac._tsName + ' -> ' + (ac.sheetTab || 'no tab') : ac.sheetTab || 'No sheet/tab assigned'
+    }, {
+      label: 'Calendar access',
+      ok: !!((ac.sharedCals || []).length || ac.targetCalendarId),
+      detail: (ac.sharedCals || []).length ? (ac.sharedCals || []).length + ' shared calendar(s)' : ac.targetCalendarId ? 'Writes to selected destination' : 'No shared calendars'
+    }, {
+      label: 'Script shared',
+      ok: !!ac.shareScript,
+      detail: ac.shareScript ? ac.scriptShareName || 'Saved script selected' : 'No saved script selected'
+    }, {
+      label: 'WA template shared',
+      ok: !!ac.shareWaTemplates,
+      detail: ac.shareWaTemplates ? ac.waTemplateShareNames || 'Selected WhatsApp template' : 'No WhatsApp template selected'
+    }];
+    var before = _slotMinutes(ac.apptTravelBefore, slotBeforeMin, 0, 240);
+    var core = _slotMinutes(ac.apptDur, apptCoreMin, 1, 480);
+    var after = _slotMinutes(ac.apptTravelAfter, slotAfterMin, 0, 240);
+    return React.createElement("div", {
+      style: {
+        width: 'min(560px,94vw)',
+        maxHeight: '86vh',
+        overflowY: 'auto',
+        background: 'var(--bg2)',
+        border: '1px solid var(--border2)',
+        borderRadius: 18,
+        padding: 16,
+        boxShadow: '0 24px 80px rgba(0,0,0,.48)'
+      }
+    }, React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        marginBottom: 12
+      }
+    }, React.createElement("div", {
+      style: {
+        minWidth: 0
+      }
+    }, React.createElement("h3", {
+      style: {
+        margin: 0,
+        fontSize: 18,
+        fontWeight: 900,
+        color: '#f8fafc'
+      }
+    }, ac.bizName || adminDetailEmail), React.createElement("p", {
+      style: {
+        margin: '3px 0 0',
+        fontSize: 11,
+        color: 'var(--text3)',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }
+    }, adminDetailEmail)), React.createElement("button", {
+      onClick: () => setAdminDetailEmail(null),
+      style: {
+        width: 34,
+        height: 34,
+        borderRadius: 10,
+        padding: 0,
+        background: 'var(--bg3)',
+        color: 'var(--text3)'
+      }
+    }, "x")), React.createElement("div", {
+      style: {
+        display: 'grid',
+        gap: 7,
+        marginBottom: 12
+      }
+    }, rows.map(row => React.createElement("div", {
+      key: row.label,
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        padding: '10px 12px',
+        borderRadius: 11,
+        background: row.ok ? 'rgba(63,185,80,.08)' : 'var(--bg3)',
+        border: '1px solid ' + (row.ok ? 'rgba(63,185,80,.24)' : 'var(--border)')
+      }
+    }, React.createElement("div", {
+      style: {
+        minWidth: 0
+      }
+    }, React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 12,
+        fontWeight: 900,
+        color: '#f1f5f9'
+      }
+    }, row.label), React.createElement("p", {
+      style: {
+        margin: '2px 0 0',
+        fontSize: 10,
+        color: 'var(--text3)',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }
+    }, row.detail)), React.createElement("span", {
+      className: "pill",
+      style: {
+        background: row.ok ? 'var(--gdim)' : 'var(--amdim)',
+        color: row.ok ? 'var(--green)' : 'var(--amber)',
+        flexShrink: 0
+      }
+    }, row.ok ? 'Ready' : 'Check')))), React.createElement(TimingTimeline, {
+      title: "Calendar defaults",
+      summary: _formatSlotMinutes(before + core + after),
+      segments: [{
+        key: 'before',
+        label: 'Travel before',
+        mins: before,
+        ...timingPalette.before
+      }, {
+        key: 'core',
+        label: 'Minimum appointment',
+        mins: core,
+        ...timingPalette.core
+      }, {
+        key: 'after',
+        label: 'Travel after',
+        mins: after,
+        ...timingPalette.after
+      }]
+    }), React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 8,
+        marginTop: 12
+      }
+    }, React.createElement("button", {
+      onClick: () => {
+        setEditingAdmin(adminDetailEmail);
+        setAdminDetailEmail(null);
+      },
+      style: {
+        flex: 1,
+        padding: '11px',
+        borderRadius: 12,
+        background: 'var(--adim)',
+        color: 'var(--accent2)',
+        fontSize: 12,
+        fontWeight: 900
+      }
+    }, "Edit setup"), React.createElement("button", {
+      onClick: () => {
+        setAdminDetailEmail(null);
+        setSettingsSubtab('prefs');
+      },
+      style: {
+        flex: 1,
+        padding: '11px',
+        borderRadius: 12,
+        background: 'rgba(37,211,102,.1)',
+        color: '#25d366',
+        fontSize: 12,
+        fontWeight: 900,
+        border: '1px solid rgba(37,211,102,.22)'
+      }
+    }, "Open templates")));
   })()), React.createElement(Modal, {
     show: showSetupWizard && !guidedSetupComplete,
     onClose: () => setShowSetupWizard(false),
