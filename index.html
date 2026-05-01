@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.01.0011';
+window.APP_VERSION='2026.05.01.0012';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -4815,6 +4815,7 @@ function App() {
     }
   }, [showAppt, setDone, running]);
   var [apptLead, setApptLead] = useState(null);
+  var [apptSaving, setApptSaving] = useState(false);
   var [apptDate, setApptDate] = useState('');
   var [apptTime, setApptTime] = useState('');
   var [apptSlotDuration, setApptSlotDuration] = useState(() => _slotMinutes(load('apptDur'), 60, 1, 480));
@@ -4943,6 +4944,8 @@ function App() {
   var [pickerCollapsed, setPickerCollapsed] = useState(false);
   var [calViewMode, setCalViewMode] = useState(() => load('calvm') || 'list');
   var [calEditEvent, setCalEditEvent] = useState(null);
+  var [showCalAddApptPicker, setShowCalAddApptPicker] = useState(false);
+  var [calAddSlot, setCalAddSlot] = useState(null);
   var [apptActionModal, setApptActionModal] = useState(null);
   var [calEditForm, setCalEditForm] = useState({
     summary: '',
@@ -6025,6 +6028,84 @@ function App() {
   var [settingsSubtab, setSettingsSubtab] = useState(load('settingsSubtab') || 'setup');
   var settingsSimplified = localStorage.getItem('autodial_settings_v2_disabled') !== '1';
   var [settingsShowAll, setSettingsShowAll] = useState(!settingsSimplified);
+  var getTodayCalledLeadCandidates = () => {
+    var today = localDateKey(new Date());
+    var rows = [];
+    var seen = new Set();
+    var leadByPhone = new Map();
+    (leads || []).forEach(l => {
+      var p = normalizePhone(l?.phone || '');
+      if (p) leadByPhone.set(p, l);
+    });
+    var add = (raw, source, action, ts) => {
+      if (!raw) return;
+      var phone = normalizePhone(raw.phone || raw.lead_phone || '');
+      var name = String(raw.name || raw.lead_name || '').trim();
+      var key = phone || name.toLowerCase();
+      if (!key || seen.has(key)) return;
+      var full = phone ? leadByPhone.get(phone) || {} : {};
+      seen.add(key);
+      rows.push({
+        ...(full || {}),
+        id: full.id || raw.leadId || raw.id || key,
+        name: name || full.name || phone || 'Unnamed lead',
+        phone: raw.phone || raw.lead_phone || full.phone || phone,
+        email: raw.email || full.email || '',
+        age: raw.age || full.age || '',
+        gender: raw.gender || full.gender || '',
+        race: raw.race || full.race || '',
+        remarks: raw.remarks || raw.notes || full.remarks || '',
+        _source: source || 'Today',
+        _action: action || raw.action || raw.status || '',
+        _ts: ts ? new Date(ts).getTime() || 0 : 0
+      });
+    };
+    (appointments || []).forEach(a => {
+      if (a?.needsDetails || (!a?.apptDate && !a?.apptTime && (a?.followUp || 'pending') === 'pending')) add(a, 'Missing appointment details', 'set', a.createdAt || a.followUpDate);
+    });
+    (callLog || []).forEach(x => add({
+      name: x.lead_name,
+      phone: x.lead_phone
+    }, 'Current session', x.action, x.ts));
+    (sessionLog || []).forEach(s => {
+      var sameDay = localDateKey(new Date(s?.startTime || s?.endedAt || Date.now())) === today;
+      if (!sameDay) return;
+      (s.callLog || []).forEach(x => add({
+        name: x.lead_name,
+        phone: x.lead_phone
+      }, 'Today session', x.action, x.ts || s.startTime));
+    });
+    (leads || []).forEach(l => {
+      if (String(l?.status || '').toLowerCase() === 'set') add(l, 'Set leads', 'set', l.updatedAt || 0);
+    });
+    rows.sort((a, b) => {
+      var ap = a._source === 'Missing appointment details' ? 0 : a._action === 'set' ? 1 : 2;
+      var bp = b._source === 'Missing appointment details' ? 0 : b._action === 'set' ? 1 : 2;
+      return ap - bp || (b._ts || 0) - (a._ts || 0);
+    });
+    return rows.slice(0, 40);
+  };
+  var _openCalAddApptPicker = slot => {
+    var candidates = getTodayCalledLeadCandidates();
+    if (!candidates.length) {
+      toast('No called leads found today. Use Set first, then add appointment from Cal.', 'err');
+      return;
+    }
+    setCalAddSlot(slot || null);
+    setShowCalAddApptPicker(true);
+  };
+  var _openCalAddApptForLead = lead => {
+    var slot = calAddSlot;
+    setShowCalAddApptPicker(false);
+    _openIncompleteApptFlow(lead);
+    if (slot?.date && slot?.time) {
+      setApptDate(slot.date);
+      setApptTime(slot.time);
+      setApptSlotDuration(_slotMinutes(slot.duration, apptCoreMin, 1, 480));
+      setPickerCollapsed(true);
+    }
+    setCalAddSlot(null);
+  };
   useEffect(() => {
     save('settingsSubtab', settingsSubtab);
   }, [settingsSubtab]);
@@ -15591,9 +15672,21 @@ function App() {
         color: calViewMode === 'grid' ? 'var(--accent2)' : 'var(--text3)',
         fontSize: 10,
         fontWeight: 700,
-        border: 'none'
+      border: 'none'
       }
-    }, "\uD83D\uDDD3 Grid")), React.createElement("button", {
+    }, "\uD83D\uDDD3 Grid")), role === 'admin' && React.createElement("button", {
+      onClick: () => _openCalAddApptPicker(null),
+      style: {
+        padding: '7px 12px',
+        borderRadius: 8,
+        background: 'linear-gradient(135deg,rgba(34,197,94,.2),rgba(16,185,129,.1))',
+        color: '#22c55e',
+        fontSize: 10,
+        fontWeight: 800,
+        border: '1px solid rgba(34,197,94,.35)',
+        flexShrink: 0
+      }
+    }, "\uD83D\uDCC5 Add appt"), React.createElement("button", {
       onClick: () => {
         if (calRefreshing) return;
         setCalRefreshing(true);
@@ -16081,8 +16174,16 @@ function App() {
             key: 'fs-' + si,
             className: "free-slot",
             title: 'Free · ' + hrsLabel + ' · click to book',
-            onClick: gOk ? async () => {
+            onClick: gOk || role === 'admin' ? async () => {
               var _bookStart = win.start;
+              if (role === 'admin') {
+                _openCalAddApptPicker({
+                  date: d.key,
+                  time: String(_bookStart.getHours()).padStart(2, '0') + ':' + String(_bookStart.getMinutes()).padStart(2, '0'),
+                  duration: Math.min(apptCoreMin, win.mins)
+                });
+                return;
+              }
               var title = await promptAsync('New event title for ' + fmtDayMonth(d.date) + ' ' + _bookStart.toLocaleTimeString('en-SG', {
                 hour: '2-digit',
                 minute: '2-digit',
@@ -16096,7 +16197,8 @@ function App() {
                 toast('Creating event…', 'info');
                 var _dur = Math.min(apptCoreMin, win.mins);
                 var _end = new Date(_bookStart.getTime() + _dur * 60000);
-                var evt = await gCal.create(title, 'Created from AutoDial free slot', _bookStart.toISOString(), _end.toISOString(), [], myCfg.targetCalendarId || 'primary');
+                var _targetCal = myCfg.targetCalendarId || 'primary';
+                var evt = await gCal.create(title, 'Created from AutoDial free slot', _bookStart.toISOString(), _end.toISOString(), [], _targetCal);
                 if (evt?.id) {
                   toast('✓ Event created');
                   setWeekEvents(p => [...p, {
@@ -16108,7 +16210,7 @@ function App() {
                     end: {
                       dateTime: _end.toISOString()
                     },
-                    _calId: 'primary'
+                    _calId: _targetCal
                   }]);
                 } else {
                   toast('Create failed', 'err');
@@ -16129,7 +16231,7 @@ function App() {
               fontWeight: 700,
               overflow: 'hidden',
               color: '#86efac',
-              cursor: gOk ? 'pointer' : 'default',
+              cursor: gOk || role === 'admin' ? 'pointer' : 'default',
               zIndex: 0
             }
           }, React.createElement("div", {
@@ -16147,7 +16249,7 @@ function App() {
               opacity: .85,
               marginTop: 1
             }
-          }, String(s.start.getHours()).padStart(2, '0'), ":", String(s.start.getMinutes()).padStart(2, '0'), " \u2013 ", String(s.end.getHours()).padStart(2, '0'), ":", String(s.end.getMinutes()).padStart(2, '0')), height > 52 && gOk && React.createElement("div", {
+          }, String(s.start.getHours()).padStart(2, '0'), ":", String(s.start.getMinutes()).padStart(2, '0'), " \u2013 ", String(s.end.getHours()).padStart(2, '0'), ":", String(s.end.getMinutes()).padStart(2, '0')), height > 52 && (gOk || role === 'admin') && React.createElement("div", {
             style: {
               fontSize: 7,
               color: '#22c55e',
@@ -16158,7 +16260,7 @@ function App() {
               background: 'rgba(34,197,94,.15)',
               display: 'inline-block'
             }
-          }, "+ BOOK"));
+          }, role === 'admin' ? "+ APPT" : "+ BOOK"));
         }), _evT.map(({
           ev,
           start,
@@ -16173,7 +16275,7 @@ function App() {
           return React.createElement("div", {
             key: 'e-' + ei,
             title: 'Click to edit: ' + (ev.summary || 'Busy'),
-            onClick: () => gOk && _openCalEdit(ev),
+            onClick: () => _openCalEdit(ev),
             style: {
               position: 'absolute',
               left: 2,
@@ -16189,7 +16291,7 @@ function App() {
               border: '1px solid ' + (isShaky ? 'rgba(251,146,60,.6)' : 'rgba(99,102,241,.5)'),
               color: isShaky ? '#fb923c' : '#a5b4fc',
               boxShadow: isShaky ? '0 0 8px rgba(251,146,60,.3)' : 'none',
-              cursor: gOk ? 'pointer' : 'default'
+              cursor: 'pointer'
             }
           }, React.createElement("div", {
             style: {
@@ -16306,7 +16408,7 @@ function App() {
             var _isShaky = (appointments || []).some(a => a.calEventId && a.calEventId === ev.id && isApptShaky(a));
             return React.createElement("div", {
               key: 'e' + i,
-              onClick: () => gOk && _openCalEdit(ev),
+              onClick: () => _openCalEdit(ev),
               style: {
                 display: 'flex',
                 alignItems: 'flex-start',
@@ -16317,7 +16419,7 @@ function App() {
                 background: _isShaky ? 'linear-gradient(135deg,rgba(251,146,60,.08),rgba(234,88,12,.04))' : 'var(--bg)',
                 border: '1px solid ' + (_isShaky ? 'rgba(251,146,60,.45)' : 'var(--border)'),
                 boxShadow: _isShaky ? '0 0 10px rgba(251,146,60,.2)' : 'none',
-                cursor: gOk ? 'pointer' : 'default'
+                cursor: 'pointer'
               }
             }, React.createElement("div", {
               style: {
@@ -16428,8 +16530,17 @@ function App() {
               fontWeight: 600,
               color: isBig ? '#86efac' : 'var(--text3)'
             }
-          }, isBig ? '✨ Free · ' : 'Gap · ', hrsLabel)), isBig && gOk && React.createElement("button", {
+          }, isBig ? '✨ Free · ' : 'Gap · ', hrsLabel)), isBig && (gOk || role === 'admin') && React.createElement("button", {
             onClick: async () => {
+              var _bookStart = win.start;
+              if (role === 'admin') {
+                _openCalAddApptPicker({
+                  date: d.key,
+                  time: String(_bookStart.getHours()).padStart(2, '0') + ':' + String(_bookStart.getMinutes()).padStart(2, '0'),
+                  duration: Math.min(apptCoreMin, win.mins)
+                });
+                return;
+              }
               var title = await promptAsync('New event title', '', {
                 title: 'Create calendar event',
                 placeholder: 'Call Winnie'
@@ -16437,9 +16548,9 @@ function App() {
               if (!title) return;
               try {
                 toast('Creating event…', 'info');
-                var _bookStart = win.start;
                 var _bookEnd = new Date(_bookStart.getTime() + apptCoreMin * 60000);
-                var evt = await gCal.create(title, 'Created from AutoDial free slot', _bookStart.toISOString(), _bookEnd.toISOString(), [], myCfg.targetCalendarId || 'primary');
+                var _targetCal = myCfg.targetCalendarId || 'primary';
+                var evt = await gCal.create(title, 'Created from AutoDial free slot', _bookStart.toISOString(), _bookEnd.toISOString(), [], _targetCal);
                 if (evt?.id) {
                   toast('✓ Event created');
                   setWeekEvents(p => [...p, {
@@ -16451,7 +16562,7 @@ function App() {
                     end: {
                         dateTime: _bookEnd.toISOString()
                     },
-                    _calId: 'primary'
+                    _calId: _targetCal
                   }]);
                 } else {
                   toast('Create failed', 'err');
@@ -16472,7 +16583,7 @@ function App() {
               position: 'relative',
               zIndex: 1
             }
-          }, "+ Book"));
+          }, role === 'admin' ? "+ Appt" : "+ Book"));
         });
       })(), d.events.length === 0 && freeSlots.length === 0 && React.createElement("p", {
         style: {
@@ -28161,9 +28272,12 @@ WHERE p.id IS NULL;`;
       fontWeight: 700
     }
   }, "Skip"), React.createElement("button", {
-    disabled: !apptDate || !apptTime,
+    disabled: apptSaving || !apptDate || !apptTime,
     onClick: async () => {
       if (!apptDate || !apptTime) return toast('Pick a slot above or set date & time', 'err');
+      if (apptSaving) return;
+      setApptSaving(true);
+      try {
       var dur = _slotMinutes(apptSlotDuration, apptCoreMin, 1, 480);
       var lead = apptLead;
       if (rescheduleTargetAppt) {
@@ -28349,7 +28463,30 @@ WHERE p.id IS NULL;`;
         var _s2 = new Date(apptDate + 'T' + apptTime);
         var _end2 = new Date(_s2.getTime() + dur * 60000);
         var invites = apptInvite ? apptInvite.split(',').map(s => s.trim()).filter(Boolean) : [];
-        var evt = await gCal.create('Appt: ' + (lead?.name || '') + (apptLocation ? ' @ ' + apptLocation : ''), desc, _s2.toISOString(), _end2.toISOString(), invites, myCfg.targetCalendarId || 'primary');
+        var targetCalId = myCfg.targetCalendarId || 'primary';
+        var eventCalId = targetCalId;
+        var calendarErr = null;
+        var evt = null;
+        if (window.gCal && gOk) {
+          try {
+            evt = await gCal.create('Appt: ' + (lead?.name || '') + (apptLocation ? ' @ ' + apptLocation : ''), desc, _s2.toISOString(), _end2.toISOString(), invites, targetCalId);
+          } catch (_gce) {
+            calendarErr = _gce;
+            if (targetCalId !== 'primary') {
+              try {
+                eventCalId = 'primary';
+                evt = await gCal.create('Appt: ' + (lead?.name || '') + (apptLocation ? ' @ ' + apptLocation : ''), desc, _s2.toISOString(), _end2.toISOString(), invites, 'primary');
+                calendarErr = null;
+              } catch (_primaryErr) {
+                calendarErr = _primaryErr;
+                evt = null;
+                eventCalId = targetCalId;
+              }
+            }
+          }
+        } else {
+          calendarErr = new Error('Google Calendar is not connected');
+        }
         if (invites.length) {
           setSavedInvitees(p => {
             var s = new Set([...p, ...invites]);
@@ -28378,7 +28515,7 @@ WHERE p.id IS NULL;`;
           calEventId: evt?.id || '',
           apptId: lead?.phone || '',
           dbApptId: savedApptRow?.id || '',
-          calendarId: myCfg.targetCalendarId || 'primary'
+          calendarId: eventCalId
         };
         if (lead) setAppointments(p => {
           var idx = p.findIndex(a => (a.leadId === lead.id || a.phone === lead.phone && a.phone) && (!a.followUp || a.followUp === 'pending') && !a.apptDate);
@@ -28442,7 +28579,8 @@ WHERE p.id IS NULL;`;
           time: apptTime,
           location: apptLocation
         });
-        toast('Event created!');
+        if (evt?.id) toast('Event created!');
+        else toast('Appointment saved, but calendar event was not created: ' + (calendarErr?.message || calendarErr || 'Calendar unavailable'), 'err');
         var apptSheetId = myCfg.timesheetId || cfg.sheetId;
         if (apptSheetId && localStorage.getItem('ad_gt')) {
           var apptSheetRes = await gSheets.appendAppt(apptSheetId, {
@@ -28475,18 +28613,21 @@ WHERE p.id IS NULL;`;
       setShowAppt(false);
       setApptLocation('');
       setApptObs('');
+      } finally {
+        setApptSaving(false);
+      }
     },
     style: {
       flex: 1,
       padding: '14px',
-      background: !apptDate || !apptTime ? 'var(--bg3)' : 'linear-gradient(135deg,var(--green),#059669)',
-      color: !apptDate || !apptTime ? 'var(--text3)' : '#fff',
+      background: apptSaving || !apptDate || !apptTime ? 'var(--bg3)' : 'linear-gradient(135deg,var(--green),#059669)',
+      color: apptSaving || !apptDate || !apptTime ? 'var(--text3)' : '#fff',
       fontSize: 14,
       fontWeight: 800,
       borderRadius: 12,
-      opacity: !apptDate || !apptTime ? .5 : 1
+      opacity: apptSaving || !apptDate || !apptTime ? .5 : 1
     }
-  }, rescheduleTargetAppt ? '⏸ Reschedule' : '📅 Create Appointment')))), React.createElement(Modal, {
+  }, apptSaving ? 'Creating...' : rescheduleTargetAppt ? '⏸ Reschedule' : '📅 Create Appointment')))), React.createElement(Modal, {
     show: tipModal,
     onClose: () => setTipModal(null),
     align: "center",
@@ -29953,7 +30094,117 @@ WHERE p.id IS NULL;`;
         textAlign: 'center'
       }
     }, "You'll still need to approve them once they sign up.")));
-  })(), calEditEvent && React.createElement(Modal, {
+  })(), showCalAddApptPicker && React.createElement(Modal, {
+    show: true,
+    onClose: () => {
+      setShowCalAddApptPicker(false);
+      setCalAddSlot(null);
+    },
+    align: "center",
+    bg: ".82",
+    zIndex: 102
+  }, (() => {
+    var candidates = getTodayCalledLeadCandidates();
+    var slotText = calAddSlot?.date && calAddSlot?.time ? calAddSlot.date + ' ' + calAddSlot.time : '';
+    return React.createElement("div", {
+      style: {
+        width: '100%',
+        maxWidth: 460,
+        background: 'var(--bg2)',
+        borderRadius: 18,
+        padding: 16,
+        border: '1px solid var(--border2)',
+        boxShadow: '0 18px 60px rgba(0,0,0,.45)'
+      }
+    }, React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        marginBottom: 10
+      }
+    }, React.createElement("div", null, React.createElement("h3", {
+      style: {
+        margin: 0,
+        fontSize: 16,
+        fontWeight: 900,
+        color: '#f8fafc'
+      }
+    }, "📅 Add appointment from Cal"), React.createElement("p", {
+      style: {
+        margin: '3px 0 0',
+        fontSize: 11,
+        color: 'var(--text3)'
+      }
+    }, slotText ? 'Selected slot: ' + slotText : 'Choose a lead called today, then fill appointment details.')), React.createElement("button", {
+      onClick: () => {
+        setShowCalAddApptPicker(false);
+        setCalAddSlot(null);
+      },
+      style: {
+        width: 30,
+        height: 30,
+        borderRadius: 10,
+        background: 'rgba(239,68,68,.12)',
+        color: '#f87171',
+        fontWeight: 900
+      }
+    }, "×")), candidates.length ? React.createElement("div", {
+      style: {
+        display: 'grid',
+        gap: 8,
+        maxHeight: '55vh',
+        overflowY: 'auto',
+        paddingRight: 2
+      }
+    }, candidates.map((l, idx) => React.createElement("button", {
+      key: (l.phone || l.id || l.name || idx) + '-' + idx,
+      onClick: () => _openCalAddApptForLead(l),
+      style: {
+        textAlign: 'left',
+        padding: '10px 12px',
+        borderRadius: 12,
+        background: l._source === 'Missing appointment details' ? 'rgba(245,158,11,.12)' : 'var(--bg3)',
+        border: '1px solid ' + (l._source === 'Missing appointment details' ? 'rgba(245,158,11,.38)' : 'var(--border)'),
+        color: '#e5e7eb'
+      }
+    }, React.createElement("div", {
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: 8,
+        alignItems: 'center'
+      }
+    }, React.createElement("span", {
+      style: {
+        fontSize: 13,
+        fontWeight: 900
+      }
+    }, l.name || 'Unnamed lead'), React.createElement("span", {
+      className: "pill",
+      style: {
+        fontSize: 9,
+        color: l._action === 'set' ? '#22c55e' : '#93c5fd',
+        background: l._action === 'set' ? 'rgba(34,197,94,.12)' : 'rgba(59,130,246,.12)'
+      }
+    }, l._source || 'Today')), React.createElement("p", {
+      style: {
+        margin: '4px 0 0',
+        fontSize: 11,
+        color: 'var(--text3)'
+      }
+    }, [l.phone, l.age ? 'Age ' + l.age : '', l._action ? String(l._action).toUpperCase() : ''].filter(Boolean).join(' · '))))) : React.createElement("p", {
+      style: {
+        margin: 0,
+        padding: 12,
+        borderRadius: 12,
+        background: 'var(--bg3)',
+        color: 'var(--text3)',
+        fontSize: 12
+      }
+    }, "No called leads found for today yet. Mark a lead as Set first, then come back here to add the appointment."));
+  })()), calEditEvent && React.createElement(Modal, {
     show: true,
     onClose: () => setCalEditEvent(null),
     align: "center",
