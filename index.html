@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.01.0012';
+window.APP_VERSION='2026.05.01.0013';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -2736,6 +2736,12 @@ function localDateKey(d) {
   var m = String(d.getMonth() + 1).padStart(2, '0');
   var dd = String(d.getDate()).padStart(2, '0');
   return y + '-' + m + '-' + dd;
+}
+function withTimeout(promise, ms, label) {
+  var timer;
+  return Promise.race([Promise.resolve(promise).finally(() => clearTimeout(timer)), new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error((label || 'Request') + ' timed out after ' + Math.round(ms / 1000) + 's')), ms);
+  })]);
 }
 function startOfWeek(d) {
   var s = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -16275,7 +16281,10 @@ function App() {
           return React.createElement("div", {
             key: 'e-' + ei,
             title: 'Click to edit: ' + (ev.summary || 'Busy'),
-            onClick: () => _openCalEdit(ev),
+            onClick: e => {
+              e.stopPropagation();
+              _openCalEdit(ev);
+            },
             style: {
               position: 'absolute',
               left: 2,
@@ -16291,7 +16300,8 @@ function App() {
               border: '1px solid ' + (isShaky ? 'rgba(251,146,60,.6)' : 'rgba(99,102,241,.5)'),
               color: isShaky ? '#fb923c' : '#a5b4fc',
               boxShadow: isShaky ? '0 0 8px rgba(251,146,60,.3)' : 'none',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              zIndex: 3
             }
           }, React.createElement("div", {
             style: {
@@ -16307,7 +16317,25 @@ function App() {
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap'
             }
-          }, String(start.getHours()).padStart(2, '0'), ":", String(start.getMinutes()).padStart(2, '0')));
+          }, String(start.getHours()).padStart(2, '0'), ":", String(start.getMinutes()).padStart(2, '0')), height > 26 && React.createElement("button", {
+            onClick: e => {
+              e.stopPropagation();
+              _openCalEdit(ev);
+            },
+            style: {
+              position: 'absolute',
+              top: 3,
+              right: 3,
+              padding: '2px 5px',
+              borderRadius: 5,
+              background: 'rgba(15,23,42,.82)',
+              color: '#bfdbfe',
+              border: '1px solid rgba(96,165,250,.45)',
+              fontSize: 7,
+              fontWeight: 900,
+              lineHeight: 1
+            }
+          }, "Edit"));
         }));
       })), React.createElement("p", {
         style: {
@@ -16408,7 +16436,10 @@ function App() {
             var _isShaky = (appointments || []).some(a => a.calEventId && a.calEventId === ev.id && isApptShaky(a));
             return React.createElement("div", {
               key: 'e' + i,
-              onClick: () => _openCalEdit(ev),
+              onClick: e => {
+                e.stopPropagation();
+                _openCalEdit(ev);
+              },
               style: {
                 display: 'flex',
                 alignItems: 'flex-start',
@@ -16472,7 +16503,22 @@ function App() {
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap'
               }
-            }, "\uD83D\uDCC1 ", ev._calName)));
+            }, "\uD83D\uDCC1 ", ev._calName)), React.createElement("button", {
+              onClick: e => {
+                e.stopPropagation();
+                _openCalEdit(ev);
+              },
+              style: {
+                padding: '5px 8px',
+                borderRadius: 8,
+                background: 'rgba(59,130,246,.12)',
+                color: '#93c5fd',
+                border: '1px solid rgba(96,165,250,.35)',
+                fontSize: 10,
+                fontWeight: 900,
+                flexShrink: 0
+              }
+            }, "Edit"));
           }
           var s = item.slot;
           var win = item.win || _slotBookableWindow(s, slotBeforeMin, slotAfterMin);
@@ -28469,13 +28515,13 @@ WHERE p.id IS NULL;`;
         var evt = null;
         if (window.gCal && gOk) {
           try {
-            evt = await gCal.create('Appt: ' + (lead?.name || '') + (apptLocation ? ' @ ' + apptLocation : ''), desc, _s2.toISOString(), _end2.toISOString(), invites, targetCalId);
+            evt = await withTimeout(gCal.create('Appt: ' + (lead?.name || '') + (apptLocation ? ' @ ' + apptLocation : ''), desc, _s2.toISOString(), _end2.toISOString(), invites, targetCalId), 8000, 'Calendar create');
           } catch (_gce) {
             calendarErr = _gce;
             if (targetCalId !== 'primary') {
               try {
                 eventCalId = 'primary';
-                evt = await gCal.create('Appt: ' + (lead?.name || '') + (apptLocation ? ' @ ' + apptLocation : ''), desc, _s2.toISOString(), _end2.toISOString(), invites, 'primary');
+                evt = await withTimeout(gCal.create('Appt: ' + (lead?.name || '') + (apptLocation ? ' @ ' + apptLocation : ''), desc, _s2.toISOString(), _end2.toISOString(), invites, 'primary'), 7000, 'Primary calendar create');
                 calendarErr = null;
               } catch (_primaryErr) {
                 calendarErr = _primaryErr;
@@ -28493,7 +28539,9 @@ WHERE p.id IS NULL;`;
             return [...s].slice(0, 20);
           });
         }
-        var savedApptRow = await DB.saveAppt({
+        var savedApptRow = null;
+        try {
+          savedApptRow = await withTimeout(DB.saveAppt({
           admin: myEmail,
           name: lead?.name,
           phone: lead?.phone,
@@ -28504,7 +28552,11 @@ WHERE p.id IS NULL;`;
           inviteEmails: apptInvite,
           location: apptLocation,
           shaky: apptShaky
-        }, _user?.id);
+          }, _user?.id), 6500, 'Supabase appointment save');
+        } catch (_dbSaveErr) {
+          console.warn('[Create appointment DB.saveAppt]', _dbSaveErr?.message || _dbSaveErr);
+          toast('Appointment kept locally; Supabase save is slow/unavailable.', 'err');
+        }
         var _localApptId = savedApptRow?.id || 'appt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
         DB.notify(null, 'appt_set', 'Appt set: ' + myEmail, (lead?.name || '') + ' on ' + apptDate + ' at ' + apptTime + (apptLocation ? ' @ ' + apptLocation : ''), {
           leadName: lead?.name,
@@ -28583,7 +28635,7 @@ WHERE p.id IS NULL;`;
         else toast('Appointment saved, but calendar event was not created: ' + (calendarErr?.message || calendarErr || 'Calendar unavailable'), 'err');
         var apptSheetId = myCfg.timesheetId || cfg.sheetId;
         if (apptSheetId && localStorage.getItem('ad_gt')) {
-          var apptSheetRes = await gSheets.appendAppt(apptSheetId, {
+          var sheetPayload = {
             id: _localApptId,
             autoId: _localApptId,
             calEventId: evt?.id || '',
@@ -28594,18 +28646,26 @@ WHERE p.id IS NULL;`;
             location: apptLocation,
             duration: dur,
             remarks: apptObs
-          }, userName).catch(() => false);
-          appStateRef.current._pendingSetCalEventId = {
-            ...(appStateRef.current._pendingSetCalEventId || {}),
-            apptSheetId,
-            apptSheetRange: apptSheetRes?.updates?.updatedRange || ''
           };
-          setAppointments(p => p.map(a => a.id === _localApptId || a.phone === lead?.phone && a.apptDate === apptDate && a.apptTime === apptTime ? {
-            ...a,
-            apptSheetId,
-            apptSheetRange: apptSheetRes?.updates?.updatedRange || '',
-            apptSheetAutoId: _localApptId
-          } : a));
+          (async () => {
+            try {
+              var apptSheetRes = await withTimeout(gSheets.appendAppt(apptSheetId, sheetPayload, userName), 10000, 'Appointment sheet append');
+              appStateRef.current._pendingSetCalEventId = {
+                ...(appStateRef.current._pendingSetCalEventId || {}),
+                apptSheetId,
+                apptSheetRange: apptSheetRes?.updates?.updatedRange || ''
+              };
+              setAppointments(p => p.map(a => a.id === _localApptId || a.phone === lead?.phone && a.apptDate === apptDate && a.apptTime === apptTime ? {
+                ...a,
+                apptSheetId,
+                apptSheetRange: apptSheetRes?.updates?.updatedRange || '',
+                apptSheetAutoId: _localApptId
+              } : a));
+            } catch (_sheetErr) {
+              console.warn('[Create appointment sheet append]', _sheetErr?.message || _sheetErr);
+              toast('Appointment created; sheet append will need sync check.', 'err');
+            }
+          })();
         }
       } catch (ev) {
         toast(ev.message, 'err');
