@@ -219,6 +219,27 @@ button.free-slot{appearance:none;text-align:left}
 .hdr-row1>button{flex-shrink:0}
 .hdr-row1>.pill{flex:0 0 auto;min-width:72px;max-width:104px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .hdr-row1 button,.hdr-row2 button,.app-tabs button{position:relative;z-index:2;pointer-events:auto;touch-action:manipulation}
+.hdr-brand{display:flex;align-items:center;gap:10px;flex-shrink:0;min-width:0;flex:1 1 auto}
+.hdr-brand h1{font-size:17px;font-weight:900;color:#f1f5f9;margin:0;letter-spacing:-.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hdr-logo{width:32px;height:32px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#8b5cf6);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.avatar-btn{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#8b5cf6);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:none;padding:0;cursor:pointer;letter-spacing:.04em;position:relative}
+.avatar-btn:hover{box-shadow:0 0 0 3px rgba(99,102,241,.18)}
+.avatar-btn .dot{position:absolute;top:1px;right:1px;width:9px;height:9px;border-radius:50%;background:var(--red);border:2px solid var(--bg)}
+.avatar-menu{position:fixed;z-index:1500;min-width:204px;background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:6px;box-shadow:0 16px 48px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.02)}
+.avatar-menu .am-name{padding:10px 12px 8px;border-bottom:1px solid var(--border);margin-bottom:4px}
+.avatar-menu .am-name .n{font-size:13px;font-weight:800;color:#f1f5f9;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.avatar-menu .am-name .e{font-size:10px;color:var(--text3);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.avatar-menu button{display:flex;align-items:center;gap:10px;width:100%;padding:9px 11px;border-radius:9px;background:transparent;border:none;color:var(--text2);font-size:13px;font-weight:600;cursor:pointer;text-align:left;min-height:36px}
+.avatar-menu button:hover{background:var(--bg3);color:#f1f5f9}
+.avatar-menu .ico{font-size:14px;width:18px;display:inline-flex;align-items:center;justify-content:center}
+.avatar-menu .badge{margin-left:auto;font-size:10px;font-weight:800;padding:2px 7px;border-radius:7px;background:var(--rdim);color:var(--red);min-width:18px;text-align:center}
+.avatar-menu .badge.warn{background:var(--amdim);color:var(--amber)}
+.avatar-menu .danger{color:var(--red)}
+.avatar-menu .danger:hover{background:var(--rdim)}
+.sync-pill{display:flex;align-items:center;gap:5px;padding:4px 9px;border-radius:9px;font-size:10px;font-weight:700;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text3);flex-shrink:0;line-height:1}
+.sync-pill .sp-dot{width:6px;height:6px;border-radius:50%;display:inline-block}
+.sync-pill .sp-icon{font-size:10px;opacity:.6;margin-left:2px}
+.sync-pill:hover .sp-icon{opacity:1}
 .hdr-row2{position:relative;z-index:70;display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px;gap:10px;min-height:44px;contain:layout}
 .app-tabs{position:relative;z-index:60;display:flex;padding:8px 14px 10px;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:1px solid var(--border);background:var(--bg);margin-bottom:8px;min-height:62px;contain:layout}
 .app-tabs::-webkit-scrollbar{display:none}
@@ -257,12 +278,16 @@ button.free-slot{appearance:none;text-align:left}
   .readiness-grid{grid-template-columns:1fr}
   .touch-action-row{grid-template-columns:1fr!important}
 }
+@media(max-width:560px){
+  .hdr-brand h1{display:none!important}
+}
 @media(max-width:480px){
-  .hdr-row1{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none}
-  .hdr-row1::-webkit-scrollbar{display:none}
+  .hdr-row1{flex-wrap:nowrap;overflow:visible;scrollbar-width:none}
   .hdr-row1 h1{white-space:nowrap}
   .hdr-row1>span:not(.pill){display:none!important}
   .hdr-row1>.pill{min-width:74px;max-width:86px}
+  .hdr-brand .hdr-logo{display:none!important}
+  .sync-pill{padding:3px 7px;font-size:10px}
 }
 </style>
 </head>
@@ -340,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0017';
+window.APP_VERSION='2026.05.03.0001';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -6638,6 +6663,9 @@ function App() {
   var [showMoreMenu, setShowMoreMenu] = useState(false);
   var [showActivityDrawer, setShowActivityDrawer] = useState(false);
   var [dialogRequest, setDialogRequest] = useState(null);
+  var [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
+  var [avatarMenuPos, setAvatarMenuPos] = useState({ top: 54, right: 14 });
+  var avatarBtnRef = useRef(null);
   var headerTapGuardRef = useRef({
     action: '',
     ts: 0
@@ -13452,16 +13480,9 @@ function App() {
     onClickCapture: handleHeaderControlCapture,
     onTouchEndCapture: handleHeaderControlCapture
   }, React.createElement("div", {
-    style: {
-      width: 32,
-      height: 32,
-      borderRadius: 10,
-      background: 'linear-gradient(135deg,var(--accent),#8b5cf6)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0
-    }
+    className: "hdr-brand"
+  }, React.createElement("div", {
+    className: "hdr-logo"
   }, React.createElement("svg", {
     width: "15",
     height: "15",
@@ -13471,48 +13492,7 @@ function App() {
     strokeWidth: "2.5"
   }, React.createElement("path", {
     d: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"
-  }))), React.createElement("div", {
-    style: {
-      flex: 1
-    }
-  }, React.createElement("h1", {
-    style: {
-      fontSize: 17,
-      fontWeight: 900,
-      color: '#f1f5f9',
-      margin: 0,
-      letterSpacing: '-.03em'
-    }
-  }, "AutoDial v2")), React.createElement("span", {
-    style: {
-      fontSize: 11,
-      color: 'var(--text3)',
-      marginRight: 4
-    }
-  }, userName), (isCreatorUser || isCreator(window._user?.email || '')) && React.createElement("button", {
-    type: "button",
-    "data-header-action": "approvals",
-    onClick: () => {
-      setShowApprovalModal(true);
-      if (_SB) _SB.from('profiles').select('*').then(r => {
-        if (r.data) {
-          setPendingUsers(r.data.filter(u => !u.approved && !isCreator(u.email)));
-          setUsersList(r.data);
-        }
-      }).catch(e => console.warn('[Users]', e));
-    },
-    style: {
-      padding: '4px 10px',
-      borderRadius: 8,
-      background: pendingUsers.length ? 'var(--rdim)' : 'var(--adim)',
-      border: '1px solid ' + (pendingUsers.length ? 'rgba(248,81,73,.3)' : 'rgba(99,102,241,.2)'),
-      color: pendingUsers.length ? 'var(--red)' : 'var(--accent2)',
-      fontSize: 10,
-      fontWeight: 700,
-      flexShrink: 0,
-      marginRight: 2
-    }
-  }, "\uD83D\uDC65", pendingUsers.length > 0 ? ' ' + pendingUsers.length : ''), isOffline && React.createElement("span", {
+  }))), React.createElement("h1", null, "AutoDial v2")), isOffline && React.createElement("span", {
     className: "pill",
     style: {
       background: 'var(--rdim)',
@@ -13534,6 +13514,7 @@ function App() {
     var _color = syncStatus === 'offline' ? 'var(--red)' : _fresh ? 'var(--green)' : syncStatus === 'pushing' || syncStatus === 'pulling' ? 'var(--amber)' : 'var(--text3)';
     var _bg = syncStatus === 'offline' ? 'var(--rdim)' : _fresh ? 'var(--gdim)' : syncStatus === 'pushing' || syncStatus === 'pulling' ? 'var(--amdim)' : 'var(--bg3)';
     var _label = syncStatus === 'offline' ? 'Offline' : _fresh ? 'Synced' : syncStatus === 'pushing' ? 'Pushing…' : syncStatus === 'pulling' ? 'Pulling…' : _ago !== null ? _ago + 's ago' : 'Idle';
+    var _border = syncStatus === 'offline' ? '1px solid rgba(248,81,73,.32)' : _fresh ? '1px solid rgba(63,185,80,.32)' : syncStatus === 'pushing' || syncStatus === 'pulling' ? '1px solid rgba(210,153,34,.32)' : '1px solid var(--border)';
     return React.createElement("button", {
       type: "button",
       "data-header-action": "sync",
@@ -13544,50 +13525,21 @@ function App() {
         }
       },
       title: 'Live sync · ' + _label + (lastSyncAt ? ' · ' + new Date(lastSyncAt).toLocaleTimeString() : '') + ' · tap to force-pull',
-      className: "pill",
+      className: "sync-pill",
       style: {
         background: _bg,
         color: _color,
-        fontSize: 10,
-        padding: '2px 7px',
-        border: 'none',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 4,
-        cursor: 'pointer'
+        border: _border
       }
     }, React.createElement("span", {
+      className: "sp-dot",
       style: {
-        width: 6,
-        height: 6,
-        borderRadius: '50%',
         background: _color,
-        display: 'inline-block',
         boxShadow: _fresh ? '0 0 5px ' + _color : 'none',
         animation: syncStatus === 'pushing' || syncStatus === 'pulling' ? 'pulse 1s infinite' : undefined
       }
-    }), _label);
-  })(), React.createElement("button", {
-    type: "button",
-    "data-header-action": "activity",
-    onClick: () => setShowActivityDrawer(true),
-    title: "Activity and undo timeline",
-    style: {
-      width: 30,
-      height: 30,
-      borderRadius: 8,
-      background: hasActionActivity ? 'var(--amdim)' : 'var(--bg3)',
-      color: hasActionActivity ? 'var(--amber)' : 'var(--text3)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-      padding: 0,
-      fontSize: 13,
-      fontWeight: 900,
-      border: '1px solid ' + (hasActionActivity ? 'rgba(210,153,34,.3)' : 'var(--border)')
-    }
-  }, "\u25F4"), syncing && React.createElement("span", {
+    }), _label, React.createElement("span", { className: "sp-icon" }, "↻"));
+  })(), syncing && React.createElement("span", {
     className: "pill",
     style: {
       background: 'var(--adim)',
@@ -13596,66 +13548,34 @@ function App() {
       padding: '2px 7px',
       animation: 'pulse 1.5s infinite'
     }
-  }, "\u2601\uFE0F Syncing"), React.createElement("button", {
-    type: "button",
-    "data-header-action": "help",
-    onClick: () => setShowHelp(true),
-    title: "Help",
-    style: {
-      width: 30,
-      height: 30,
-      borderRadius: 8,
-      background: 'var(--adim)',
-      color: 'var(--accent2)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-      padding: 0,
-      fontSize: 13,
-      fontWeight: 800,
-      border: '1px solid rgba(99,102,241,.25)'
-    }
-  }, "?"), React.createElement("button", {
-    type: "button",
-    "data-header-action": "logout",
-    onClick: async () => {
-      if (await confirmAsync('Sign out of AutoDial?', {
-        title: 'Sign out',
-        confirmLabel: 'Sign out'
-      })) authLogout();
-    },
-    title: "Sign out",
-    style: {
-      width: 32,
-      height: 32,
-      borderRadius: 8,
-      background: 'var(--rdim)',
-      color: 'var(--red)',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 0,
-      padding: 0,
-      border: '1px solid rgba(248,81,73,.3)'
-    }
-  }, React.createElement("svg", {
-    width: "15",
-    height: "15",
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "currentColor",
-    strokeWidth: "2.4"
-  }, React.createElement("path", {
-    d: "M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"
-  }), React.createElement("polyline", {
-    points: "16 17 21 12 16 7"
-  }), React.createElement("line", {
-    x1: "21",
-    y1: "12",
-    x2: "9",
-    y2: "12"
-  })))), React.createElement("div", {
+  }, "\u2601\uFE0F Syncing"), (() => {
+    var _isCreator = isCreatorUser || isCreator(window._user?.email || '');
+    var _hasNotice = (_isCreator && pendingUsers.length > 0) || hasActionActivity;
+    var _initials = (userName || 'U').split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase()).join('') || 'U';
+    return React.createElement("button", {
+      ref: avatarBtnRef,
+      type: "button",
+      className: "avatar-btn",
+      title: userName + ' \u2014 account menu',
+      onClick: () => {
+        if (avatarMenuOpen) {
+          setAvatarMenuOpen(false);
+          return;
+        }
+        var btn = avatarBtnRef.current;
+        if (btn) {
+          var r = btn.getBoundingClientRect();
+          setAvatarMenuPos({
+            top: Math.round(r.bottom + 6),
+            right: Math.max(8, Math.round(window.innerWidth - r.right))
+          });
+        }
+        setAvatarMenuOpen(true);
+      }
+    }, _initials, _hasNotice && React.createElement("span", {
+      className: "dot"
+    }));
+  })()), React.createElement("div", {
     className: "hdr-row2"
   }, isCallMode && _showRank ? (() => {
     var _hdrDelIds = _getDelIds();
@@ -34264,7 +34184,44 @@ WHERE p.id IS NULL;`;
       fontWeight: 900,
       border: '1px solid rgba(99,102,241,.3)'
     }
-  }, "Open setup")))), React.createElement(Modal, {
+  }, "Open setup")))), avatarMenuOpen && (typeof ReactDOM !== 'undefined' && ReactDOM.createPortal ? ReactDOM.createPortal((() => {
+    var _isCreator = isCreatorUser || isCreator(window._user?.email || '');
+    return React.createElement("div", {
+      onClick: () => setAvatarMenuOpen(false),
+      style: { position: 'fixed', inset: 0, zIndex: 1499, background: 'transparent' }
+    }, React.createElement("div", {
+      className: "avatar-menu",
+      onClick: e => e.stopPropagation(),
+      style: { top: avatarMenuPos.top, right: avatarMenuPos.right }
+    }, React.createElement("div", { className: "am-name" },
+      React.createElement("div", { className: "n" }, userName || 'User'),
+      React.createElement("div", { className: "e" }, (_user?.email || window._user?.email || ''))
+    ), _isCreator && React.createElement("button", {
+      onClick: () => {
+        setAvatarMenuOpen(false);
+        setShowApprovalModal(true);
+        if (_SB) _SB.from('profiles').select('*').then(r => {
+          if (r.data) {
+            setPendingUsers(r.data.filter(u => !u.approved && !isCreator(u.email)));
+            setUsersList(r.data);
+          }
+        }).catch(e => console.warn('[Users]', e));
+      }
+    }, React.createElement("span", { className: "ico" }, "👥"), "Users & approvals", pendingUsers.length > 0 && React.createElement("span", { className: "badge" }, pendingUsers.length)),
+    React.createElement("button", {
+      onClick: () => { setAvatarMenuOpen(false); setShowActivityDrawer(true); }
+    }, React.createElement("span", { className: "ico" }, "◴"), "Activity & undo", hasActionActivity && React.createElement("span", { className: "badge warn" }, "•")),
+    React.createElement("button", {
+      onClick: () => { setAvatarMenuOpen(false); setShowHelp(true); }
+    }, React.createElement("span", { className: "ico" }, "?"), "Help & shortcuts"),
+    React.createElement("button", {
+      className: "danger",
+      onClick: async () => {
+        setAvatarMenuOpen(false);
+        if (await confirmAsync('Sign out of AutoDial?', { title: 'Sign out', confirmLabel: 'Sign out' })) authLogout();
+      }
+    }, React.createElement("span", { className: "ico" }, "⏏"), "Sign out")));
+  })(), document.body) : null), React.createElement(Modal, {
     show: !!dialogRequest,
     onClose: () => resolveDialog(dialogRequest?.kind === 'confirm' ? false : null),
     align: "center",
