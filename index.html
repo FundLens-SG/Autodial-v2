@@ -215,10 +215,10 @@ button.free-slot{appearance:none;text-align:left}
 .analytics-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px}
 .dupe-card{background:linear-gradient(135deg,rgba(248,81,73,.05),transparent)}
 @media(max-width:959px){.script-panel{display:none!important}.script-toggle{display:none!important}}
-.hdr-row1{position:relative;z-index:80;display:flex;align-items:center;gap:8px;padding:14px 14px 0;flex-wrap:wrap;min-height:46px;contain:layout}
+.hdr-row1{position:relative;z-index:160;display:flex;align-items:center;gap:8px;padding:14px 14px 0;flex-wrap:wrap;min-height:46px;contain:layout}
 .hdr-row1>button{flex-shrink:0}
 .hdr-row1>.pill{flex:0 0 auto;min-width:72px;max-width:104px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hdr-row1 button,.hdr-row2 button,.app-tabs button{pointer-events:auto;touch-action:manipulation}
+.hdr-row1 button,.hdr-row2 button,.app-tabs button{position:relative;z-index:2;pointer-events:auto;touch-action:manipulation}
 .hdr-row2{position:relative;z-index:70;display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px;gap:10px;min-height:44px;contain:layout}
 .app-tabs{position:relative;z-index:60;display:flex;padding:8px 14px 10px;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:1px solid var(--border);background:var(--bg);margin-bottom:8px;min-height:62px;contain:layout}
 .app-tabs::-webkit-scrollbar{display:none}
@@ -340,7 +340,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0010';
+window.APP_VERSION='2026.05.02.0011';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -2862,7 +2862,7 @@ var MODAL_OVERLAY = {
   position: 'fixed',
   inset: 0,
   background: 'rgba(0,0,0,.8)',
-  zIndex: 100,
+  zIndex: 1000,
   display: 'flex',
   alignItems: 'flex-end',
   justifyContent: 'center'
@@ -2908,6 +2908,7 @@ function Modal({
   var _alignItems = _pane && align === 'bottom' ? 'flex-start' : _ai;
   var _justifyContent = _pane && align === 'bottom' ? 'flex-end' : 'center';
   var _padding = _pane && align === 'bottom' ? '136px 14px 0' : align === 'stretch' ? 0 : padding;
+  var _modalZIndex = zIndex >= 1000 ? zIndex : zIndex + 1000;
   var content = React.createElement("div", {
     onClick: overlay ? onClose : undefined,
     style: {
@@ -2918,7 +2919,7 @@ function Modal({
       left: _pane ? 'var(--app-side-margin)' : undefined,
       width: _pane ? 'var(--left-pane-w)' : undefined,
       background: overlay ? 'rgba(0,0,0,' + bg + ')' : 'transparent',
-      zIndex,
+      zIndex: _modalZIndex,
       display: 'flex',
       alignItems: overlay ? _alignItems : 'flex-start',
       justifyContent: overlay ? _justifyContent : 'flex-start',
@@ -11825,6 +11826,28 @@ function App() {
     toast('Skipped ' + (skipped?.name || skipped?.phone || 'lead'));
     proceedToLead(nextIdx);
   }, [running, curIdx, dialFilters, releaseClaim, proceedToLead]);
+  var ensureCallbackLookupOpen = useCallback(reset => {
+    var curLeads = leadsRef.current || [];
+    var existing = callbackBookmark || {};
+    var existingIdx = existing.idx >= 0 ? existing.idx : -1;
+    var existingPhone = normalizePhone(existing.phone || '');
+    var existingValid = existingIdx >= 0 && curLeads[existingIdx] && (!existingPhone || normalizePhone(curLeads[existingIdx].phone || '') === existingPhone);
+    var idx = existingValid ? existingIdx : curIdx;
+    var lead = idx >= 0 && idx < curLeads.length ? curLeads[idx] : null;
+    callbackReturnIdxRef.current = lead ? idx : -1;
+    if (lead && !existingValid) setCallbackBookmark({
+      idx,
+      name: lead.name || '',
+      phone: lead.phone || '',
+      ts: Date.now()
+    });
+    if (reset) {
+      setCallbackLookupQuery('');
+      setCallbackLookupLeadIdx(-1);
+      setCallbackLookupStatus('cb');
+    }
+    setCallbackLookupOpen(true);
+  }, [curIdx, callbackBookmark]);
   var returnToCallbackBookmark = useCallback(() => {
     var bm = callbackBookmark || {};
     var curLeads = leadsRef.current || [];
@@ -11849,30 +11872,8 @@ function App() {
     toast('Back to calling lead: ' + (curLeads[idx].name || curLeads[idx].phone || 'lead'));
   }, [callbackBookmark]);
   var openCallbackLookup = useCallback(() => {
-    var curLeads = leadsRef.current || [];
-    var existing = callbackBookmark || {};
-    var existingIdx = existing.idx >= 0 ? existing.idx : -1;
-    var existingPhone = normalizePhone(existing.phone || '');
-    var existingValid = existingIdx >= 0 && curLeads[existingIdx] && (!existingPhone || normalizePhone(curLeads[existingIdx].phone || '') === existingPhone);
-    var idx = existingValid ? existingIdx : curIdx;
-    var lead = idx >= 0 && idx < curLeads.length ? curLeads[idx] : null;
-    callbackReturnIdxRef.current = lead ? idx : -1;
-    if (lead) setCallbackBookmark({
-      idx,
-      name: lead.name || '',
-      phone: lead.phone || '',
-      ts: Date.now()
-    });
-    setCallbackLookupOpen(p => {
-      var next = !p;
-      if (next) {
-        setCallbackLookupQuery('');
-        setCallbackLookupLeadIdx(-1);
-        setCallbackLookupStatus('cb');
-      }
-      return next;
-    });
-  }, [curIdx, callbackBookmark]);
+    if (callbackLookupOpen) setCallbackLookupOpen(false);else ensureCallbackLookupOpen(true);
+  }, [callbackLookupOpen, ensureCallbackLookupOpen]);
   var applyCallbackLookupStatus = useCallback(async () => {
     var curLeads = leadsRef.current || [];
     var targetIdx = callbackLookupLeadIdx;
@@ -13072,6 +13073,14 @@ function App() {
   };
   var incompleteApptAlerts = (appointments || []).filter(_isIncompleteSetAppt).sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)).slice(0, 5);
   var hasActionActivity = !!(syncTrail.length || undoInfo || importReview || incompleteApptAlerts.length);
+  var showCallbackReturnButton = (() => {
+    if (!callbackBookmark || callbackBookmark.idx < 0 || !session || session.ended) return false;
+    var curLeadForBookmark = curIdx >= 0 ? leads[curIdx] : null;
+    var bmPhone = normalizePhone(callbackBookmark.phone || '');
+    if (curIdx === callbackBookmark.idx) return false;
+    if (bmPhone && normalizePhone(curLeadForBookmark?.phone || '') === bmPhone) return false;
+    return true;
+  })();
   var runHeaderAction = useCallback(async action => {
     var now = Date.now();
     var prev = headerTapGuardRef.current || {};
@@ -13115,6 +13124,29 @@ function App() {
       })) authLogout();
     }
   }, [confirmAsync, flushSheetQueue]);
+  useEffect(() => {
+    var hardHeaderTap = e => {
+      var target = e.target;
+      var button = target?.closest ? target.closest('[data-header-action]') : null;
+      if (!button || button.disabled) return;
+      var row = button.closest('.hdr-row1');
+      if (!row) return;
+      var action = button.getAttribute('data-header-action');
+      if (!action) return;
+      e.preventDefault?.();
+      e.stopPropagation?.();
+      e.stopImmediatePropagation?.();
+      runHeaderAction(action);
+    };
+    document.addEventListener('pointerdown', hardHeaderTap, true);
+    document.addEventListener('mousedown', hardHeaderTap, true);
+    document.addEventListener('click', hardHeaderTap, true);
+    return () => {
+      document.removeEventListener('pointerdown', hardHeaderTap, true);
+      document.removeEventListener('mousedown', hardHeaderTap, true);
+      document.removeEventListener('click', hardHeaderTap, true);
+    };
+  }, [runHeaderAction]);
   var handleHeaderControlCapture = useCallback(e => {
     var target = e.target;
     var button = target?.closest ? target.closest('[data-header-action]') : null;
@@ -13276,6 +13308,7 @@ function App() {
     onClose: () => setMilestone(null)
   })), React.createElement("div", {
     className: "hdr-row1",
+    onPointerDownCapture: handleHeaderControlCapture,
     onPointerUpCapture: handleHeaderControlCapture,
     onClickCapture: handleHeaderControlCapture,
     onTouchEndCapture: handleHeaderControlCapture
@@ -14409,7 +14442,27 @@ function App() {
       fontWeight: 900,
       border: '1px solid var(--border)'
     }
-  }, "Close")), callbackLookupOpen && (() => {
+  }, "Close")), session && !session.ended && React.createElement("input", {
+    value: callbackLookupQuery,
+    onFocus: () => ensureCallbackLookupOpen(false),
+    onChange: e => {
+      ensureCallbackLookupOpen(false);
+      setCallbackLookupQuery(e.target.value);
+      setCallbackLookupLeadIdx(-1);
+    },
+    placeholder: "Search callback lead by name or phone...",
+    style: {
+      width: '100%',
+      padding: '12px',
+      borderRadius: 12,
+      background: 'var(--bg)',
+      border: '1px solid rgba(240,180,41,.30)',
+      color: 'var(--text)',
+      fontSize: 14,
+      margin: '0 0 8px',
+      boxShadow: callbackLookupOpen ? '0 0 0 1px rgba(240,180,41,.18)' : 'none'
+    }
+  }), callbackLookupOpen && (() => {
     var q = String(callbackLookupQuery || '').trim().toLowerCase();
     var rows = (leads || []).map((lead, idx) => ({
       lead,
@@ -14436,25 +14489,7 @@ function App() {
         color: 'var(--text3)',
         fontWeight: 800
       }
-    }, "Search the active lead sheet, update the callback lead, then return to ", cur?.name || 'current lead', "."), React.createElement("input", {
-      value: callbackLookupQuery,
-      onChange: e => {
-        setCallbackLookupQuery(e.target.value);
-        setCallbackLookupLeadIdx(-1);
-      },
-      placeholder: "Search name or phone number...",
-      autoFocus: true,
-      style: {
-        width: '100%',
-        padding: '12px',
-        borderRadius: 12,
-        background: 'var(--bg)',
-        border: '1px solid var(--border)',
-        color: 'var(--text)',
-        fontSize: 14,
-        marginBottom: 8
-      }
-    }), React.createElement("div", {
+    }, "Search the active lead sheet, update the callback lead, then return to ", cur?.name || 'current lead', "."), React.createElement("div", {
       style: {
         display: 'grid',
         gap: 6,
@@ -14547,7 +14582,7 @@ function App() {
         opacity: callbackLookupBusy ? .65 : 1
       }
     }, callbackLookupBusy ? 'Updating...' : picked ? 'Update ' + (picked.name || picked.phone || 'lead') + ' as ' + callbackLookupStatus.toUpperCase() : 'Select lead to update'));
-  })(), callbackBookmark && callbackBookmark.idx >= 0 && session && !session.ended && React.createElement("button", {
+  })(), showCallbackReturnButton && React.createElement("button", {
     onClick: returnToCallbackBookmark,
     style: {
       width: '100%',
