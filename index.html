@@ -13196,9 +13196,10 @@ function App() {
   var guidedSetupItems = buildGuidedSetupItems();
   var guidedDoneCount = guidedSetupItems.filter(x => x.done).length;
   var guidedSetupComplete = guidedDoneCount === guidedSetupItems.length;
-  var _prefsTabLabel = isManageMode ? 'Templates' : 'Calling';
-  var settingsAllTabs = [['setup', 'Setup'], ['prefs', _prefsTabLabel], ['integr', role === 'admin' ? 'Linked' : 'Connect'], ['data', 'Sync'], ...(isManageMode ? [['team', 'Team']] : []), ...(isCreatorUser ? [['owner', 'Owner']] : [])];
-  var settingsRoleTabs = settingsShowAll ? settingsAllTabs : role === 'admin' ? [['setup', 'Setup'], ['integr', 'Linked'], ['prefs', 'Templates']] : isManageMode ? [['setup', 'Setup'], ['team', 'Team'], ['prefs', 'Templates'], ['integr', 'Connect'], ['data', 'Sync'], ...(isCreatorUser ? [['owner', 'Owner']] : [])] : [['setup', 'Setup'], ['prefs', 'Calling'], ['integr', 'Connect'], ['data', 'Sync']];
+  var _prefsTabLabel = 'Calling';
+  var _integrTabLabel = role === 'admin' ? 'AI & Sheets' : 'Integrations';
+  var settingsAllTabs = [['setup', 'Setup'], ['prefs', _prefsTabLabel], ['integr', _integrTabLabel], ['data', 'Sync'], ...(isManageMode ? [['team', 'Team']] : []), ...(isCreatorUser ? [['owner', 'Owner']] : [])];
+  var settingsRoleTabs = settingsShowAll ? settingsAllTabs : role === 'admin' ? [['setup', 'Setup'], ['integr', _integrTabLabel], ['prefs', _prefsTabLabel]] : isManageMode ? [['setup', 'Setup'], ['team', 'Team'], ['prefs', _prefsTabLabel], ['integr', _integrTabLabel], ['data', 'Sync'], ...(isCreatorUser ? [['owner', 'Owner']] : [])] : [['setup', 'Setup'], ['prefs', _prefsTabLabel], ['integr', _integrTabLabel], ['data', 'Sync']];
   useEffect(() => {
     if (tab !== 'settings') return;
     if (settingsRoleTabs.some(([k]) => k === settingsSubtab)) return;
