@@ -340,7 +340,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0011';
+window.APP_VERSION='2026.05.02.0012';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -2913,11 +2913,12 @@ function Modal({
     onClick: overlay ? onClose : undefined,
     style: {
       position: 'fixed',
-      inset: _pane ? undefined : 0,
-      top: _pane ? 0 : undefined,
-      bottom: _pane ? 0 : undefined,
-      left: _pane ? 'var(--app-side-margin)' : undefined,
-      width: _pane ? 'var(--left-pane-w)' : undefined,
+      // Use only one positioning shape so React never clears longhand sides after `inset`
+      // expands into them. Mixing `inset:0` with `top/bottom/left:undefined` previously
+      // left only `right:0` set, dropping the overlay below the viewport.
+      ...(_pane
+        ? { top: 0, bottom: 0, left: 'var(--app-side-margin)', width: 'var(--left-pane-w)' }
+        : { top: 0, right: 0, bottom: 0, left: 0 }),
       background: overlay ? 'rgba(0,0,0,' + bg + ')' : 'transparent',
       zIndex: _modalZIndex,
       display: 'flex',
