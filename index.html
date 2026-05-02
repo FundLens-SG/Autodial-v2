@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0007';
+window.APP_VERSION='2026.05.03.0008';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -7238,6 +7238,14 @@ function App() {
       }
       return;
     }
+    // ═══ Only treat this as a "manager unlinked you" event when the admin's
+    // shared config is explicitly marked _revoked by the manager. A merely-
+    // missing/empty timesheetId is a transient state during boot or sync and
+    // should NOT trigger the destructive toast + cleanup — that flow used to
+    // fire repeatedly during sign-in even when the manager hadn't unlinked
+    // anything, because adminConfigs[myEmail] arrives a tick after
+    // adminCfgVerified flips to true.
+    if (!adminOwnedCfg?._revoked) return;
     var hadCallableState = leads.length || running || phase !== 'idle' || curIdx !== -1 || cfg.sheetId || cfg.sheetTab;
     if (hadCallableState) toast('Manager unlinked your leads sheet - calling stopped', 'err');
     setRunning(false);
@@ -7281,7 +7289,7 @@ function App() {
         }).then(function () {}, function () {});
       } catch (e) {}
     }
-  }, [role, adminCfgVerified, adminLeadLinked, adminOwnedCfg?.timesheetId, adminOwnedCfg?.sheetTab, leads.length, running, phase, curIdx, cfg.sheetId, cfg.sheetTab, myEmail]);
+  }, [role, adminCfgVerified, adminLeadLinked, adminOwnedCfg?.timesheetId, adminOwnedCfg?.sheetTab, adminOwnedCfg?._revoked, leads.length, running, phase, curIdx, cfg.sheetId, cfg.sheetTab, myEmail]);
   var n = (v, def) => {
     try {
       return v === '' || v === null || v === undefined || isNaN(+v) ? def : +v;
@@ -13235,9 +13243,18 @@ function App() {
     if (settingsRoleTabs.some(([k]) => k === settingsSubtab)) return;
     setSettingsSubtab(settingsRoleTabs[0]?.[0] || 'setup');
   }, [tab, settingsSubtab, settingsShowAll, settingsSimplified, role, mainMode, isCreatorUser]);
+  var _guidedCompleteRef = useRef(guidedSetupComplete);
+  useEffect(() => {
+    _guidedCompleteRef.current = guidedSetupComplete;
+  }, [guidedSetupComplete]);
   useEffect(() => {
     if (setupWizardDismissed || guidedSetupComplete) return;
-    var t = setTimeout(() => setShowSetupWizard(true), 700);
+    // ═══ Wait long enough for shared admin/manager configs to sync from Supabase
+    // ═══ before deciding the setup is incomplete. Re-check via ref at fire time
+    // ═══ so we don't pop the wizard if the items finished loading mid-wait.
+    var t = setTimeout(() => {
+      if (!_guidedCompleteRef.current) setShowSetupWizard(true);
+    }, 3500);
     return () => clearTimeout(t);
   }, [setupWizardDismissed, guidedSetupComplete, role, mainMode]);
   var readiness = getReadiness(cur);
