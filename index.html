@@ -340,7 +340,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0014';
+window.APP_VERSION='2026.05.02.0015';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -2233,6 +2233,32 @@ function _sanitizeAdminCfgs(raw) {
     }
   });
   return cleaned;
+}
+function _mergeAdminCfgsByFreshness(local, incoming) {
+  var base = _sanitizeAdminCfgs(local);
+  var remote = _sanitizeAdminCfgs(incoming);
+  var out = {
+    ...base
+  };
+  var keep = (target, source, keys) => keys.forEach(k => {
+    if (source[k] !== undefined) target[k] = source[k];
+  });
+  Object.keys(remote).forEach(em => {
+    var prev = base[em] || {};
+    var inc = remote[em] || {};
+    var merged = {
+      ...prev,
+      ...inc
+    };
+    if (Number(prev.waTemplateShareUpdatedAt || 0) > Number(inc.waTemplateShareUpdatedAt || 0)) {
+      keep(merged, prev, ['shareWaTemplates', 'waTemplateShareIds', 'waTemplateShareNames', 'waTemplateShareData', 'waTemplateShareUpdatedAt']);
+    }
+    if (Number(prev.scriptShareUpdatedAt || 0) > Number(inc.scriptShareUpdatedAt || 0)) {
+      keep(merged, prev, ['shareScript', 'scriptShareVersionId', 'scriptShareName', 'scriptShareUpdatedAt']);
+    }
+    out[em] = merged;
+  });
+  return out;
 }
 function _escapeHtml(v) {
   return String(v == null ? '' : v).replace(/[&<>"']/g, function (ch) {
@@ -7586,33 +7612,57 @@ function App() {
     var ids = selected.map(_waTplKey);
     var names = selected.map(t => t.name).join(', ');
     var ts = Date.now();
-    setAdminConfigs(prev => {
-      var next = {
-        ...prev
+    var nextConfigs = {
+      ...(adminConfigs || {})
+    };
+    targets.forEach(em => {
+      nextConfigs[em] = {
+        ...(nextConfigs[em] || {}),
+        shareWaTemplates: true,
+        waTemplateShareIds: ids,
+        waTemplateShareNames: names,
+        waTemplateShareData: selected,
+        waTemplateShareUpdatedAt: ts
       };
-      targets.forEach(em => {
-        next[em] = {
-          ...(next[em] || {}),
-          shareWaTemplates: true,
-          waTemplateShareIds: ids,
-          waTemplateShareNames: names,
-          waTemplateShareUpdatedAt: ts
-        };
-      });
-      publishAdminConfigs(next);
-      return next;
+    });
+    setAdminConfigs(prev => {
+      var merged = _mergeAdminCfgsByFreshness(prev, nextConfigs);
+      publishAdminConfigs(merged);
+      return merged;
     });
     if (!_SB) {
       toast('Saved locally. Cloud is not ready yet.', 'err');
       return;
     }
     try {
-      await Promise.all(targets.map(em => _SB.from('autodial_admin_config').upsert({
+      var assertOk = res => {
+        if (res && res.error) throw res.error;
+      };
+      var writes = targets.flatMap(em => [_SB.from('autodial_admin_config').upsert({
         admin_email: 'watpl_' + em,
         biz_name: JSON.stringify(selected)
       }, {
         onConflict: 'admin_email'
-      })));
+      }).then(assertOk), _SB.from('autodial_admin_config').upsert({
+        admin_email: 'shared_admincfg_' + em,
+        biz_name: JSON.stringify(nextConfigs[em])
+      }, {
+        onConflict: 'admin_email'
+      }).then(assertOk)]);
+      var writeResults = await Promise.allSettled(writes);
+      if (writeResults.every(r => r.status === 'rejected')) throw writeResults[0].reason;
+      if (writeResults.some(r => r.status === 'rejected')) console.warn('[WA share partial]', writeResults.filter(r => r.status === 'rejected').map(r => r.reason?.message || r.reason).join('; '));
+      if (_user?.email) await _SB.from('autodial_admin_config').upsert({
+        admin_email: 'acfg_' + _user.email.toLowerCase(),
+        biz_name: JSON.stringify({
+          data: nextConfigs,
+          ts,
+          devId: window._devId
+        })
+      }, {
+        onConflict: 'admin_email'
+      }).then(assertOk);
+      if (window.CloudSync?._userId) await CloudSync.saveNow('adminConfigs', nextConfigs);
       toast('Shared WhatsApp template with ' + targets.length + ' admin' + (targets.length === 1 ? '' : 's'));
       try {
         window._bumpSyncVer && window._bumpSyncVer();
@@ -7620,37 +7670,59 @@ function App() {
     } catch (e) {
       toast('Template share failed: ' + (e?.message || e), 'err');
     }
-  }, [_selectedWATemplates]);
+  }, [_selectedWATemplates, adminConfigs, myEmail]);
   var stopWATemplateShareForAdmins = useCallback(async emails => {
     var targets = (emails || []).map(e => (e || '').toLowerCase()).filter(e => e && e.includes('@'));
     if (!targets.length) return;
     var ts = Date.now();
-    setAdminConfigs(prev => {
-      var next = {
-        ...prev
+    var nextConfigs = {
+      ...(adminConfigs || {})
+    };
+    targets.forEach(em => {
+      nextConfigs[em] = {
+        ...(nextConfigs[em] || {}),
+        shareWaTemplates: false,
+        waTemplateShareIds: [],
+        waTemplateShareNames: '',
+        waTemplateShareData: [],
+        waTemplateShareUpdatedAt: ts
       };
-      targets.forEach(em => {
-        next[em] = {
-          ...(next[em] || {}),
-          shareWaTemplates: false,
-          waTemplateShareIds: [],
-          waTemplateShareNames: '',
-          waTemplateShareUpdatedAt: ts
-        };
-      });
-      publishAdminConfigs(next);
-      return next;
+    });
+    setAdminConfigs(prev => {
+      var merged = _mergeAdminCfgsByFreshness(prev, nextConfigs);
+      publishAdminConfigs(merged);
+      return merged;
     });
     if (_SB) {
-      await Promise.all(targets.map(em => _SB.from('autodial_admin_config').upsert({
+      var assertOk = res => {
+        if (res && res.error) throw res.error;
+      };
+      await Promise.all(targets.flatMap(em => [_SB.from('autodial_admin_config').upsert({
         admin_email: 'watpl_' + em,
         biz_name: JSON.stringify([])
       }, {
         onConflict: 'admin_email'
-      }).catch(() => {})));
+      }).then(assertOk), _SB.from('autodial_admin_config').upsert({
+        admin_email: 'shared_admincfg_' + em,
+        biz_name: JSON.stringify(nextConfigs[em])
+      }, {
+        onConflict: 'admin_email'
+      }).then(assertOk)]).map(p => p.catch(e => {
+        console.warn('[WA unshare]', e?.message || e);
+      })));
+      if (_user?.email) await _SB.from('autodial_admin_config').upsert({
+        admin_email: 'acfg_' + _user.email.toLowerCase(),
+        biz_name: JSON.stringify({
+          data: nextConfigs,
+          ts,
+          devId: window._devId
+        })
+      }, {
+        onConflict: 'admin_email'
+      }).catch(() => {});
     }
     toast('Stopped WhatsApp template sharing for ' + targets.length + ' admin' + (targets.length === 1 ? '' : 's'));
-  }, []);
+  }, [adminConfigs, myEmail]);
   var applySharedScriptPayload = useCallback(s => {
     if (!s) return;
     if (s._disabled) {
@@ -8396,6 +8468,9 @@ function App() {
                     ...p,
                     [myEmail]: Object.assign({}, p[myEmail] || {}, myCfgFromMain)
                   }));
+                  if (myCfgFromMain.shareWaTemplates && Array.isArray(myCfgFromMain.waTemplateShareData) && myCfgFromMain.waTemplateShareData.length) {
+                    setWaTemplates(myCfgFromMain.waTemplateShareData);
+                  }
                   DBG('[AutoDial] Loaded config from Main:', Object.keys(myCfgFromMain));
                 } catch (pe) {}
               } else {
@@ -8622,7 +8697,7 @@ function App() {
           }
           if (cloud.adminConfigs && !Object.keys(adminConfigs).length) {
             var _cleaned = _sanitizeAdminCfgs(cloud.adminConfigs);
-            if (Object.keys(_cleaned).length) setAdminConfigs(_cleaned);
+            if (Object.keys(_cleaned).length) setAdminConfigs(prev => _mergeAdminCfgsByFreshness(prev, _cleaned));
           }
           if (cloud.userState?.slogClear) applySessionClearMeta(cloud.userState.slogClear);
           if (cloud.sessions?.length && !sessionLog.length) {
@@ -8703,7 +8778,7 @@ function App() {
         }));
         if (!Object.keys(adminConfigs).length || Object.values(adminConfigs).every(v => !v || !Object.keys(v).length)) _hsJobs.push(_hs('acfg_' + myEmail, d => {
           var _cleaned = _sanitizeAdminCfgs(d);
-          if (Object.keys(_cleaned).length) setAdminConfigs(_cleaned);
+          if (Object.keys(_cleaned).length) setAdminConfigs(prev => _mergeAdminCfgsByFreshness(prev, _cleaned));
         }));
         _hsJobs.push(_hs('apptdur_' + myEmail, d => {
           if (load('apptDur') === null && d.dur) setApptDuration(_slotMinutes(d.dur, 60, 1, 480));
@@ -9589,6 +9664,11 @@ function App() {
           ...p,
           [me]: Object.assign({}, p[me] || {}, clean)
         }));
+        if (clean.shareWaTemplates && Array.isArray(clean.waTemplateShareData) && clean.waTemplateShareData.length) {
+          setWaTemplates(clean.waTemplateShareData);
+        } else if (clean.shareWaTemplates === false) {
+          setWaTemplates([]);
+        }
         DBG('[AdminCfg] live shared config applied', _adminLeadAccessLinked(clean) ? 'linked' : 'unlinked');
       } catch (e) {
         console.warn('[AdminCfg live]', e?.message || e);
@@ -9837,7 +9917,7 @@ function App() {
       apply: p => {
         if (p?.data && typeof p.data === 'object') {
           var _cleaned = _sanitizeAdminCfgs(p.data);
-          if (Object.keys(_cleaned).length) setAdminConfigs(_cleaned);
+          if (Object.keys(_cleaned).length) setAdminConfigs(prev => _mergeAdminCfgsByFreshness(prev, _cleaned));
         }
       }
     }, {
@@ -10545,7 +10625,7 @@ function App() {
         }, {
           onConflict: 'admin_email'
         });
-        setAdminConfigs(cleanedAdmins);
+        setAdminConfigs(prev => _mergeAdminCfgsByFreshness(prev, cleanedAdmins));
         DBG('[acfg scrub] cleaned cloud row, ' + Object.keys(cleanedAdmins).length + ' real admins preserved');
         toast('🧹 Cleaned up ' + Object.keys(rawActual || {}).length + ' corrupted admin entries', 'info');
       } catch (e) {
