@@ -340,7 +340,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0009';
+window.APP_VERSION='2026.05.02.0010';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -4811,6 +4811,7 @@ function App() {
   var [callbackLookupLeadIdx, setCallbackLookupLeadIdx] = useState(-1);
   var [callbackLookupStatus, setCallbackLookupStatus] = useState('cb');
   var [callbackLookupBusy, setCallbackLookupBusy] = useState(false);
+  var [callbackBookmark, setCallbackBookmark] = useState(null);
   var [showAppt, setShowAppt] = useState(false);
   var [setDone, setSetDone] = useState(false);
   var autoAdvanceTimerRef = useRef(null);
@@ -4843,8 +4844,10 @@ function App() {
         apptSheetRange: _pending.apptSheetRange || '',
         calendarId: _pending.calendarId || 'primary'
       };
+      var _callbackSetReturn = appStateRef.current._pendingCallbackSetReturn || null;
       appStateRef.current._pendingSetCalEventId = null;
       appStateRef.current._pendingSetUndoBase = null;
+      appStateRef.current._pendingCallbackSetReturn = null;
       setUndoInfo({
         leadIdx: _baseUndo.leadIdx ?? li,
         name: leads[_baseUndo.leadIdx ?? li]?.name || '',
@@ -4852,6 +4855,34 @@ function App() {
         ts: Date.now(),
         detail: 'Undo will revert lead status, calendar, Supabase, and sheets where possible.'
       });
+      var _returnAfterCallbackSet = () => {
+        autoAdvanceTimerRef.current = null;
+        setShowPostCall(null);
+        setShowNextPreview(false);
+        var idx = _callbackSetReturn?.idx >= 0 ? _callbackSetReturn.idx : -1;
+        var phone = normalizePhone(_callbackSetReturn?.phone || '');
+        if ((idx < 0 || !leadsRef.current[idx] || phone && normalizePhone(leadsRef.current[idx].phone || '') !== phone) && phone) {
+          idx = leadsRef.current.findIndex(l => normalizePhone(l.phone || '') === phone);
+        }
+        if (idx >= 0 && leadsRef.current[idx]) {
+          setCurIdx(idx);
+          setRunning(true);
+          setPhase('calling');
+          toast('Back to calling lead: ' + (leadsRef.current[idx].name || leadsRef.current[idx].phone || 'lead'));
+        }
+      };
+      if (_callbackSetReturn) {
+        if (showWA) {
+          _advanceAfterWARef.current = _returnAfterCallbackSet;
+        } else {
+          var _returnTimer = setTimeout(_returnAfterCallbackSet, 200);
+          autoAdvanceTimerRef.current = _returnTimer;
+          return () => {
+            clearTimeout(_returnTimer);
+            if (autoAdvanceTimerRef.current === _returnTimer) autoAdvanceTimerRef.current = null;
+          };
+        }
+      }
       var _advance = () => {
         autoAdvanceTimerRef.current = null;
         setShowPostCall(null);
@@ -6968,8 +6999,13 @@ function App() {
     setShowPostCall(null);
     setShowNextPreview(false);
     setNextPreviewIdx(-1);
-    if (u.leadIdx >= 0) {
-      setCurIdx(u.leadIdx);
+    var restoreIdx = u.callbackReturnIdx >= 0 ? u.callbackReturnIdx : u.leadIdx;
+    var restorePhone = normalizePhone(u.callbackReturnPhone || '');
+    if ((restoreIdx < 0 || !leadsRef.current[restoreIdx] || restorePhone && normalizePhone(leadsRef.current[restoreIdx].phone || '') !== restorePhone) && restorePhone) {
+      restoreIdx = leadsRef.current.findIndex(l => normalizePhone(l.phone || '') === restorePhone);
+    }
+    if (restoreIdx >= 0) {
+      setCurIdx(restoreIdx);
       setPhase('calling');
       setRunning(true);
     }
@@ -11772,6 +11808,8 @@ function App() {
     var curLeads = leadsRef.current || [];
     if (!running || curIdx < 0 || curIdx >= curLeads.length) return;
     var skipped = curLeads[curIdx];
+    callbackReturnIdxRef.current = -1;
+    setCallbackBookmark(null);
     var nextIdx = getNextDialable(curLeads, curIdx, {
       ...dialFilters()
     });
@@ -11787,8 +11825,44 @@ function App() {
     toast('Skipped ' + (skipped?.name || skipped?.phone || 'lead'));
     proceedToLead(nextIdx);
   }, [running, curIdx, dialFilters, releaseClaim, proceedToLead]);
+  var returnToCallbackBookmark = useCallback(() => {
+    var bm = callbackBookmark || {};
+    var curLeads = leadsRef.current || [];
+    var idx = bm.idx >= 0 ? bm.idx : -1;
+    var phone = normalizePhone(bm.phone || '');
+    if ((idx < 0 || !curLeads[idx] || phone && normalizePhone(curLeads[idx].phone || '') !== phone) && phone) {
+      idx = curLeads.findIndex(l => normalizePhone(l.phone || '') === phone);
+    }
+    if (idx < 0 || !curLeads[idx]) {
+      toast('Bookmarked lead is no longer in this sheet', 'err');
+      setCallbackBookmark(null);
+      callbackReturnIdxRef.current = -1;
+      return;
+    }
+    callbackReturnIdxRef.current = idx;
+    setCurIdx(idx);
+    setRunning(true);
+    setPhase('calling');
+    setShowNextPreview(false);
+    setShowPostCall(null);
+    setCallbackLookupOpen(false);
+    toast('Back to calling lead: ' + (curLeads[idx].name || curLeads[idx].phone || 'lead'));
+  }, [callbackBookmark]);
   var openCallbackLookup = useCallback(() => {
-    callbackReturnIdxRef.current = curIdx;
+    var curLeads = leadsRef.current || [];
+    var existing = callbackBookmark || {};
+    var existingIdx = existing.idx >= 0 ? existing.idx : -1;
+    var existingPhone = normalizePhone(existing.phone || '');
+    var existingValid = existingIdx >= 0 && curLeads[existingIdx] && (!existingPhone || normalizePhone(curLeads[existingIdx].phone || '') === existingPhone);
+    var idx = existingValid ? existingIdx : curIdx;
+    var lead = idx >= 0 && idx < curLeads.length ? curLeads[idx] : null;
+    callbackReturnIdxRef.current = lead ? idx : -1;
+    if (lead) setCallbackBookmark({
+      idx,
+      name: lead.name || '',
+      phone: lead.phone || '',
+      ts: Date.now()
+    });
     setCallbackLookupOpen(p => {
       var next = !p;
       if (next) {
@@ -11798,7 +11872,7 @@ function App() {
       }
       return next;
     });
-  }, [curIdx]);
+  }, [curIdx, callbackBookmark]);
   var applyCallbackLookupStatus = useCallback(async () => {
     var curLeads = leadsRef.current || [];
     var targetIdx = callbackLookupLeadIdx;
@@ -11809,6 +11883,7 @@ function App() {
     }
     var status = callbackLookupStatus || 'cb';
     var returnIdx = callbackReturnIdxRef.current;
+    var returnLead = returnIdx >= 0 && returnIdx < curLeads.length ? curLeads[returnIdx] : null;
     setCallbackLookupBusy(true);
     var updatedTarget = null;
     var sheetStatus = status;
@@ -11861,6 +11936,9 @@ function App() {
         sheetRow: target.sheetRow || 0,
         sheetId: target._sourceSheetId || cfg.sheetId || '',
         sheetTab: target._sourceSheetTab || cfg.sheetTab || 'Sheet1',
+        callbackReturnIdx: returnIdx,
+        callbackReturnName: returnLead?.name || '',
+        callbackReturnPhone: returnLead?.phone || '',
         savedAt: new Date().toISOString()
       };
       setAppointments(p => {
@@ -11900,6 +11978,30 @@ function App() {
           _setUndo
         }];
       });
+      appStateRef.current._pendingSetUndoBase = _setUndo;
+      appStateRef.current._pendingCallbackSetReturn = {
+        idx: returnIdx,
+        name: returnLead?.name || '',
+        phone: returnLead?.phone || ''
+      };
+      setRescheduleTargetAppt(null);
+      setApptLead(updatedTarget);
+      var draft = _readApptDraft(updatedTarget) || {};
+      setApptShaky(draft.apptShaky ?? false);
+      setApptDate(draft.apptDate || '');
+      setApptTime(draft.apptTime || '');
+      setApptLocation(draft.apptLocation || '');
+      setApptObs(draft.apptObs || '');
+      setApptInvite(draft.apptInvite || '');
+      setApptTravelBefore(() => _slotMinutes(load('apptTravelBefore'), 0, 0, 240));
+      setApptSlotDuration(() => _slotMinutes(draft.apptSlotDuration ?? load('apptDur'), 60, 1, 480));
+      setApptTravelAfter(() => _slotMinutes(load('apptTravelAfter'), 0, 0, 240));
+      setPendingShakyKey(null);
+      setApptHardOverride(false);
+      setPickerCollapsed(false);
+      setPickerWeekIdx(0);
+      setShowAppt(true);
+      setSetDone(true);
     }
     try {
       DB.logAction(session?.id || null, _user?.id, 'callback_' + status, updatedTarget?.name || target.name, updatedTarget?.phone || target.phone, {
@@ -11936,6 +12038,34 @@ function App() {
         setTotalSets(p => p + 1);
       }
     }
+    if (status !== 'set') {
+      var _callbackUndo = {
+        leadIdx: targetIdx,
+        leadId: target.id,
+        leadName: target.name,
+        leadPhone: target.phone,
+        status,
+        prevStatus: target.status || 'pending',
+        prevNpCount: target.npCount || 0,
+        prevSheetValue: target.sheetValue || target.notes || '',
+        statusCol: target.statusCol,
+        sheetRow: target.sheetRow || 0,
+        sheetId: target._sourceSheetId || cfg.sheetId || '',
+        sheetTab: target._sourceSheetTab || cfg.sheetTab || 'Sheet1',
+        callbackReturnIdx: returnIdx,
+        callbackReturnName: returnLead?.name || '',
+        callbackReturnPhone: returnLead?.phone || '',
+        ts: Date.now()
+      };
+      appStateRef.current._lastUndo = _callbackUndo;
+      setUndoInfo({
+        leadIdx: targetIdx,
+        name: updatedTarget?.name || target.name || target.phone || 'callback lead',
+        status,
+        ts: _callbackUndo.ts,
+        detail: 'Callback lead update. Undo returns to the bookmarked calling lead.'
+      });
+    }
     if (returnIdx >= 0 && returnIdx < nextLeads.length) {
       setCurIdx(returnIdx);
       if (running) setPhase('calling');
@@ -11948,6 +12078,8 @@ function App() {
   }, [callbackLookupLeadIdx, callbackLookupStatus, myCfg.npMax, syncSheet, cfg.sheetId, cfg.sheetTab, myEmail, userName, role, mainMode, session, running]);
   var handleOutcome = useCallback((status, extra = {}) => {
     var leadIdx = curIdx;
+    callbackReturnIdxRef.current = -1;
+    setCallbackBookmark(null);
     if (status === 'pending') {
       var nextIdx = getNextDialable(leads, leadIdx, {
         ...dialFilters()
@@ -14415,7 +14547,20 @@ function App() {
         opacity: callbackLookupBusy ? .65 : 1
       }
     }, callbackLookupBusy ? 'Updating...' : picked ? 'Update ' + (picked.name || picked.phone || 'lead') + ' as ' + callbackLookupStatus.toUpperCase() : 'Select lead to update'));
-  })(), session && !session.ended && React.createElement("div", {
+  })(), callbackBookmark && callbackBookmark.idx >= 0 && session && !session.ended && React.createElement("button", {
+    onClick: returnToCallbackBookmark,
+    style: {
+      width: '100%',
+      padding: '10px 12px',
+      marginBottom: 8,
+      borderRadius: 12,
+      background: 'rgba(88,166,255,.12)',
+      color: 'var(--blue)',
+      fontSize: 12,
+      fontWeight: 900,
+      border: '1px solid rgba(88,166,255,.30)'
+    }
+  }, "Back to calling lead - ", callbackBookmark.name || callbackBookmark.phone || 'bookmarked lead'), session && !session.ended && React.createElement("div", {
     style: {
       display: 'grid',
       gridTemplateColumns: 'repeat(5,1fr)',
