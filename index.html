@@ -13832,37 +13832,41 @@ function App() {
         fontSize: 9,
         color: 'var(--text3)'
       }
-    }, "EFYC")))), React.createElement("div", {
-      style: {
-        display: 'grid',
-        gridTemplateColumns: 'repeat(4,1fr)',
-        gap: 6,
-        marginTop: 10
-      }
-    }, [['Live admins', liveAdmins.length], ['Pay due', '$' + _totalOwed.toFixed(0)], ['Weak callers', _weakCallers], ['Hot streaks', _hotStreaks]].map(([label, val]) => React.createElement("div", {
-      key: label,
-      style: {
-        padding: '7px 6px',
-        borderRadius: 8,
-        background: 'var(--bg)',
-        border: '1px solid var(--border)',
-        textAlign: 'center'
-      }
-    }, React.createElement("p", {
-      className: "mono",
-      style: {
-        margin: 0,
-        fontSize: 12,
-        fontWeight: 900,
-        color: label === 'Weak callers' && val > 0 ? 'var(--amber)' : label === 'Hot streaks' && val > 0 ? 'var(--green)' : 'var(--text)'
-      }
-    }, val), React.createElement("p", {
-      style: {
-        margin: '2px 0 0',
-        fontSize: 8,
-        color: 'var(--text3)'
-      }
-    }, label)))), React.createElement("h3", {
+    }, "EFYC")))), (() => {
+      var _tiles = [['Live admins', liveAdmins.length], ['Pay due', '$' + _totalOwed.toFixed(0)], ['Weak callers', _weakCallers], ['Hot streaks', _hotStreaks]].filter(([_lbl, _v]) => typeof _v === 'number' ? _v > 0 : (_v && _v !== '$0' && _v !== '0'));
+      if (!_tiles.length) return null;
+      return React.createElement("div", {
+        style: {
+          display: 'grid',
+          gridTemplateColumns: 'repeat(' + _tiles.length + ',1fr)',
+          gap: 6,
+          marginTop: 10
+        }
+      }, _tiles.map(([label, val]) => React.createElement("div", {
+        key: label,
+        style: {
+          padding: '7px 6px',
+          borderRadius: 8,
+          background: 'var(--bg)',
+          border: '1px solid var(--border)',
+          textAlign: 'center'
+        }
+      }, React.createElement("p", {
+        className: "mono",
+        style: {
+          margin: 0,
+          fontSize: 12,
+          fontWeight: 900,
+          color: label === 'Weak callers' && val > 0 ? 'var(--amber)' : label === 'Hot streaks' && val > 0 ? 'var(--green)' : 'var(--text)'
+        }
+      }, val), React.createElement("p", {
+        style: {
+          margin: '2px 0 0',
+          fontSize: 8,
+          color: 'var(--text3)'
+        }
+      }, label))));
+    })(), React.createElement("h3", {
       style: {
         fontSize: 13,
         fontWeight: 700,
@@ -14198,7 +14202,7 @@ function App() {
     }, "\u26A1 Quick Actions"), React.createElement("div", {
       style: {
         display: 'grid',
-        gridTemplateColumns: '1fr 1fr',
+        gridTemplateColumns: role === 'main' ? '1fr 1fr' : '1fr',
         gap: 8
       }
     }, React.createElement("button", {
@@ -14216,40 +14220,18 @@ function App() {
         fontWeight: 700,
         border: '1px solid rgba(99,102,241,.2)'
       }
-    }, "\uD83D\uDD17 Invite Admin"), React.createElement("button", {
-      onClick: () => setTab('timesheet'),
+    }, "\uD83D\uDD17 Invite Admin"), role === 'main' && React.createElement("button", {
+      onClick: () => { setMainMode('call'); setTab('dial'); },
       style: {
         padding: '12px',
         borderRadius: 12,
-        background: 'var(--gdim)',
+        background: 'linear-gradient(135deg,rgba(34,197,94,.18),rgba(16,185,129,.10))',
         color: 'var(--green)',
         fontSize: 11,
         fontWeight: 700,
-        border: '1px solid rgba(63,185,80,.2)'
+        border: '1px solid rgba(34,197,94,.32)'
       }
-    }, "\uD83D\uDCB0 Payroll"), React.createElement("button", {
-      onClick: () => setTab('appts'),
-      style: {
-        padding: '12px',
-        borderRadius: 12,
-        background: 'var(--amdim)',
-        color: 'var(--amber)',
-        fontSize: 11,
-        fontWeight: 700,
-        border: '1px solid rgba(210,153,34,.2)'
-      }
-    }, "\uD83D\uDCC5 Appointments"), React.createElement("button", {
-      onClick: () => setTab('tracking'),
-      style: {
-        padding: '12px',
-        borderRadius: 12,
-        background: 'var(--bg3)',
-        color: 'var(--text2)',
-        fontSize: 11,
-        fontWeight: 700,
-        border: '1px solid var(--border)'
-      }
-    }, "\uD83D\uDCCA Tracking")));
+    }, "\uD83D\uDCDE Start calling")));
   })(), tab === 'dial' && isCallMode && React.createElement("div", {
     className: "content-pad",
     style: {
@@ -22571,7 +22553,19 @@ function App() {
         height: '100%',
         background: 'linear-gradient(90deg,var(--accent),var(--green))'
       }
-    })), setupItems.map(item => React.createElement(item.action ? "button" : "div", {
+    })), doneCount === setupItems.length ? React.createElement("p", {
+      style: {
+        margin: 0,
+        padding: '10px 12px',
+        borderRadius: 10,
+        background: 'var(--gdim)',
+        color: 'var(--green)',
+        fontSize: 11,
+        fontWeight: 800,
+        border: '1px solid rgba(63,185,80,.22)',
+        textAlign: 'center'
+      }
+    }, "✓ Setup complete — all ", setupItems.length, " items configured") : setupItems.filter(item => !item.done).concat(setupItems.filter(item => item.done)).map(item => React.createElement(item.action ? "button" : "div", {
       key: item.label,
       onClick: item.action,
       style: {
