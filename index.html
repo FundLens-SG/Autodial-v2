@@ -340,7 +340,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0007';
+window.APP_VERSION='2026.05.02.0008';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -4806,9 +4806,15 @@ function App() {
   var [showCb, setShowCb] = useState(false);
   var [cbDate, setCbDate] = useState('');
   var [cbTime, setCbTime] = useState('');
+  var [callbackLookupOpen, setCallbackLookupOpen] = useState(false);
+  var [callbackLookupQuery, setCallbackLookupQuery] = useState('');
+  var [callbackLookupLeadIdx, setCallbackLookupLeadIdx] = useState(-1);
+  var [callbackLookupStatus, setCallbackLookupStatus] = useState('cb');
+  var [callbackLookupBusy, setCallbackLookupBusy] = useState(false);
   var [showAppt, setShowAppt] = useState(false);
   var [setDone, setSetDone] = useState(false);
   var autoAdvanceTimerRef = useRef(null);
+  var callbackReturnIdxRef = useRef(-1);
   var _advanceAfterWARef = useRef(null);
   useEffect(() => {
     if (!showAppt && setDone && running) {
@@ -11777,6 +11783,165 @@ function App() {
     toast('Skipped ' + (skipped?.name || skipped?.phone || 'lead'));
     proceedToLead(nextIdx);
   }, [running, curIdx, dialFilters, releaseClaim, proceedToLead]);
+  var openCallbackLookup = useCallback(() => {
+    callbackReturnIdxRef.current = curIdx;
+    setCallbackLookupOpen(p => {
+      var next = !p;
+      if (next) {
+        setCallbackLookupQuery('');
+        setCallbackLookupLeadIdx(-1);
+        setCallbackLookupStatus('cb');
+      }
+      return next;
+    });
+  }, [curIdx]);
+  var applyCallbackLookupStatus = useCallback(async () => {
+    var curLeads = leadsRef.current || [];
+    var targetIdx = callbackLookupLeadIdx;
+    var target = targetIdx >= 0 && targetIdx < curLeads.length ? curLeads[targetIdx] : null;
+    if (!target) {
+      toast('Select the callback lead first', 'err');
+      return;
+    }
+    var status = callbackLookupStatus || 'cb';
+    var returnIdx = callbackReturnIdxRef.current;
+    setCallbackLookupBusy(true);
+    var updatedTarget = null;
+    var sheetStatus = status;
+    var nextLeads = curLeads.map((l, i) => {
+      if (i !== targetIdx) return l;
+      var now = new Date().toLocaleString();
+      var u = {
+        ...l,
+        calledAt: now
+      };
+      if (status === 'np') {
+        var nc = (l.npCount || 0) + 1;
+        u.npCount = nc;
+        u.status = nc >= n(myCfg.npMax, 5) ? 'ni' : 'np';
+        sheetStatus = u.status === 'ni' ? 'ni' : 'np';
+      } else if (status === 'cb') {
+        u.status = 'cb';
+        u.cbDate = '';
+        u.cbTime = '';
+        u.cbFlexible = true;
+      } else if (status === 'set') {
+        u.status = 'set';
+      } else if (status === 'ni') {
+        u.status = 'ni';
+      } else {
+        u.status = 'pending';
+        sheetStatus = 'pending';
+      }
+      updatedTarget = u;
+      return u;
+    });
+    leadsRef.current = nextLeads;
+    setLeads(nextLeads);
+    try {
+      await syncSheet(status === 'np' ? target : updatedTarget, sheetStatus);
+    } catch (e) {
+      console.warn('[CallbackLookup] sheet sync failed', e?.message || e);
+    }
+    if (status === 'set' && updatedTarget) {
+      var _delSet = _getDelIds();
+      var _setUndo = {
+        leadIdx: targetIdx,
+        leadId: updatedTarget.id,
+        leadName: updatedTarget.name,
+        leadPhone: updatedTarget.phone,
+        prevStatus: target.status || 'pending',
+        prevNpCount: target.npCount || 0,
+        prevSheetValue: target.sheetValue || target.notes || '',
+        statusCol: target.statusCol,
+        sheetRow: target.sheetRow || 0,
+        sheetId: target._sourceSheetId || cfg.sheetId || '',
+        sheetTab: target._sourceSheetTab || cfg.sheetTab || 'Sheet1',
+        savedAt: new Date().toISOString()
+      };
+      setAppointments(p => {
+        var clean = (Array.isArray(p) ? p : []).filter(a => !isApptDeleted(a, _delSet));
+        var existingIdx = clean.findIndex(a => (a.leadId === updatedTarget.id || a.phone === updatedTarget.phone && a.phone) && (!a.followUp || a.followUp === 'pending' || a.followUp === 'postponed'));
+        if (existingIdx >= 0) {
+          var next = clean.slice();
+          next[existingIdx] = {
+            ...next[existingIdx],
+            followUp: 'pending',
+            needsDetails: true,
+            _setUndo: {
+              ...(next[existingIdx]._setUndo || {}),
+              ..._setUndo
+            }
+          };
+          return next;
+        }
+        return [...clean, {
+          id: Date.now() + Math.random(),
+          leadId: updatedTarget.id,
+          name: updatedTarget.name,
+          phone: updatedTarget.phone,
+          gender: updatedTarget.gender || detectGender(updatedTarget) || '',
+          age: updatedTarget.age || '',
+          apptDate: '',
+          apptTime: '',
+          location: '',
+          industry: '',
+          remarks: '',
+          followUp: 'pending',
+          tip: 0,
+          tipPaid: false,
+          createdAt: new Date().toISOString(),
+          admin: myEmail,
+          needsDetails: true,
+          _setUndo
+        }];
+      });
+    }
+    try {
+      DB.logAction(session?.id || null, _user?.id, 'callback_' + status, updatedTarget?.name || target.name, updatedTarget?.phone || target.phone, {
+        callbackLookup: true,
+        actorEmail: myEmail,
+        actorName: userName,
+        actorRole: role,
+        actorMode: role === 'main' ? mainMode : 'call'
+      });
+    } catch (e) {}
+    setCallLog(p => [...p, {
+      action: 'callback_' + status,
+      lead_name: updatedTarget?.name || target.name,
+      lead_phone: updatedTarget?.phone || target.phone,
+      actor_email: myEmail,
+      actor_role: role,
+      actor_mode: role === 'main' ? mainMode : 'call',
+      ts: new Date().toISOString()
+    }]);
+    if (session && !session.ended && ['np', 'cb', 'ni', 'set'].includes(status)) {
+      setSession(p => {
+        if (!p) return p;
+        var s = {
+          ...p
+        };
+        if (status === 'np') s.np = (s.np || 0) + 1;
+        if (status === 'cb') s.cb = (s.cb || 0) + 1;
+        if (status === 'ni') s.ni = (s.ni || 0) + 1;
+        if (status === 'set') s.sets = (s.sets || 0) + 1;
+        return s;
+      });
+      if (status === 'set') {
+        _incDailySets();
+        setTotalSets(p => p + 1);
+      }
+    }
+    if (returnIdx >= 0 && returnIdx < nextLeads.length) {
+      setCurIdx(returnIdx);
+      if (running) setPhase('calling');
+    }
+    setCallbackLookupBusy(false);
+    setCallbackLookupOpen(false);
+    setCallbackLookupQuery('');
+    setCallbackLookupLeadIdx(-1);
+    toast('Updated callback lead: ' + (updatedTarget?.name || target.name || target.phone) + ' -> ' + status.toUpperCase());
+  }, [callbackLookupLeadIdx, callbackLookupStatus, myCfg.npMax, syncSheet, cfg.sheetId, cfg.sheetTab, myEmail, userName, role, mainMode, session, running]);
   var handleOutcome = useCallback((status, extra = {}) => {
     var leadIdx = curIdx;
     if (status === 'pending') {
@@ -14013,6 +14178,174 @@ function App() {
       border: '1px solid rgba(88,166,255,.26)'
     }
   }, "Skip lead \u2192"), session && !session.ended && React.createElement("div", {
+    style: {
+      display: 'grid',
+      gridTemplateColumns: callbackLookupOpen ? '1fr auto' : '1fr',
+      gap: 8,
+      marginBottom: 8
+    }
+  }, React.createElement("button", {
+    onClick: openCallbackLookup,
+    style: {
+      width: '100%',
+      padding: '11px 12px',
+      borderRadius: 12,
+      background: callbackLookupOpen ? 'rgba(240,180,41,.16)' : 'rgba(240,180,41,.10)',
+      color: 'var(--amber)',
+      fontSize: 13,
+      fontWeight: 900,
+      border: '1px solid rgba(240,180,41,.30)'
+    }
+  }, "Someone called back?"), callbackLookupOpen && React.createElement("button", {
+    onClick: () => setCallbackLookupOpen(false),
+    style: {
+      padding: '0 12px',
+      borderRadius: 12,
+      background: 'var(--bg3)',
+      color: 'var(--text3)',
+      fontSize: 12,
+      fontWeight: 900,
+      border: '1px solid var(--border)'
+    }
+  }, "Close")), callbackLookupOpen && (() => {
+    var q = String(callbackLookupQuery || '').trim().toLowerCase();
+    var rows = (leads || []).map((lead, idx) => ({
+      lead,
+      idx
+    })).filter(({lead}) => {
+      if (!lead) return false;
+      if (!q) return true;
+      var hay = [lead.name, lead.phone, lead.email, lead.notes].join(' ').toLowerCase();
+      return hay.includes(q);
+    }).slice(0, 8);
+    var picked = callbackLookupLeadIdx >= 0 ? leads[callbackLookupLeadIdx] : null;
+    var statusOptions = [['cb', 'CB', 'var(--blue)', 'var(--bdim)'], ['np', 'NP', 'var(--amber)', 'var(--amdim)'], ['ni', 'NI', 'var(--red)', 'var(--rdim)'], ['set', 'Set', 'var(--green)', 'var(--gdim)']];
+    return React.createElement("div", {
+      className: "card",
+      style: {
+        marginBottom: 8,
+        borderColor: 'rgba(240,180,41,.28)',
+        background: 'linear-gradient(135deg,rgba(240,180,41,.06),rgba(88,166,255,.04))'
+      }
+    }, React.createElement("p", {
+      style: {
+        margin: '0 0 8px',
+        fontSize: 11,
+        color: 'var(--text3)',
+        fontWeight: 800
+      }
+    }, "Search the active lead sheet, update the callback lead, then return to ", cur?.name || 'current lead', "."), React.createElement("input", {
+      value: callbackLookupQuery,
+      onChange: e => {
+        setCallbackLookupQuery(e.target.value);
+        setCallbackLookupLeadIdx(-1);
+      },
+      placeholder: "Search name or phone number...",
+      autoFocus: true,
+      style: {
+        width: '100%',
+        padding: '12px',
+        borderRadius: 12,
+        background: 'var(--bg)',
+        border: '1px solid var(--border)',
+        color: 'var(--text)',
+        fontSize: 14,
+        marginBottom: 8
+      }
+    }), React.createElement("div", {
+      style: {
+        display: 'grid',
+        gap: 6,
+        maxHeight: 180,
+        overflowY: 'auto',
+        marginBottom: 8
+      }
+    }, rows.length ? rows.map(({lead, idx}) => React.createElement("button", {
+      key: (lead.id || lead.phone || lead.name || 'lead') + '_' + idx,
+      onClick: () => setCallbackLookupLeadIdx(idx),
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: 8,
+        padding: '9px 10px',
+        borderRadius: 10,
+        background: callbackLookupLeadIdx === idx ? 'rgba(99,102,241,.18)' : 'var(--bg3)',
+        border: '1px solid ' + (callbackLookupLeadIdx === idx ? 'rgba(99,102,241,.45)' : 'var(--border)'),
+        textAlign: 'left',
+        color: 'var(--text)'
+      }
+    }, React.createElement("span", {
+      style: {
+        minWidth: 0,
+        flex: 1
+      }
+    }, React.createElement("b", {
+      style: {
+        display: 'block',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap',
+        fontSize: 12
+      }
+    }, lead.name || 'Unnamed'), React.createElement("span", {
+      className: "mono",
+      style: {
+        display: 'block',
+        color: 'var(--text3)',
+        fontSize: 10,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }
+    }, lead.phone || 'No phone')), React.createElement("span", {
+      className: "pill",
+      style: {
+        background: 'var(--bg)',
+        color: lead.status === 'set' ? 'var(--green)' : lead.status === 'ni' ? 'var(--red)' : lead.status === 'cb' ? 'var(--blue)' : lead.status === 'np' ? 'var(--amber)' : 'var(--text3)'
+      }
+    }, (lead.status || 'pending').toUpperCase()))) : React.createElement("p", {
+      style: {
+        margin: 0,
+        padding: '10px',
+        color: 'var(--text3)',
+        fontSize: 11,
+        textAlign: 'center'
+      }
+    }, "No matching lead found")), React.createElement("div", {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4,1fr)',
+        gap: 6,
+        marginBottom: 8
+      }
+    }, statusOptions.map(([s, label, color, bg]) => React.createElement("button", {
+      key: s,
+      onClick: () => setCallbackLookupStatus(s),
+      style: {
+        padding: '9px 0',
+        borderRadius: 10,
+        background: callbackLookupStatus === s ? bg : 'var(--bg3)',
+        color,
+        fontSize: 12,
+        fontWeight: 900,
+        border: '1px solid ' + (callbackLookupStatus === s ? 'rgba(255,255,255,.18)' : 'var(--border)')
+      }
+    }, label))), React.createElement("button", {
+      onClick: applyCallbackLookupStatus,
+      disabled: callbackLookupBusy || !picked,
+      style: {
+        width: '100%',
+        padding: '12px',
+        borderRadius: 12,
+        background: picked ? 'linear-gradient(135deg,#22c55e,#059669)' : 'var(--bg3)',
+        color: picked ? '#fff' : 'var(--text3)',
+        fontSize: 13,
+        fontWeight: 900,
+        opacity: callbackLookupBusy ? .65 : 1
+      }
+    }, callbackLookupBusy ? 'Updating...' : picked ? 'Update ' + (picked.name || picked.phone || 'lead') + ' as ' + callbackLookupStatus.toUpperCase() : 'Select lead to update'));
+  })(), session && !session.ended && React.createElement("div", {
     style: {
       display: 'grid',
       gridTemplateColumns: 'repeat(5,1fr)',
