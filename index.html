@@ -340,7 +340,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0012';
+window.APP_VERSION='2026.05.02.0013';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1817,6 +1817,30 @@ window.waDay=function(dateVal){
     d=new Date(parts[0],parts[1]-1,parts[2]);
   }else d=new Date(dateVal);
   if(!d||isNaN(d))return'';
+  var weekday=d.toLocaleDateString('en-SG',{weekday:'long'}).toLowerCase();
+  var today=new Date();
+  var startOfWeek=function(x){
+    var y=new Date(x.getFullYear(),x.getMonth(),x.getDate());
+    var day=y.getDay();
+    y.setDate(y.getDate()-(day===0?6:day-1));
+    return y;
+  };
+  var targetWeek=startOfWeek(d);
+  var thisWeek=startOfWeek(today);
+  var weekDiff=Math.round((targetWeek-thisWeek)/604800000);
+  if(weekDiff===0)return'this '+weekday;
+  if(weekDiff===1)return'next '+weekday;
+  if(weekDiff===2)return'following '+weekday;
+  return'on '+weekday;
+};
+window.waWeekday=function(dateVal){
+  if(!dateVal)return'';
+  var d=null;
+  if(/^\d{4}-\d{2}-\d{2}$/.test(String(dateVal))){
+    var parts=String(dateVal).split('-').map(Number);
+    d=new Date(parts[0],parts[1]-1,parts[2]);
+  }else d=new Date(dateVal);
+  if(!d||isNaN(d))return'';
   return d.toLocaleDateString('en-SG',{weekday:'long'});
 };
 window.waShortTime=function(timeVal){
@@ -1835,7 +1859,7 @@ window.waTemplateData=function(data){
   data=data||{};
   var dateRaw=data.apptDate||data.date||'';
   var timeRaw=data.apptTime||data.time||'';
-  return{...data,day:data.day||window.waDay(dateRaw),date:data.dateText||window.waShortDate(dateRaw),time:data.timeText||window.waShortTime(timeRaw),location:data.location||''};
+  return{...data,day:data.day||window.waDay(dateRaw),weekday:data.weekday||window.waWeekday(dateRaw),date:data.dateText||window.waShortDate(dateRaw),time:data.timeText||window.waShortTime(timeRaw),location:data.location||''};
 };
 window.waFill=function(template,data){
   var filled=window.waTemplateData(data||{});
@@ -26324,7 +26348,7 @@ function App() {
       color: 'var(--text3)',
       marginBottom: 10
     }
-  }, "Message templates for WhatsApp. Placeholders: ", '{{name}}, {{day}}, {{date}}, {{time}}, {{location}}, {{admin}}, {{company}}'), waTemplates.map((t, i) => React.createElement("div", {
+  }, "Message templates for WhatsApp. Placeholders: ", '{{name}}, {{day}}, {{weekday}}, {{date}}, {{time}}, {{location}}, {{admin}}, {{company}}'), waTemplates.map((t, i) => React.createElement("div", {
     key: t.id || i,
     style: {
       display: 'flex',
