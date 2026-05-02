@@ -340,7 +340,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0016';
+window.APP_VERSION='2026.05.02.0017';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1796,9 +1796,16 @@ window.DB={
 };
 
 // ══════ WHATSAPP DEEP LINK ══════
+window.waSafeText=function(message){
+  var msg=String(message||'');
+  try{msg=msg.normalize('NFC')}catch(_e){}
+  msg=msg.replace(/(Manulife)\s*\uFFFD/g,'$1 👋');
+  msg=msg.replace(/\uD83D\uDC4B(?:\uD83C[\uDFFB-\uDFFF])?/g,'\uD83D\uDC4B');
+  return msg;
+};
 window.waLink=function(phone,message){
   var p=phone.replace(/[^+\d]/g,'');if(!p.startsWith('+'))p='+65'+p;
-  return'https://wa.me/'+p.replace('+','')+'?text='+encodeURIComponent(message)};
+  return'https://api.whatsapp.com/send?phone='+p.replace('+','')+'&text='+encodeURIComponent(window.waSafeText(message))};
 window.waShortDate=function(dateVal){
   if(!dateVal)return'';
   var d=null;
@@ -1869,7 +1876,7 @@ window.DEFAULT_WA_TEMPLATES=[{
   name:'Self Call Template',
   category:'appointment',
   isDefault:true,
-  template:'Hello {{name}}, FC here from Manulife \u{1F44B}\u{1F3FB}\nGreat catching up with you earlier.\n\nLook forward to meeting you and share with you what she has mentioned in the conversation.\n\nSee you {{day}}, {{date}}, {{time}} at {{location}}. Any changes let\u2019s keep each other updated okay?'
+  template:'Hello {{name}}, FC here from Manulife \u{1F44B}\nGreat catching up with you earlier.\n\nLook forward to meeting you and share with you what she has mentioned in the conversation.\n\nSee you {{day}}, {{date}}, {{time}} at {{location}}. Any changes let\u2019s keep each other updated okay?'
 }];
 window.ensureDefaultWATemplates=function(list){
   var arr=Array.isArray(list)?list.slice():[];
