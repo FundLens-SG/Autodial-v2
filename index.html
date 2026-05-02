@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0005';
+window.APP_VERSION='2026.05.03.0006';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -3028,7 +3028,31 @@ function Modal({
       padding: overlay ? _padding : 0,
       pointerEvents: overlay ? 'auto' : 'none'
     }
-  }, React.createElement("div", {
+  }, overlay && onClose && React.createElement("button", {
+    onClick: e => { e.stopPropagation(); onClose(); },
+    title: "Close (Esc)",
+    "aria-label": "Close",
+    style: {
+      position: 'absolute',
+      top: 12,
+      right: 12,
+      width: 32,
+      height: 32,
+      padding: 0,
+      borderRadius: '50%',
+      background: 'rgba(255,255,255,.06)',
+      color: 'rgba(255,255,255,.7)',
+      fontSize: 16,
+      fontWeight: 700,
+      lineHeight: 1,
+      border: '1px solid rgba(255,255,255,.08)',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 1
+    }
+  }, "✕"), React.createElement("div", {
     onClick: e => e.stopPropagation(),
     style: {
       display: 'contents',
@@ -13298,39 +13322,6 @@ function App() {
       })) authLogout();
     }
   }, [confirmAsync, flushSheetQueue]);
-  useEffect(() => {
-    var hardHeaderTap = e => {
-      var target = e.target;
-      var button = target?.closest ? target.closest('[data-header-action]') : null;
-      if (!button || button.disabled) return;
-      var row = button.closest('.hdr-row1');
-      if (!row) return;
-      var action = button.getAttribute('data-header-action');
-      if (!action) return;
-      e.preventDefault?.();
-      e.stopPropagation?.();
-      e.stopImmediatePropagation?.();
-      runHeaderAction(action);
-    };
-    document.addEventListener('pointerdown', hardHeaderTap, true);
-    document.addEventListener('mousedown', hardHeaderTap, true);
-    document.addEventListener('click', hardHeaderTap, true);
-    return () => {
-      document.removeEventListener('pointerdown', hardHeaderTap, true);
-      document.removeEventListener('mousedown', hardHeaderTap, true);
-      document.removeEventListener('click', hardHeaderTap, true);
-    };
-  }, [runHeaderAction]);
-  var handleHeaderControlCapture = useCallback(e => {
-    var target = e.target;
-    var button = target?.closest ? target.closest('[data-header-action]') : null;
-    if (!button || !e.currentTarget.contains(button) || button.disabled) return;
-    var action = button.getAttribute('data-header-action');
-    if (!action) return;
-    e.preventDefault();
-    e.stopPropagation();
-    runHeaderAction(action);
-  }, [runHeaderAction]);
   var _renderIncompleteApptAlert = compact => incompleteApptAlerts.length ? React.createElement("div", {
     className: "card",
     style: {
@@ -13481,11 +13472,7 @@ function App() {
   }, milestone || {}, {
     onClose: () => setMilestone(null)
   })), React.createElement("div", {
-    className: "hdr-row1",
-    onPointerDownCapture: handleHeaderControlCapture,
-    onPointerUpCapture: handleHeaderControlCapture,
-    onClickCapture: handleHeaderControlCapture,
-    onTouchEndCapture: handleHeaderControlCapture
+    className: "hdr-row1"
   }, React.createElement("div", {
     className: "hdr-brand"
   }, React.createElement("div", {
@@ -13582,9 +13569,9 @@ function App() {
     }, _initials, _hasNotice && React.createElement("span", {
       className: "dot"
     }));
-  })()), React.createElement("div", {
+  })()), isCallMode && React.createElement("div", {
     className: "hdr-row2"
-  }, isCallMode && _showRank ? (() => {
+  }, _showRank ? (() => {
     var _hdrDelIds = _getDelIds();
     var _hdrMe = (myEmail || '').toLowerCase();
     var _hdrAdminAppts = role === 'admin' ? (appointments || []).filter(a => !isApptDeleted(a, _hdrDelIds) && ((a.admin || '').toLowerCase() === _hdrMe || !a.admin)).length : 0;
@@ -14426,7 +14413,9 @@ function App() {
       fontWeight: 900,
       border: '1px solid rgba(248,81,73,.28)'
     }
-  }, "End"))), cur && running && phase === 'calling' && React.createElement("div", {
+  }, "End"))), cur && running && phase === 'calling' && !isMob && React.createElement("p", {
+    style: { margin: '0 0 6px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.08em', textAlign: 'center', opacity: .7 }
+  }, "Keyboard:  ", React.createElement("kbd", { style: { padding: '1px 5px', borderRadius: 4, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)', fontFamily: 'inherit' } }, "1"), " NP   ", React.createElement("kbd", { style: { padding: '1px 5px', borderRadius: 4, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)', fontFamily: 'inherit' } }, "2"), " CB   ", React.createElement("kbd", { style: { padding: '1px 5px', borderRadius: 4, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)', fontFamily: 'inherit' } }, "3"), " NI   ", React.createElement("kbd", { style: { padding: '1px 5px', borderRadius: 4, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)', fontFamily: 'inherit' } }, "4"), " Set"), cur && running && phase === 'calling' && React.createElement("div", {
     style: {
       display: 'grid',
       gridTemplateColumns: 'repeat(4,1fr)',
@@ -24941,6 +24930,29 @@ function App() {
     }
   })))), settingsSubtab === 'owner' && isCreatorUser && React.createElement(React.Fragment, null, React.createElement("div", {
     className: "card",
+    style: { marginBottom: 12 }
+  }, React.createElement("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 } },
+    React.createElement("h3", { style: { fontSize: 14, fontWeight: 700, margin: 0 } }, "App Version"),
+    React.createElement("span", { className: "mono", style: { fontSize: 11, fontWeight: 700, color: 'var(--accent2)' } }, "v", window.APP_VERSION || 'unknown')
+  ), updateAvailable && React.createElement("p", { style: { margin: '0 0 8px', fontSize: 10, fontWeight: 800, color: 'var(--accent2)' } }, "\u21BB Update available \u2014 v", updateAvailable.remoteVersion), React.createElement("p", { style: { margin: '0 0 10px', fontSize: 10, color: 'var(--text3)', lineHeight: 1.4 } }, "AutoDial checks for new versions every 5 minutes and on tab focus. When a newer build is published, you'll see a banner with a 15-second countdown before auto-reload."), React.createElement("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, React.createElement("button", {
+    onClick: async () => {
+      toast('Checking for updates\u2026', 'info');
+      try {
+        var r = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'shared_app_version').maybeSingle();
+        var _cloud = r?.data?.biz_name ? JSON.parse(r.data.biz_name) : null;
+        var _cloudVer = _cloud?.version || '';
+        var _localVer = window.APP_VERSION;
+        if (_cloudVer && _cloudVer > _localVer) { setUpdateAvailable({ remoteVersion: _cloudVer, localVersion: _localVer }); toast('New version found: ' + _cloudVer, 'info'); }
+        else if (_cloudVer === _localVer) toast('\u2713 You\'re on the latest version', 'info');
+        else { toast('You\'re ahead \u2014 publishing your version', 'info'); await _SB.from('autodial_admin_config').upsert({ admin_email: 'shared_app_version', biz_name: JSON.stringify({ version: _localVer, publishedAt: Date.now(), publishedBy: _user?.email || 'unknown' }) }, { onConflict: 'admin_email' }); }
+      } catch (e) { toast('Update check failed: ' + (e?.message || e), 'err'); }
+    },
+    style: { padding: '8px 14px', borderRadius: 10, background: 'var(--adim)', color: 'var(--accent2)', fontSize: 11, fontWeight: 700, border: '1px solid rgba(99,102,241,.25)' }
+  }, "\uD83D\uDD04 Check for updates"), React.createElement("button", {
+    onClick: () => { try { location.reload(true); } catch (_e) { location.reload(); } },
+    style: { padding: '8px 14px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', fontSize: 11, fontWeight: 700, border: '1px solid var(--border)' }
+  }, "\u21BB Hard reload"))), React.createElement("div", {
+    className: "card",
     style: {
       marginBottom: 12
     }
@@ -25743,7 +25755,7 @@ function App() {
       fontSize: 10,
       border: '1px solid var(--border)'
     }
-  }, "Reset Google connection")), React.createElement("div", {
+  }, "Reset Google connection")), false && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 12
@@ -34185,6 +34197,14 @@ WHERE p.id IS NULL;`;
     React.createElement("button", {
       onClick: () => { setAvatarMenuOpen(false); setShowHelp(true); }
     }, React.createElement("span", { className: "ico" }, "?"), "Help & shortcuts"),
+    role === 'main' && React.createElement("button", {
+      onClick: () => {
+        setAvatarMenuOpen(false);
+        var next = mainMode === 'call' ? 'manage' : 'call';
+        setMainMode(next);
+        setTab(next === 'call' ? 'home' : 'home');
+      }
+    }, React.createElement("span", { className: "ico" }, mainMode === 'call' ? "🧭" : "📞"), mainMode === 'call' ? "Switch to Manage mode" : "Switch to Call mode"),
     React.createElement("button", {
       className: "danger",
       onClick: async () => {
