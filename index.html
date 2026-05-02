@@ -14684,11 +14684,13 @@ function App() {
       fontSize: 9,
       color: 'var(--text3)'
     }
-  }, l)))), false && React.createElement("div", {
+  }, l)))), !running && (operatorQueue.length > 0 || operatorCallbacks.length > 0) && React.createElement("div", {
     style: {
       display: 'grid',
       gridTemplateColumns: '1fr 1fr',
-      gap: 8
+      gap: 8,
+      marginTop: 10,
+      marginBottom: 4
     }
   }, React.createElement("div", {
     style: {
