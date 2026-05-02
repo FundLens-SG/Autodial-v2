@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v='2026.05.02.0006',reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v='2026.05.02.0007',reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -102,7 +102,8 @@ button:active{transform:none}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes freeSlotShimmer{0%,100%{box-shadow:0 0 0 1px rgba(34,197,94,.25),0 0 12px rgba(34,197,94,.15),inset 0 1px 0 rgba(255,255,255,.05)}50%{box-shadow:0 0 0 1px rgba(34,197,94,.45),0 0 24px rgba(34,197,94,.3),inset 0 1px 0 rgba(255,255,255,.08)}}
 .free-slot{background:linear-gradient(135deg,rgba(34,197,94,.12),rgba(16,185,129,.06),rgba(34,197,94,.1));border:1px solid rgba(34,197,94,.3);animation:freeSlotShimmer 3s ease-in-out infinite;position:relative;overflow:hidden}
-.free-slot::before{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);animation:shimmer 4s infinite}
+.free-slot::before{content:'';position:absolute;top:0;left:-100%;width:50%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.08),transparent);animation:shimmer 4s infinite;pointer-events:none}
+button.free-slot{appearance:none;text-align:left}
 @keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 @keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 @keyframes glow{0%,100%{box-shadow:var(--glow)}50%{box-shadow:0 0 60px rgba(99,102,241,.25)}}
@@ -214,11 +215,12 @@ button:active{transform:none}
 .analytics-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px}
 .dupe-card{background:linear-gradient(135deg,rgba(248,81,73,.05),transparent)}
 @media(max-width:959px){.script-panel{display:none!important}.script-toggle{display:none!important}}
-.hdr-row1{display:flex;align-items:center;gap:8px;padding:14px 14px 0;flex-wrap:wrap;min-height:46px;contain:layout paint}
+.hdr-row1{position:relative;z-index:80;display:flex;align-items:center;gap:8px;padding:14px 14px 0;flex-wrap:wrap;min-height:46px;contain:layout}
 .hdr-row1>button{flex-shrink:0}
 .hdr-row1>.pill{flex:0 0 auto;min-width:72px;max-width:104px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hdr-row2{position:relative;z-index:4;display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px;gap:10px;min-height:44px;contain:layout paint}
-.app-tabs{position:relative;z-index:5;display:flex;padding:8px 14px 10px;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:1px solid var(--border);background:var(--bg);margin-bottom:8px;min-height:62px;contain:layout paint}
+.hdr-row1 button,.hdr-row2 button,.app-tabs button{pointer-events:auto}
+.hdr-row2{position:relative;z-index:70;display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px;gap:10px;min-height:44px;contain:layout}
+.app-tabs{position:relative;z-index:60;display:flex;padding:8px 14px 10px;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:1px solid var(--border);background:var(--bg);margin-bottom:8px;min-height:62px;contain:layout}
 .app-tabs::-webkit-scrollbar{display:none}
 .app-tabs button{flex:1 1 0;min-width:0;min-height:44px;padding:12px 8px;border-radius:12px;font-size:13px;font-weight:700;white-space:nowrap;background:transparent;color:var(--text3);display:flex;align-items:center;justify-content:center;gap:6px;overflow:hidden;text-overflow:ellipsis}
 .app-tabs button.active{background:var(--adim);color:var(--accent2)}
@@ -338,7 +340,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0006';
+window.APP_VERSION='2026.05.02.0007';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -5007,6 +5009,7 @@ function App() {
   var [calEditEvent, setCalEditEvent] = useState(null);
   var [showCalAddApptPicker, setShowCalAddApptPicker] = useState(false);
   var [calAddSlot, setCalAddSlot] = useState(null);
+  var [calAddSearch, setCalAddSearch] = useState('');
   var [apptActionModal, setApptActionModal] = useState(null);
   var [calEditForm, setCalEditForm] = useState({
     summary: '',
@@ -5638,6 +5641,133 @@ function App() {
         opacity: canEdit ? 1 : .45
       }
     }, "Delete / remove")));
+  };
+  var renderCalAddPickerPanel = () => {
+    if (!showCalAddApptPicker) return null;
+    var allCandidates = getTodayCalledLeadCandidates(true);
+    var q = calAddSearch.trim().toLowerCase();
+    var candidates = q ? allCandidates.filter(l => [l.name, l.phone, l.email, l.age, l._source, l._action].some(v => String(v || '').toLowerCase().includes(q))) : allCandidates;
+    var shown = candidates.slice(0, 80);
+    var slotText = calAddSlot?.date && calAddSlot?.time ? calAddSlot.date + ' ' + calAddSlot.time : '';
+    return React.createElement("div", {
+      className: "card",
+      style: {
+        marginBottom: 12,
+        padding: 14,
+        borderColor: 'rgba(34,197,94,.4)',
+        background: 'linear-gradient(135deg,rgba(34,197,94,.08),var(--bg2))'
+      }
+    }, React.createElement("div", {
+      style: {
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+        marginBottom: 10
+      }
+    }, React.createElement("div", {
+      style: {
+        minWidth: 0
+      }
+    }, React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 13,
+        fontWeight: 900,
+        color: '#22c55e'
+      }
+    }, "Add appointment from free slot"), React.createElement("p", {
+      style: {
+        margin: '2px 0 0',
+        fontSize: 11,
+        color: 'var(--text3)'
+      }
+    }, slotText ? 'Selected slot: ' + slotText : 'Choose a lead from the active leads sheet.')), React.createElement("button", {
+      onClick: () => {
+        setShowCalAddApptPicker(false);
+        setCalAddSlot(null);
+        setCalAddSearch('');
+      },
+      style: {
+        width: 30,
+        height: 30,
+        borderRadius: 10,
+        background: 'rgba(239,68,68,.12)',
+        color: '#f87171',
+        fontWeight: 900,
+        flexShrink: 0
+      }
+    }, "×")), React.createElement("input", {
+      value: calAddSearch,
+      onChange: e => setCalAddSearch(e.target.value),
+      placeholder: "Search any lead in this sheet by name, phone, email, age...",
+      style: {
+        marginBottom: 10
+      }
+    }), React.createElement("div", {
+      style: {
+        display: 'grid',
+        gap: 8,
+        maxHeight: 360,
+        overflowY: 'auto',
+        paddingRight: 2
+      }
+    }, shown.length ? shown.map((l, idx) => React.createElement("button", {
+      key: (l.phone || l.id || l.name || idx) + '-' + idx,
+      onClick: () => _openCalAddApptForLead(l),
+      style: {
+        textAlign: 'left',
+        padding: '10px 12px',
+        borderRadius: 12,
+        background: l._source === 'Missing appointment details' ? 'rgba(245,158,11,.12)' : 'var(--bg3)',
+        border: '1px solid ' + (l._source === 'Missing appointment details' ? 'rgba(245,158,11,.38)' : 'var(--border)'),
+        color: '#e5e7eb'
+      }
+    }, React.createElement("div", {
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: 8,
+        alignItems: 'center'
+      }
+    }, React.createElement("span", {
+      style: {
+        fontSize: 13,
+        fontWeight: 900,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }
+    }, l.name || 'Unnamed lead'), React.createElement("span", {
+      className: "pill",
+      style: {
+        fontSize: 9,
+        color: l._source === 'Leads sheet' ? 'var(--text3)' : l._action === 'set' ? '#22c55e' : '#93c5fd',
+        background: l._source === 'Leads sheet' ? 'var(--bg)' : l._action === 'set' ? 'rgba(34,197,94,.12)' : 'rgba(59,130,246,.12)'
+      }
+    }, l._source || 'Lead')), React.createElement("p", {
+      style: {
+        margin: '4px 0 0',
+        fontSize: 11,
+        color: 'var(--text3)'
+      }
+    }, [l.phone, l.age ? 'Age ' + l.age : '', l.email, l._action ? String(l._action).toUpperCase() : ''].filter(Boolean).join(' · ')))) : React.createElement("p", {
+      style: {
+        margin: 0,
+        padding: 12,
+        borderRadius: 12,
+        background: 'var(--bg3)',
+        color: 'var(--text3)',
+        fontSize: 12
+      }
+    }, "No matching lead found.")), candidates.length > shown.length && React.createElement("p", {
+      style: {
+        margin: '8px 0 0',
+        fontSize: 10,
+        color: 'var(--text3)',
+        textAlign: 'center'
+      }
+    }, "Showing first ", shown.length, " of ", candidates.length, " matches. Search to narrow."));
   };
   var isApptShaky = a => !!(a && a.shaky);
   var _stripStatusPrefix = title => (title || '').replace(/^\[(?:POSTPONED(?::\s*NO\s*DATE)?|FLY\s*KITE|MET|CLOSED)\]\s*/i, '');
@@ -6394,7 +6524,7 @@ function App() {
   var [settingsSubtab, setSettingsSubtab] = useState(load('settingsSubtab') || 'setup');
   var settingsSimplified = localStorage.getItem('autodial_settings_v2_disabled') !== '1';
   var [settingsShowAll, setSettingsShowAll] = useState(!settingsSimplified);
-  var getTodayCalledLeadCandidates = () => {
+  var getTodayCalledLeadCandidates = (includeSheetLeads = false) => {
     var today = localDateKey(new Date());
     var rows = [];
     var seen = new Set();
@@ -6444,20 +6574,26 @@ function App() {
     (leads || []).forEach(l => {
       if (String(l?.status || '').toLowerCase() === 'set') add(l, 'Set leads', 'set', l.updatedAt || 0);
     });
+    if (includeSheetLeads) {
+      (leads || []).forEach(l => {
+        add(l, 'Leads sheet', l.status || '', l.updatedAt || l.calledAt || 0);
+      });
+    }
     rows.sort((a, b) => {
       var ap = a._source === 'Missing appointment details' ? 0 : a._action === 'set' ? 1 : 2;
       var bp = b._source === 'Missing appointment details' ? 0 : b._action === 'set' ? 1 : 2;
       return ap - bp || (b._ts || 0) - (a._ts || 0);
     });
-    return rows.slice(0, 40);
+    return includeSheetLeads ? rows : rows.slice(0, 40);
   };
   var _openCalAddApptPicker = slot => {
-    var candidates = getTodayCalledLeadCandidates();
+    var candidates = getTodayCalledLeadCandidates(true);
     if (!candidates.length) {
-      toast('No called leads found today. Use Set first, then add appointment from Cal.', 'err');
+      toast('No leads loaded from this sheet yet. Load or fetch leads first, then add appointment from Cal.', 'err');
       return;
     }
     setCalAddSlot(slot || null);
+    setCalAddSearch('');
     setShowCalAddApptPicker(true);
   };
   var _openCalAddApptForLead = lead => {
@@ -16556,7 +16692,7 @@ function App() {
           fontStyle: 'italic'
         }
       }, "Settings sync across your devices automatically"));
-    })(), renderCalEditPanel(), calViewMode === 'grid' && (() => {
+    })(), renderCalAddPickerPanel(), renderCalEditPanel(), calViewMode === 'grid' && (() => {
       var HR_START = 7,
         HR_END = 22;
       var HOUR_PX = 44;
@@ -16656,11 +16792,27 @@ function App() {
           var top = Math.max(0, (sh - HR_START) * HOUR_PX);
           var height = Math.max(20, (Math.min(eh, HR_END) - Math.max(sh, HR_START)) * HOUR_PX - 2);
           var hrsLabel = _formatSlotMinutes(win.mins);
-          return React.createElement("div", {
+          var slotPayload = {
+            date: d.key,
+            time: String(win.start.getHours()).padStart(2, '0') + ':' + String(win.start.getMinutes()).padStart(2, '0'),
+            duration: Math.min(apptCoreMin, win.mins)
+          };
+          var openSlotPicker = e => {
+            e?.preventDefault?.();
+            e?.stopPropagation?.();
+            if (!(gOk || role === 'admin')) return;
+            _openCalAddApptPicker(slotPayload);
+          };
+          return React.createElement("button", {
             key: 'fs-' + si,
+            type: "button",
             className: "free-slot",
             title: 'Free · ' + hrsLabel + ' · click to book',
-            onClick: gOk || role === 'admin' ? async () => {
+            onMouseDown: e => {
+              if (e.button === 0) openSlotPicker(e);
+            },
+            onClick: openSlotPicker,
+            _oldClickDisabled: false && (gOk || role === 'admin') ? async () => {
               var _bookStart = win.start;
               if (role === 'admin') {
                 _openCalAddApptPicker({
@@ -16717,6 +16869,7 @@ function App() {
               fontWeight: 700,
               overflow: 'hidden',
               color: '#86efac',
+              textAlign: 'left',
               cursor: gOk || role === 'admin' ? 'pointer' : 'default',
               zIndex: 1
             }
@@ -30631,7 +30784,7 @@ WHERE p.id IS NULL;`;
         textAlign: 'center'
       }
     }, "You'll still need to approve them once they sign up.")));
-  })(), showCalAddApptPicker && React.createElement(Modal, {
+  })(), false && showCalAddApptPicker && React.createElement(Modal, {
     show: true,
     onClose: () => {
       setShowCalAddApptPicker(false);
