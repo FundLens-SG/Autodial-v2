@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0002';
+window.APP_VERSION='2026.05.03.0003';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -16718,7 +16718,7 @@ function App() {
     }, s.dialed, " dials")));
   })), tab === 'cal' && React.createElement("div", {
     className: "content-pad"
-  }, isManageMode && React.createElement("div", {
+  }, false && isManageMode && React.createElement("div", {
     style: {
       display: 'flex',
       gap: 4,
