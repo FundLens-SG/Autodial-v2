@@ -340,7 +340,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0013';
+window.APP_VERSION='2026.05.02.0014';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1864,6 +1864,25 @@ window.waTemplateData=function(data){
 window.waFill=function(template,data){
   var filled=window.waTemplateData(data||{});
   return template.replace(/\{\{(\w+)\}\}/g,function(_,k){return filled[k]||''})};
+window.DEFAULT_WA_TEMPLATES=[{
+  id:'default_self_call_template',
+  name:'Self Call Template',
+  category:'appointment',
+  isDefault:true,
+  template:'Hello {{name}}, FC here from Manulife \u{1F44B}\u{1F3FB}\nGreat catching up with you earlier.\n\nLook forward to meeting you and share with you what she has mentioned in the conversation.\n\nSee you {{day}}, {{date}}, {{time}} at {{location}}. Any changes let\u2019s keep each other updated okay?'
+}];
+window.ensureDefaultWATemplates=function(list){
+  var arr=Array.isArray(list)?list.slice():[];
+  var hasSelfCall=arr.some(t=>String(t?.name||'').trim().toLowerCase()==='self call template');
+  if(!hasSelfCall)arr=[...window.DEFAULT_WA_TEMPLATES,...arr];
+  var seen=new Set();
+  return arr.filter(t=>{
+    var k=String(t?.name||'').trim().toLowerCase();
+    if(!k||seen.has(k))return false;
+    seen.add(k);
+    return true;
+  });
+};
 
 // ══════ CALENDAR SHARING (Google Calendar ACL) ══════
 window.gCalShare={
@@ -8967,6 +8986,7 @@ function App() {
             return true;
           });
         };
+        var finalWA = arr => role === 'admin' ? dedup(arr) : window.ensureDefaultWATemplates(dedup(arr));
         try {
           if (_SB && _user) {
             var r = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'watpl_' + myEmail).maybeSingle();
@@ -8974,7 +8994,7 @@ function App() {
               try {
                 var parsed = JSON.parse(r.data.biz_name);
                 if (Array.isArray(parsed)) {
-                  setWaTemplates(dedup(parsed));
+                  setWaTemplates(finalWA(parsed));
                   waInitRef.current = true;
                   return;
                 }
@@ -8988,7 +9008,7 @@ function App() {
           }
           var t = await DB.getWATemplates();
           if (t && t.length) {
-            var cleaned = dedup(t);
+            var cleaned = finalWA(t);
             setWaTemplates(cleaned);
             if (_SB && _user) _SB.from('autodial_admin_config').upsert({
               admin_email: 'watpl_' + myEmail,
@@ -9004,6 +9024,8 @@ function App() {
                 setWaTemplates(dedup(shared));
               } catch (e) {}
             }
+          } else if (role !== 'admin') {
+            setWaTemplates(finalWA([]));
           }
         } catch (e) {
           console.warn('[WA load]', e?.message || e);
@@ -26296,6 +26318,13 @@ function App() {
       alignItems: 'center',
       marginBottom: 8
     }
+  }, React.createElement("div", {
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 6,
+      minWidth: 0
+    }
   }, React.createElement("h3", {
     style: {
       margin: 0,
@@ -26309,7 +26338,27 @@ function App() {
       color: 'var(--text3)',
       fontWeight: 600
     }
-  }, "(read-only)")), role !== 'admin' && waTemplates.length > 0 && React.createElement(Btn, {
+  }, "(read-only)")), React.createElement("button", {
+    title: "Template placeholders",
+    onClick: () => confirmAsync('{{name}} = the name you choose before WhatsApp opens.\n{{day}} = smart day phrase, like this monday / next friday / following sunday / on tuesday.\n{{weekday}} = plain weekday only, like Tuesday.\n{{date}} and {{time}} = appointment date/time.\n{{location}} = meeting place.\n{{admin}} and {{company}} = sender details.', {
+      title: 'WhatsApp template guide',
+      confirmLabel: 'Got it',
+      cancelLabel: 'Close',
+      danger: false
+    }),
+    style: {
+      width: 22,
+      height: 22,
+      borderRadius: 999,
+      background: 'var(--bg3)',
+      color: 'var(--accent2)',
+      border: '1px solid var(--border2)',
+      fontSize: 12,
+      fontWeight: 900,
+      lineHeight: '20px',
+      flexShrink: 0
+    }
+  }, "?")), role !== 'admin' && waTemplates.length > 0 && React.createElement(Btn, {
     variant: "danger",
     size: "sm",
     weight: 600,
@@ -30374,9 +30423,18 @@ WHERE p.id IS NULL;`;
     }
   }, waTemplates.slice(0, 5).map(t => React.createElement("button", {
     key: t.id,
-    onClick: () => {
+    onClick: async () => {
+      var chosenName = await promptAsync('Confirm how this prospect should be addressed in the WhatsApp message.', showWA.name || '', {
+        title: 'Confirm WhatsApp name',
+        placeholder: 'Mr Goh / Ms Goh / Mei Lian',
+        confirmLabel: 'Open WhatsApp',
+        cancelLabel: 'Cancel'
+      });
+      if (chosenName === null) return;
+      chosenName = String(chosenName || '').trim();
+      if (!chosenName) return toast('Confirm a name first', 'err');
       var msg = waFill(t.template, {
-        name: showWA.name,
+        name: chosenName,
         date: showWA.date || '',
         time: showWA.time || '',
         location: showWA.location || '',
