@@ -340,7 +340,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0015';
+window.APP_VERSION='2026.05.02.0016';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -5036,6 +5036,11 @@ function App() {
       }, ...(Array.isArray(prev) ? prev : []).filter(x => String(x?.loc || '').toLowerCase() !== clean.toLowerCase())];
       return next.slice(0, 12);
     });
+  };
+  var _forgetApptLocation = loc => {
+    var clean = String(loc || '').trim().toLowerCase();
+    if (!clean) return;
+    setRecentApptLocations(prev => (Array.isArray(prev) ? prev : []).filter(x => String(x?.loc || '').trim().toLowerCase() !== clean));
   };
   useEffect(() => {
     if (!showAppt || !apptLead) return;
@@ -29473,19 +29478,41 @@ WHERE p.id IS NULL;`;
         flexWrap: 'wrap',
         margin: '-2px 0 8px'
       }
-    }, suggestions.map((x, idx) => React.createElement("button", {
+    }, suggestions.map((x, idx) => React.createElement("span", {
       key: x.loc + idx,
-      onClick: () => setApptLocation(x.loc),
       style: {
-        padding: '5px 9px',
+        display: 'inline-flex',
+        alignItems: 'center',
+        overflow: 'hidden',
         borderRadius: 999,
         background: 'rgba(88,166,255,.08)',
-        color: 'var(--blue)',
         border: '1px solid rgba(88,166,255,.22)',
+        lineHeight: 1
+      }
+    }, React.createElement("button", {
+      type: "button",
+      onClick: () => setApptLocation(x.loc),
+      style: {
+        padding: '5px 6px 5px 9px',
+        color: 'var(--blue)',
         fontSize: 10,
         fontWeight: 800
       }
-    }, x.loc)));
+    }, x.loc), React.createElement("button", {
+      type: "button",
+      title: "Remove saved location",
+      onClick: ev => {
+        ev.stopPropagation();
+        _forgetApptLocation(x.loc);
+      },
+      style: {
+        padding: '5px 8px 5px 5px',
+        color: 'var(--text3)',
+        fontSize: 11,
+        fontWeight: 900,
+        opacity: .85
+      }
+    }, "\xD7"))));
   })(), React.createElement("input", {
     value: apptInvite,
     onChange: ev => setApptInvite(ev.target.value),
