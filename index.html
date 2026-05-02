@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v='2026.05.02.0005',reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v='2026.05.02.0006',reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0005';
+window.APP_VERSION='2026.05.02.0006';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -5357,6 +5357,288 @@ function App() {
   useEffect(() => {
     if (tab !== 'cal' && calEditEvent) setCalEditEvent(null);
   }, [tab, calEditEvent]);
+  var _calEditRowFor = ev => (appointments || []).find(a => a.calEventId === ev?.id);
+  var _canEditCalEvent = ev => {
+    if (!ev) return false;
+    if (role !== 'admin') return true;
+    var _r = _calEditRowFor(ev);
+    var _eventOwner = (ev.extendedProperties?.private?.autodialOwner || ev.creator?.email || '').toLowerCase();
+    return !!(_r && (_r.admin || '').toLowerCase() === myEmail.toLowerCase()) || !!(_eventOwner && _eventOwner === myEmail.toLowerCase());
+  };
+  var _saveCalEditEvent = async () => {
+    if (!calEditEvent) return;
+    if (!_canEditCalEvent(calEditEvent)) {
+      toast('Admins can only edit appointments they created', 'err');
+      return;
+    }
+    if (!calEditForm.summary.trim()) {
+      toast('Title required', 'err');
+      return;
+    }
+    if (!calEditForm.date || !calEditForm.time) {
+      toast('Date and time required', 'err');
+      return;
+    }
+    setCalEditSaving(true);
+    try {
+      var [y, mo, da] = calEditForm.date.split('-').map(Number);
+      var [h, mi] = calEditForm.time.split(':').map(Number);
+      var startD = new Date(y, mo - 1, da, h, mi, 0);
+      var endD = new Date(startD.getTime() + calEditForm.duration * 60000);
+      var tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      var patch = {
+        summary: calEditForm.summary.trim(),
+        location: calEditForm.location || '',
+        start: {
+          dateTime: startD.toISOString(),
+          timeZone: tz
+        },
+        end: {
+          dateTime: endD.toISOString(),
+          timeZone: tz
+        }
+      };
+      var res = await withTimeout(gCal.update(calEditEvent.id, patch, calEditEvent._calId || 'primary'), 8000, 'Calendar update');
+      if (!res) {
+        toast('Update failed', 'err');
+        return;
+      }
+      try {
+        _liveSyncRef.current.localApptsGuardUntil = Date.now() + 6000;
+      } catch (_e) {}
+      setWeekEvents(prev => prev.map(ev => ev.id === calEditEvent.id ? {
+        ...ev,
+        summary: patch.summary,
+        location: patch.location,
+        start: {
+          ...(ev.start || {}),
+          dateTime: startD.toISOString()
+        },
+        end: {
+          ...(ev.end || {}),
+          dateTime: endD.toISOString()
+        }
+      } : ev));
+      var _newApptDate = localDateKey(startD);
+      var _newApptTime = String(startD.getHours()).padStart(2, '0') + ':' + String(startD.getMinutes()).padStart(2, '0');
+      var _editedRow = _calEditRowFor(calEditEvent);
+      if (_editedRow) {
+        var _editedPayload = {
+          ..._editedRow,
+          apptDate: _newApptDate,
+          apptTime: _newApptTime,
+          duration: calEditForm.duration,
+          location: patch.location
+        };
+        setAppointments(prev => prev.map(a => a.calEventId === calEditEvent.id ? _editedPayload : a));
+        if (_editedRow.admin && _editedRow.admin.toLowerCase() !== myEmail.toLowerCase()) _mainWritebackAdminAppt(_editedPayload);
+        (async () => {
+          try {
+            await withTimeout(syncApptSheet(_editedPayload, {
+              apptDate: _newApptDate,
+              apptTime: _newApptTime,
+              duration: calEditForm.duration,
+              location: patch.location,
+              status: 'Set',
+              followUp: _editedRow.followUp || 'Pending',
+              notes: _editedRow.remarks || ''
+            }), 10000, 'Appointment sheet sync');
+          } catch (_sheetErr) {
+            console.warn('[Calendar edit syncApptSheet]', _sheetErr?.message || _sheetErr);
+            toast('Event updated; sheet sync will need a sync check.', 'err');
+          }
+        })();
+      }
+      toast('✓ Event updated');
+      setCalEditEvent(null);
+    } catch (e) {
+      toast('Update failed: ' + (e.message || e), 'err');
+    } finally {
+      setCalEditSaving(false);
+    }
+  };
+  var _deleteCalEditEvent = async () => {
+    if (!calEditEvent) return;
+    if (!_canEditCalEvent(calEditEvent)) {
+      toast('Admins can only delete appointments they created', 'err');
+      return;
+    }
+    var _a = _calEditRowFor(calEditEvent);
+    if (!_a) {
+      if (!(await confirmAsync('Delete this event from Google Calendar? This cannot be undone.', {
+        title: 'Delete calendar event',
+        confirmLabel: 'Delete'
+      }))) return;
+      setCalEditSaving(true);
+      try {
+        var ok = await gCal.del(calEditEvent.id, calEditEvent._calId || 'primary');
+        if (!ok) {
+          toast('Delete failed', 'err');
+          return;
+        }
+        setWeekEvents(prev => prev.filter(ev => ev.id !== calEditEvent.id));
+        toast('Event deleted');
+        setCalEditEvent(null);
+      } catch (e) {
+        toast('Delete failed: ' + (e.message || e), 'err');
+      } finally {
+        setCalEditSaving(false);
+      }
+      return;
+    }
+    setCalEditEvent(null);
+    setApptActionModal({
+      appt: _a,
+      source: 'cal',
+      calendarId: calEditEvent._calId || 'primary'
+    });
+  };
+  var renderCalEditPanel = () => {
+    if (!calEditEvent) return null;
+    var canEdit = _canEditCalEvent(calEditEvent);
+    return React.createElement("div", {
+      className: "card",
+      style: {
+        marginBottom: 12,
+        padding: '14px',
+        borderColor: canEdit ? 'rgba(99,102,241,.45)' : 'rgba(248,81,73,.35)',
+        background: canEdit ? 'linear-gradient(135deg,rgba(99,102,241,.08),var(--bg2))' : 'linear-gradient(135deg,rgba(248,81,73,.08),var(--bg2))'
+      }
+    }, React.createElement("div", {
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        gap: 10,
+        marginBottom: 10
+      }
+    }, React.createElement("div", {
+      style: {
+        minWidth: 0
+      }
+    }, React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 12,
+        fontWeight: 900,
+        color: canEdit ? 'var(--accent2)' : 'var(--red)',
+        textTransform: 'uppercase',
+        letterSpacing: '.06em'
+      }
+    }, "Calendar event selected"), React.createElement("p", {
+      style: {
+        margin: '2px 0 0',
+        fontSize: 11,
+        color: 'var(--text3)',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }
+    }, calEditEvent.summary || 'Busy')), React.createElement("button", {
+      onClick: () => setCalEditEvent(null),
+      style: {
+        width: 30,
+        height: 30,
+        borderRadius: 10,
+        background: 'var(--bg3)',
+        color: 'var(--text3)',
+        fontWeight: 900,
+        flexShrink: 0
+      }
+    }, "×")), !canEdit && React.createElement("p", {
+      style: {
+        margin: '0 0 10px',
+        fontSize: 11,
+        color: 'var(--red)'
+      }
+    }, "Admins can only edit or delete appointments they created. Main can edit all calendar appointments."), React.createElement("input", {
+      value: calEditForm.summary,
+      disabled: !canEdit || calEditSaving,
+      onChange: e => setCalEditForm(s => ({
+        ...s,
+        summary: e.target.value
+      })),
+      placeholder: "Event title",
+      style: {
+        marginBottom: 8
+      }
+    }), React.createElement("div", {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: '1fr 1fr 110px',
+        gap: 8,
+        marginBottom: 8
+      }
+    }, React.createElement("input", {
+      type: "date",
+      value: calEditForm.date,
+      disabled: !canEdit || calEditSaving,
+      onChange: e => setCalEditForm(s => ({
+        ...s,
+        date: e.target.value
+      }))
+    }), React.createElement("input", {
+      type: "time",
+      value: calEditForm.time,
+      disabled: !canEdit || calEditSaving,
+      onChange: e => setCalEditForm(s => ({
+        ...s,
+        time: e.target.value
+      }))
+    }), React.createElement("input", {
+      type: "number",
+      min: "1",
+      value: calEditForm.duration,
+      disabled: !canEdit || calEditSaving,
+      onChange: e => setCalEditForm(s => ({
+        ...s,
+        duration: +e.target.value || 60
+      })),
+      placeholder: "mins"
+    })), React.createElement("input", {
+      value: calEditForm.location,
+      disabled: !canEdit || calEditSaving,
+      onChange: e => setCalEditForm(s => ({
+        ...s,
+        location: e.target.value
+      })),
+      placeholder: "Location, address, or meeting link",
+      style: {
+        marginBottom: 10
+      }
+    }), React.createElement("div", {
+      style: {
+        display: 'flex',
+        gap: 8
+      }
+    }, React.createElement("button", {
+      disabled: !canEdit || calEditSaving,
+      onClick: _saveCalEditEvent,
+      style: {
+        flex: 1,
+        padding: '11px',
+        borderRadius: 10,
+        background: canEdit ? 'linear-gradient(135deg,var(--accent),#4f46e5)' : 'var(--bg3)',
+        color: canEdit ? '#fff' : 'var(--text3)',
+        fontSize: 12,
+        fontWeight: 900,
+        opacity: calEditSaving ? .6 : 1
+      }
+    }, calEditSaving ? 'Saving…' : 'Save changes'), React.createElement("button", {
+      disabled: !canEdit || calEditSaving,
+      onClick: _deleteCalEditEvent,
+      style: {
+        padding: '11px 14px',
+        borderRadius: 10,
+        background: 'var(--rdim)',
+        color: 'var(--red)',
+        fontSize: 12,
+        fontWeight: 800,
+        border: '1px solid rgba(248,81,73,.3)',
+        opacity: canEdit ? 1 : .45
+      }
+    }, "Delete / remove")));
+  };
   var isApptShaky = a => !!(a && a.shaky);
   var _stripStatusPrefix = title => (title || '').replace(/^\[(?:POSTPONED(?::\s*NO\s*DATE)?|FLY\s*KITE|MET|CLOSED)\]\s*/i, '');
   var _withStatusPrefix = (title, status, hasDate) => {
@@ -16274,7 +16556,7 @@ function App() {
           fontStyle: 'italic'
         }
       }, "Settings sync across your devices automatically"));
-    })(), calViewMode === 'grid' && (() => {
+    })(), renderCalEditPanel(), calViewMode === 'grid' && (() => {
       var HR_START = 7,
         HR_END = 22;
       var HOUR_PX = 44;
@@ -16481,6 +16763,9 @@ function App() {
             type: "button",
             "data-cal-event-id": ev.id || '',
             title: 'Open event: ' + (ev.summary || 'Busy'),
+            onMouseDown: e => {
+              if (e.button === 0) _openCalEditSafe(ev, e);
+            },
             onClick: e => {
               _openCalEditSafe(ev, e);
             },
@@ -16626,6 +16911,9 @@ function App() {
               key: 'e' + i,
               type: "button",
               "data-cal-event-id": ev.id || '',
+              onMouseDown: e => {
+                if (e.button === 0) _openCalEditSafe(ev, e);
+              },
               onClick: e => {
                 _openCalEditSafe(ev, e);
               },
@@ -30453,7 +30741,7 @@ WHERE p.id IS NULL;`;
         fontSize: 12
       }
     }, "No called leads found for today yet. Mark a lead as Set first, then come back here to add the appointment."));
-  })()), calEditEvent && React.createElement(Modal, {
+  })()), false && calEditEvent && React.createElement(Modal, {
     show: true,
     onClose: () => setCalEditEvent(null),
     align: "center",
