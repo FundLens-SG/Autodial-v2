@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0003';
+window.APP_VERSION='2026.05.03.0004';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -13117,9 +13117,12 @@ function App() {
   // ═══ Unified bottom nav: same 5 tabs in both modes. Mode determines what
   // ═══ renders inside the Home tab (manager dashboard vs Dial workspace).
   // ═══ Live / Rank / Pay / Settings live in the More menu.
-  var unifiedTabs = [['home', (isCallMode ? '📞 Home' : '🏠 Home') + (isCallMode && cbDue ? ' 🔔' + cbDue : '')], ['leads', '📋 Leads'], ['cal', '🗓 Cal'], ['appts', '📅 Appts'], ['more', '⋯ More']];
+  var unifiedTabs = [['home', (isCallMode ? '📞 Home' : '🏠 Home') + (isCallMode && cbDue ? ' 🔔' + cbDue : '')], ['leads', '📋 Leads'], ['cal', '📆 Cal'], ['appts', '📅 Appts'], ['more', '⋯ More']];
   var moreTabKeys = ['timesheet', 'tracking', 'settings', 'live', 'rank', 'dial'];
-  var apptsSubtabKeys = ['appts', 'cal', 'cb'];
+  // ═══ `cal` is now a top-level tab; keep apptsSubtabKeys for the inner List/CB
+  // ═══ sub-nav on the Appts tab only, so the Appts pill doesn't light up when the
+  // ═══ user is on Cal.
+  var apptsSubtabKeys = ['appts', 'cb'];
   var tabs = unifiedTabs;
   var leadsHaveParsedColumns = (leads || []).some(l => hasCallablePhone(l.phone)) && (leads || []).some(l => l.name || l.phone || l.status || l.notes);
   var columnsSetupReady = !!detectedColMap || leadsHaveParsedColumns;
