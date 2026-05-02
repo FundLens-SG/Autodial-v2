@@ -274,7 +274,7 @@ button.free-slot{appearance:none;text-align:left}
   .hdr-row2{padding-left:12px;padding-right:12px}
   .mode-banner{margin-left:12px;margin-right:12px}
   .app-tabs{padding-left:12px;padding-right:12px;gap:5px}
-  .app-tabs button{min-width:76px;min-height:48px;padding:13px 9px;font-size:13px;flex:1 0 auto}
+  .app-tabs button{min-width:0;min-height:48px;padding:13px 6px;font-size:12px;flex:1 1 0}
   .readiness-grid{grid-template-columns:1fr}
   .touch-action-row{grid-template-columns:1fr!important}
 }
@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0001';
+window.APP_VERSION='2026.05.03.0002';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -4902,7 +4902,7 @@ function App() {
     save('_dialRunning', running);
   }, [curIdx, phase, running]);
   var _initialMainMode = load('mainMode') || 'manage';
-  var [tab, setTab] = useState(role === 'admin' || _initialMainMode === 'call' ? 'dial' : 'leads');
+  var [tab, setTab] = useState('home');
   var [mainMode, setMainMode] = useState(_initialMainMode);
   var [search, setSearch] = useState('');
   var [histF, setHistF] = useState('all');
@@ -6054,7 +6054,7 @@ function App() {
     }
     if (!liveSessionDialFocusRef.current) {
       liveSessionDialFocusRef.current = true;
-      if (tab !== 'dial') setTab('dial');
+      if (tab !== 'dial') setTab('home');
     }
   }, [role, mainMode, running, session && session.startTime, session && session.ended, tab]);
   var [totalSets, setTotalSets] = useState(load('ts') || 0);
@@ -10831,7 +10831,7 @@ function App() {
     setPhase(d.phase || 'calling');
     setShowNextPreview(false);
     setShowPostCall(null);
-    setTab('dial');
+    setTab('home');
     return {
       idx,
       lead: idx >= 0 ? leadsRef.current[idx] : null
@@ -10914,7 +10914,7 @@ function App() {
       var qs = new URLSearchParams(location.search);
       if (qs.get('autodialFocus') === 'dial') {
         var leadIdx = parseInt(qs.get('lead') || '-1', 10);
-        setTab('dial');
+        setTab('home');
         if (leadIdx >= 0) {
           setCurIdx(leadIdx);
           setRunning(true);
@@ -10999,7 +10999,7 @@ function App() {
         var n = new Notification(title, opts);
         n.onclick = () => {
           window.focus();
-          setTab('dial');
+          setTab('home');
           n.close();
         };
       }
@@ -11040,7 +11040,7 @@ function App() {
         setRunning(true);
         setPhase('calling');
         setSession(d.session);
-        setTab('dial');
+        setTab('home');
         setShowNextPreview(false);
         setShowPostCall(null);
         if (isMob && d.phone) setTimeout(() => {
@@ -12469,7 +12469,7 @@ function App() {
     setCurIdx(f);
     setRunning(true);
     setPhase('calling');
-    setTab('dial');
+    setTab('home');
     var startPayload = {
       curIdx: f,
       phase: 'calling',
@@ -12511,7 +12511,7 @@ function App() {
         toast('Paused');
         return;
       }
-      if (!(tab === 'dial' && isCallMode && running && phase === 'calling' && cur)) return;
+      if (!((tab === 'dial' || tab === 'home') && isCallMode && running && phase === 'calling' && cur)) return;
       if (e.key === '1') {
         e.preventDefault();
         handleOutcome('np');
@@ -13112,13 +13112,15 @@ function App() {
   var _showRank = true;
   var _baseTabs = [['dial', '📞 Dial'], ['appts', '📅 Appts'], ['leads', '📋 Leads'], ['settings', '⚙️ Set']];
   var cbDue = cbQueue.filter(cb => cb.status !== 'called').length;
-  var callTabs = [['dial', '📞 Dial' + (cbDue ? ' 🔔' + cbDue : '')], ['rank', '📊 Rank'], ['cal', '🗓 Cal'], ['appts', '📅 Appts'], ['leads', '📋 Leads'], ...(role === 'admin' ? [['timesheet', '💰 Pay']] : []), ['settings', '⚙️ Set']];
-  var manageTabs = [['home', '🏠 Home'], ['live', '⚡ Live'], ['leads', '📋 Leads'], ['appts', '📅 Appts'], ['more', '⋯ More']];
-  var moreTabKeys = ['timesheet', 'tracking', 'settings'];
-  var apptsSubtabKeys = ['appts', 'cal', 'cb'];
   var isCallMode = role === 'admin' || role === 'main' && mainMode === 'call';
   var isManageMode = role === 'main' && mainMode === 'manage';
-  var tabs = isCallMode ? callTabs : manageTabs;
+  // ═══ Unified bottom nav: same 5 tabs in both modes. Mode determines what
+  // ═══ renders inside the Home tab (manager dashboard vs Dial workspace).
+  // ═══ Live / Rank / Pay / Settings live in the More menu.
+  var unifiedTabs = [['home', (isCallMode ? '📞 Home' : '🏠 Home') + (isCallMode && cbDue ? ' 🔔' + cbDue : '')], ['leads', '📋 Leads'], ['cal', '🗓 Cal'], ['appts', '📅 Appts'], ['more', '⋯ More']];
+  var moreTabKeys = ['timesheet', 'tracking', 'settings', 'live', 'rank', 'dial'];
+  var apptsSubtabKeys = ['appts', 'cal', 'cb'];
+  var tabs = unifiedTabs;
   var leadsHaveParsedColumns = (leads || []).some(l => hasCallablePhone(l.phone)) && (leads || []).some(l => l.name || l.phone || l.status || l.notes);
   var columnsSetupReady = !!detectedColMap || leadsHaveParsedColumns;
   var columnsSetupDetail = detectedColMap ? 'Name, phone, status map ready' : leadsHaveParsedColumns ? 'Auto-detected from fetched leads' : 'Review after fetching leads';
@@ -14221,7 +14223,7 @@ function App() {
         border: '1px solid rgba(99,102,241,.2)'
       }
     }, "\uD83D\uDD17 Invite Admin"), role === 'main' && React.createElement("button", {
-      onClick: () => { setMainMode('call'); setTab('dial'); },
+      onClick: () => { setMainMode('call'); setTab('home'); },
       style: {
         padding: '12px',
         borderRadius: 12,
@@ -14232,7 +14234,7 @@ function App() {
         border: '1px solid rgba(34,197,94,.32)'
       }
     }, "\uD83D\uDCDE Start calling")));
-  })(), tab === 'dial' && isCallMode && React.createElement("div", {
+  })(), (tab === 'dial' || tab === 'home') && isCallMode && React.createElement("div", {
     className: "content-pad",
     style: {
       paddingBottom: 20
@@ -16249,7 +16251,7 @@ function App() {
     style: {
       height: 80
     }
-  })), tab === 'dial' && isCallMode && !running && cbQueue.filter(cb => cb.status !== 'called').length > 0 && React.createElement("div", {
+  })), (tab === 'dial' || tab === 'home') && isCallMode && !running && cbQueue.filter(cb => cb.status !== 'called').length > 0 && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 12
@@ -26749,7 +26751,15 @@ function App() {
       color: '#f1f5f9',
       textAlign: 'center'
     }
-  }, "More"), [['timesheet', '💰', 'Payroll', 'Admin payouts only'], ['tracking', '📊', 'Tracking', 'Team performance analytics'], ['settings', '⚙️', 'Settings', 'Preferences, integrations, team']].map(([_k, _ic, _lbl, _desc]) => React.createElement("button", {
+  }, "More"), (() => {
+    var _items = [];
+    if (isCallMode) _items.push(['rank', '🏆', 'Rank & stats', 'Your tier, streak, monthly progress']);
+    if (isManageMode) _items.push(['live', '⚡', 'Live activity', 'Real-time team activity feed']);
+    _items.push(['tracking', '📊', 'Tracking', 'Team performance analytics']);
+    _items.push(['timesheet', '💰', 'Payroll', role === 'admin' ? 'Your sessions and pay' : 'Admin payouts']);
+    _items.push(['settings', '⚙️', 'Settings', 'Preferences, integrations, team']);
+    return _items;
+  })().map(([_k, _ic, _lbl, _desc]) => React.createElement("button", {
     key: _k,
     onClick: () => {
       setTab(_k);
