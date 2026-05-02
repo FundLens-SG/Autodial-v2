@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v='2026.05.02.0004',reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v='2026.05.02.0005',reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -338,7 +338,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0004';
+window.APP_VERSION='2026.05.02.0005';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -2881,7 +2881,8 @@ function Modal({
   bg = '.85',
   zIndex = 100,
   padding = 16,
-  scope = 'window'
+  scope = 'window',
+  overlay = true
 }) {
   React.useEffect(() => {
     if (!show) return;
@@ -2889,13 +2890,16 @@ function Modal({
       if (e.key === 'Escape' && onClose) onClose();
     };
     window.addEventListener('keydown', h);
-    var prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
+    var prev = null;
+    if (overlay) {
+      prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+    }
     return () => {
       window.removeEventListener('keydown', h);
-      document.body.style.overflow = prev;
+      if (overlay) document.body.style.overflow = prev;
     };
-  }, [show, onClose]);
+  }, [show, onClose, overlay]);
   if (!show) return null;
   var _ai = align === 'bottom' ? 'flex-end' : align === 'stretch' ? 'stretch' : 'center';
   var _pane = scope === 'pane' && typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(min-width:960px)').matches;
@@ -2903,7 +2907,7 @@ function Modal({
   var _justifyContent = _pane && align === 'bottom' ? 'flex-end' : 'center';
   var _padding = _pane && align === 'bottom' ? '136px 14px 0' : align === 'stretch' ? 0 : padding;
   var content = React.createElement("div", {
-    onClick: onClose,
+    onClick: overlay ? onClose : undefined,
     style: {
       position: 'fixed',
       inset: _pane ? undefined : 0,
@@ -2911,17 +2915,19 @@ function Modal({
       bottom: _pane ? 0 : undefined,
       left: _pane ? 'var(--app-side-margin)' : undefined,
       width: _pane ? 'var(--left-pane-w)' : undefined,
-      background: 'rgba(0,0,0,' + bg + ')',
+      background: overlay ? 'rgba(0,0,0,' + bg + ')' : 'transparent',
       zIndex,
       display: 'flex',
-      alignItems: _alignItems,
-      justifyContent: _justifyContent,
-      padding: _padding
+      alignItems: overlay ? _alignItems : 'flex-start',
+      justifyContent: overlay ? _justifyContent : 'flex-start',
+      padding: overlay ? _padding : 0,
+      pointerEvents: overlay ? 'auto' : 'none'
     }
   }, React.createElement("div", {
     onClick: e => e.stopPropagation(),
     style: {
-      display: 'contents'
+      display: 'contents',
+      pointerEvents: 'auto'
     }
   }, children));
   return typeof ReactDOM !== 'undefined' && ReactDOM.createPortal ? ReactDOM.createPortal(content, document.body) : content;
@@ -5336,38 +5342,21 @@ function App() {
     });
     setCalEditEvent(ev);
   };
-  var calEventOpenTimerRef = useRef(null);
   var _openCalEditSafe = (ev, domEvent) => {
     if (domEvent) {
-      domEvent.preventDefault?.();
       domEvent.stopPropagation?.();
     }
     if (!ev) return;
-    if (calEventOpenTimerRef.current) clearTimeout(calEventOpenTimerRef.current);
-    calEventOpenTimerRef.current = setTimeout(() => {
-      try {
-        _openCalEdit(ev);
-      } catch (e) {
-        console.warn('[Calendar event open]', e);
-        toast('Could not open this calendar event: ' + (e?.message || e), 'err');
-      }
-    }, 0);
+    try {
+      _openCalEdit(ev);
+    } catch (e) {
+      console.warn('[Calendar event open]', e);
+      toast('Could not open this calendar event: ' + (e?.message || e), 'err');
+    }
   };
   useEffect(() => {
-    var openFromDom = e => {
-      var el = e.target?.closest?.('[data-cal-event-id]');
-      if (!el) return;
-      var id = el.getAttribute('data-cal-event-id');
-      var ev = (weekEvents || []).find(x => String(x.id || '') === String(id || ''));
-      if (ev) _openCalEditSafe(ev, e);
-    };
-    document.addEventListener('click', openFromDom, true);
-    document.addEventListener('pointerup', openFromDom, true);
-    return () => {
-      document.removeEventListener('click', openFromDom, true);
-      document.removeEventListener('pointerup', openFromDom, true);
-    };
-  }, [weekEvents]);
+    if (tab !== 'cal' && calEditEvent) setCalEditEvent(null);
+  }, [tab, calEditEvent]);
   var isApptShaky = a => !!(a && a.shaky);
   var _stripStatusPrefix = title => (title || '').replace(/^\[(?:POSTPONED(?::\s*NO\s*DATE)?|FLY\s*KITE|MET|CLOSED)\]\s*/i, '');
   var _withStatusPrefix = (title, status, hasDate) => {
@@ -16487,13 +16476,11 @@ function App() {
           var top = Math.max(0, (startH - HR_START) * HOUR_PX);
           var height = Math.max(18, (Math.min(endH, HR_END) - Math.max(startH, HR_START)) * HOUR_PX - 2);
           var isShaky = (appointments || []).some(a => a.calEventId === ev.id && isApptShaky(a));
-          return React.createElement("div", {
+          return React.createElement("button", {
             key: 'e-' + ei,
-            role: "button",
-            tabIndex: 0,
+            type: "button",
             "data-cal-event-id": ev.id || '',
             title: 'Open event: ' + (ev.summary || 'Busy'),
-            onPointerUp: e => _openCalEditSafe(ev, e),
             onClick: e => {
               _openCalEditSafe(ev, e);
             },
@@ -16506,11 +16493,14 @@ function App() {
               right: 2,
               top: top + 2,
               height,
+              width: 'calc(100% - 4px)',
               borderRadius: 5,
               padding: '2px 4px',
               fontSize: 9,
               fontWeight: 700,
               overflow: 'hidden',
+              textAlign: 'left',
+              appearance: 'none',
               background: isShaky ? 'linear-gradient(135deg,rgba(251,146,60,.35),rgba(234,88,12,.2))' : 'linear-gradient(135deg,rgba(99,102,241,.35),rgba(79,70,229,.2))',
               border: '1px solid ' + (isShaky ? 'rgba(251,146,60,.6)' : 'rgba(99,102,241,.5)'),
               color: isShaky ? '#fb923c' : '#a5b4fc',
@@ -16632,12 +16622,10 @@ function App() {
               hour12: true
             });
             var _isShaky = (appointments || []).some(a => a.calEventId && a.calEventId === ev.id && isApptShaky(a));
-            return React.createElement("div", {
+            return React.createElement("button", {
               key: 'e' + i,
-              role: "button",
-              tabIndex: 0,
+              type: "button",
               "data-cal-event-id": ev.id || '',
-              onPointerUp: e => _openCalEditSafe(ev, e),
               onClick: e => {
                 _openCalEditSafe(ev, e);
               },
@@ -16648,6 +16636,9 @@ function App() {
                 display: 'flex',
                 alignItems: 'flex-start',
                 gap: 8,
+                width: '100%',
+                textAlign: 'left',
+                appearance: 'none',
                 padding: '8px 10px',
                 marginBottom: 4,
                 borderRadius: 10,
@@ -30468,15 +30459,20 @@ WHERE p.id IS NULL;`;
     align: "center",
     bg: ".85",
     zIndex: 360,
-    scope: "pane"
+    scope: "pane",
+    overlay: false
   }, React.createElement("div", {
     style: {
       width: '100%',
       maxWidth: 420,
+      margin: '112px 14px 0',
+      maxHeight: 'calc(100dvh - 132px)',
+      overflowY: 'auto',
       background: 'var(--bg2)',
       borderRadius: 20,
       padding: '18px 18px 14px',
-      border: '1px solid var(--border2)'
+      border: '1px solid var(--border2)',
+      boxShadow: '0 18px 48px rgba(0,0,0,.5)'
     }
   }, React.createElement("div", {
     style: {
