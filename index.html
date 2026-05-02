@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0004';
+window.APP_VERSION='2026.05.03.0005';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -6011,6 +6011,7 @@ function App() {
   var [sheetQ, setSheetQ] = useState('');
   var [sheetResults, setSheetResults] = useState([]);
   var [sheetSearching, setSheetSearching] = useState(false);
+  var [sheetPickerExpanded, setSheetPickerExpanded] = useState(false);
   var [session, setSession] = useState(() => {
     var s = load('activeSession');
     if (s && s.ended) {
@@ -17895,30 +17896,7 @@ function App() {
     })));
   })()), tab === 'appts' && React.createElement("div", {
     className: "content-pad"
-  }, isManageMode && React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: 4,
-      marginBottom: 12,
-      background: 'var(--bg3)',
-      padding: 4,
-      borderRadius: 12,
-      border: '1px solid var(--border)'
-    }
-  }, [['appts', '📋 List'], ['cal', '🗓 Cal'], ['cb', '🔔 CB']].map(([_k, _lbl]) => React.createElement("button", {
-    key: _k,
-    onClick: () => setTab(_k),
-    style: {
-      flex: 1,
-      padding: '8px 6px',
-      borderRadius: 8,
-      background: tab === _k ? 'var(--adim)' : 'transparent',
-      color: tab === _k ? 'var(--accent2)' : 'var(--text3)',
-      fontSize: 11,
-      fontWeight: 700,
-      border: 'none'
-    }
-  }, _lbl))), React.createElement("div", {
+  }, React.createElement("div", {
     style: {
       display: 'flex',
       alignItems: 'center',
@@ -17999,26 +17977,23 @@ function App() {
     style: {
       marginBottom: 10
     }
-  }), React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: 6,
-      marginBottom: 10,
-      flexWrap: 'wrap'
-    }
-  }, [['all', 'All', ''], [' pending', 'Pending', 'var(--accent)'], [' met', 'Met ✅', 'var(--green)'], [' postponed', 'Postponed', 'var(--amber)'], [' flykite', 'Fly Kite 🪁', 'var(--red)'], [' closed', 'Closed 💰', 'var(--gold)']].map(([k, v, c]) => React.createElement("button", {
-    key: k,
-    onClick: () => setApptSearch(k.trim() === 'all' ? '' : k.trim()),
-    style: {
-      padding: '6px 12px',
-      borderRadius: 8,
-      fontSize: 10,
-      fontWeight: 600,
-      background: apptSearch === k.trim() ? 'var(--adim)' : 'var(--bg3)',
-      color: c || 'var(--text3)',
-      border: '1px solid ' + (apptSearch === k.trim() ? 'rgba(99,102,241,.3)' : 'var(--border)')
-    }
-  }, v))), isManageMode && (() => {
+  }), (() => {
+    var _filters = [['all', 'All statuses'], ['pending', 'Pending'], ['met', 'Met ✅'], ['postponed', 'Postponed'], ['flykite', 'Fly Kite 🪁'], ['closed', 'Closed 💰']];
+    var _curFilter = (apptSearch || '').trim().toLowerCase();
+    var _activeKey = _filters.find(([k]) => k === _curFilter) ? _curFilter : 'all';
+    return React.createElement("div", {
+      style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }
+    }, React.createElement("label", {
+      style: { fontSize: 10, color: 'var(--text3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' }
+    }, "Show"), React.createElement("select", {
+      value: _activeKey,
+      onChange: e => setApptSearch(e.target.value === 'all' ? '' : e.target.value),
+      style: { flex: 1, padding: '7px 10px', borderRadius: 8, background: 'var(--bg3)', color: 'var(--text)', fontSize: 12, fontWeight: 700, border: '1px solid ' + (_activeKey !== 'all' ? 'rgba(99,102,241,.32)' : 'var(--border)'), cursor: 'pointer' }
+    }, _filters.map(([k, lbl]) => React.createElement("option", { key: k, value: k }, lbl))), _activeKey !== 'all' && React.createElement("button", {
+      onClick: () => setApptSearch(''),
+      style: { padding: '6px 10px', borderRadius: 8, background: 'transparent', color: 'var(--text3)', fontSize: 11, fontWeight: 700, border: '1px solid var(--border)' }
+    }, "Clear"));
+  })(), isManageMode && (() => {
     var _pendingAppts = appointments.filter(a => !a._deleted && a.followUp === 'pending' && !isApptDeleted(a, _getDelIds()));
     var _selCount = selectedAppts.size;
     var _bulkApply = async status => {
@@ -20857,7 +20832,15 @@ function App() {
       background: 'var(--gdim)',
       color: 'var(--green)'
     }
-  }, "Connected")), gOk && React.createElement(React.Fragment, null, React.createElement("div", {
+  }, "Connected")), gOk && cfg.sheetId && cfg.sheetTab && !sheetPickerExpanded && React.createElement("div", {
+    style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 12px', borderRadius: 10, background: 'var(--bg3)', border: '1px solid var(--border)' }
+  }, React.createElement("div", { style: { minWidth: 0, flex: 1 } }, React.createElement("p", { style: { margin: 0, fontSize: 11, color: 'var(--text3)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '.06em' } }, "Active sheet"), React.createElement("p", { style: { margin: '2px 0 0', fontSize: 13, fontWeight: 800, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, cfg.sheetTab), leads.length > 0 && React.createElement("p", { style: { margin: '2px 0 0', fontSize: 10, color: 'var(--text3)' } }, leads.length, " leads loaded")), React.createElement("button", {
+    onClick: () => setSheetPickerExpanded(true),
+    style: { padding: '6px 12px', borderRadius: 8, background: 'var(--adim)', color: 'var(--accent2)', fontSize: 11, fontWeight: 700, border: '1px solid rgba(99,102,241,.25)', flexShrink: 0 }
+  }, "Change")), gOk && (!cfg.sheetId || !cfg.sheetTab || sheetPickerExpanded) && React.createElement(React.Fragment, null, cfg.sheetId && cfg.sheetTab && React.createElement("button", {
+    onClick: () => { setSheetPickerExpanded(false); setSheetResults([]); setSheetQ(''); },
+    style: { alignSelf: 'flex-start', padding: '4px 10px', borderRadius: 8, background: 'transparent', color: 'var(--text3)', fontSize: 11, fontWeight: 700, border: '1px solid var(--border)', marginBottom: 8 }
+  }, "\u2190 Keep current sheet"), React.createElement("div", {
     style: {
       position: 'relative',
       marginBottom: 8
@@ -21954,32 +21937,10 @@ function App() {
       color: 'var(--text3)',
       fontSize: 10
     }
-  }, "\u2713")))))), tab === 'cb' && React.createElement("div", {
-    className: "content-pad"
-  }, isManageMode && React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: 4,
-      marginBottom: 12,
-      background: 'var(--bg3)',
-      padding: 4,
-      borderRadius: 12,
-      border: '1px solid var(--border)'
-    }
-  }, [['appts', '📋 List'], ['cal', '🗓 Cal'], ['cb', '🔔 CB']].map(([_k, _lbl]) => React.createElement("button", {
-    key: _k,
-    onClick: () => setTab(_k),
-    style: {
-      flex: 1,
-      padding: '8px 6px',
-      borderRadius: 8,
-      background: tab === _k ? 'var(--adim)' : 'transparent',
-      color: tab === _k ? 'var(--accent2)' : 'var(--text3)',
-      fontSize: 11,
-      fontWeight: 700,
-      border: 'none'
-    }
-  }, _lbl))), React.createElement("div", {
+  }, "\u2713")))))), (tab === 'cb' || tab === 'appts') && cbQueue.length > 0 && React.createElement("div", {
+    className: "content-pad",
+    style: { paddingTop: tab === 'appts' ? 4 : 0, marginTop: tab === 'appts' ? 8 : 0, borderTop: tab === 'appts' ? '1px solid var(--border)' : 'none' }
+  }, React.createElement("div", {
     style: {
       display: 'flex',
       justifyContent: 'space-between',
