@@ -218,7 +218,7 @@ button.free-slot{appearance:none;text-align:left}
 .hdr-row1{position:relative;z-index:80;display:flex;align-items:center;gap:8px;padding:14px 14px 0;flex-wrap:wrap;min-height:46px;contain:layout}
 .hdr-row1>button{flex-shrink:0}
 .hdr-row1>.pill{flex:0 0 auto;min-width:72px;max-width:104px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.hdr-row1 button,.hdr-row2 button,.app-tabs button{pointer-events:auto}
+.hdr-row1 button,.hdr-row2 button,.app-tabs button{pointer-events:auto;touch-action:manipulation}
 .hdr-row2{position:relative;z-index:70;display:flex;align-items:center;justify-content:space-between;padding:8px 14px 8px;gap:10px;min-height:44px;contain:layout}
 .app-tabs{position:relative;z-index:60;display:flex;padding:8px 14px 10px;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;border-bottom:1px solid var(--border);background:var(--bg);margin-bottom:8px;min-height:62px;contain:layout}
 .app-tabs::-webkit-scrollbar{display:none}
@@ -340,7 +340,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.02.0008';
+window.APP_VERSION='2026.05.02.0009';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -6524,6 +6524,10 @@ function App() {
   var [showMoreMenu, setShowMoreMenu] = useState(false);
   var [showActivityDrawer, setShowActivityDrawer] = useState(false);
   var [dialogRequest, setDialogRequest] = useState(null);
+  var headerTapGuardRef = useRef({
+    action: '',
+    ts: 0
+  });
   var [showSetupWizard, setShowSetupWizard] = useState(false);
   var [setupWizardDismissed, setSetupWizardDismissed] = useState(localStorage.getItem('autodial_setup_wizard_dismissed') === '1');
   var [settingsSearch, setSettingsSearch] = useState('');
@@ -12936,6 +12940,59 @@ function App() {
   };
   var incompleteApptAlerts = (appointments || []).filter(_isIncompleteSetAppt).sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)).slice(0, 5);
   var hasActionActivity = !!(syncTrail.length || undoInfo || importReview || incompleteApptAlerts.length);
+  var runHeaderAction = useCallback(async action => {
+    var now = Date.now();
+    var prev = headerTapGuardRef.current || {};
+    if (prev.action === action && now - prev.ts < 450) return;
+    headerTapGuardRef.current = {
+      action,
+      ts: now
+    };
+    if (action === 'approvals') {
+      setShowApprovalModal(true);
+      if (_SB) _SB.from('profiles').select('*').then(r => {
+        if (r.data) {
+          setPendingUsers(r.data.filter(u => !u.approved && !isCreator(u.email)));
+          setUsersList(r.data);
+        }
+      }).catch(e => console.warn('[Users]', e));
+      return;
+    }
+    if (action === 'sync') {
+      if (window._liveSyncPull) {
+        window._liveSyncPull();
+        toast('Force-pulled from cloud', 'info');
+      } else {
+        flushSheetQueue();
+        toast('Sync is starting up - queued writes checked', 'info');
+      }
+      return;
+    }
+    if (action === 'activity') {
+      setShowActivityDrawer(true);
+      return;
+    }
+    if (action === 'help') {
+      setShowHelp(true);
+      return;
+    }
+    if (action === 'logout') {
+      if (await confirmAsync('Sign out of AutoDial?', {
+        title: 'Sign out',
+        confirmLabel: 'Sign out'
+      })) authLogout();
+    }
+  }, [confirmAsync, flushSheetQueue]);
+  var handleHeaderControlCapture = useCallback(e => {
+    var target = e.target;
+    var button = target?.closest ? target.closest('[data-header-action]') : null;
+    if (!button || !e.currentTarget.contains(button) || button.disabled) return;
+    var action = button.getAttribute('data-header-action');
+    if (!action) return;
+    e.preventDefault();
+    e.stopPropagation();
+    runHeaderAction(action);
+  }, [runHeaderAction]);
   var _renderIncompleteApptAlert = compact => incompleteApptAlerts.length ? React.createElement("div", {
     className: "card",
     style: {
@@ -13086,7 +13143,10 @@ function App() {
   }, milestone || {}, {
     onClose: () => setMilestone(null)
   })), React.createElement("div", {
-    className: "hdr-row1"
+    className: "hdr-row1",
+    onPointerUpCapture: handleHeaderControlCapture,
+    onClickCapture: handleHeaderControlCapture,
+    onTouchEndCapture: handleHeaderControlCapture
   }, React.createElement("div", {
     style: {
       width: 32,
@@ -13126,6 +13186,8 @@ function App() {
       marginRight: 4
     }
   }, userName), (isCreatorUser || isCreator(window._user?.email || '')) && React.createElement("button", {
+    type: "button",
+    "data-header-action": "approvals",
     onClick: () => {
       setShowApprovalModal(true);
       if (_SB) _SB.from('profiles').select('*').then(r => {
@@ -13169,6 +13231,8 @@ function App() {
     var _bg = syncStatus === 'offline' ? 'var(--rdim)' : _fresh ? 'var(--gdim)' : syncStatus === 'pushing' || syncStatus === 'pulling' ? 'var(--amdim)' : 'var(--bg3)';
     var _label = syncStatus === 'offline' ? 'Offline' : _fresh ? 'Synced' : syncStatus === 'pushing' ? 'Pushing…' : syncStatus === 'pulling' ? 'Pulling…' : _ago !== null ? _ago + 's ago' : 'Idle';
     return React.createElement("button", {
+      type: "button",
+      "data-header-action": "sync",
       onClick: async () => {
         if (window._liveSyncPull) {
           window._liveSyncPull();
@@ -13200,6 +13264,8 @@ function App() {
       }
     }), _label);
   })(), React.createElement("button", {
+    type: "button",
+    "data-header-action": "activity",
     onClick: () => setShowActivityDrawer(true),
     title: "Activity and undo timeline",
     style: {
@@ -13227,6 +13293,8 @@ function App() {
       animation: 'pulse 1.5s infinite'
     }
   }, "\u2601\uFE0F Syncing"), React.createElement("button", {
+    type: "button",
+    "data-header-action": "help",
     onClick: () => setShowHelp(true),
     title: "Help",
     style: {
@@ -13245,6 +13313,8 @@ function App() {
       border: '1px solid rgba(99,102,241,.25)'
     }
   }, "?"), React.createElement("button", {
+    type: "button",
+    "data-header-action": "logout",
     onClick: async () => {
       if (await confirmAsync('Sign out of AutoDial?', {
         title: 'Sign out',
