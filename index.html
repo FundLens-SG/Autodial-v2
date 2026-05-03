@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0008';
+window.APP_VERSION='2026.05.03.0009';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -6690,6 +6690,7 @@ function App() {
   var [dialogRequest, setDialogRequest] = useState(null);
   var [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   var [avatarMenuPos, setAvatarMenuPos] = useState({ top: 54, right: 14 });
+  var [opPreviewOffset, setOpPreviewOffset] = useState(0);
   var avatarBtnRef = useRef(null);
   var headerTapGuardRef = useRef({
     action: '',
@@ -10306,17 +10307,31 @@ function App() {
         pullSharedAdminCfg();
       }
     }, 2000);
+    // ═══ Debounce visibility/focus pulls. Quick alt-tab cycles used to fire
+    //   six full pulls every time, and competing responses (e.g. assigned
+    //   leads vs. own leads) caused the operator queue to oscillate between
+    //   two snapshots — a visible flicker. Skip the burst if we already
+    //   pulled within the last 4s; periodic pollId still keeps things fresh.
+    var _lastVisPullAt = 0;
+    var _visPullThrottleMs = 4000;
+    var _shouldVisPull = () => {
+      var now = Date.now();
+      if (now - _lastVisPullAt < _visPullThrottleMs) return false;
+      _lastVisPullAt = now;
+      return true;
+    };
     var onVis = () => {
-      if (document.visibilityState === 'visible') {
-        pullLive();
-        pullSharedAdminCfg();
-        pullAssignedLeads();
-        pullLeads();
-        pullAppts();
-        pullAllSynced();
-      }
+      if (document.visibilityState !== 'visible') return;
+      if (!_shouldVisPull()) return;
+      pullLive();
+      pullSharedAdminCfg();
+      pullAssignedLeads();
+      pullLeads();
+      pullAppts();
+      pullAllSynced();
     };
     var onFocus = () => {
+      if (!_shouldVisPull()) return;
       pullLive();
       pullSharedAdminCfg();
       pullAssignedLeads();
@@ -10324,6 +10339,9 @@ function App() {
       pullAllSynced();
     };
     var onOnline = () => {
+      // Coming back online is rare — always do the full pull regardless of
+      // throttle so we don't show stale data after a network drop.
+      _lastVisPullAt = Date.now();
       pullLive();
       pullSharedAdminCfg();
       pullAssignedLeads();
@@ -13260,23 +13278,27 @@ function App() {
   var readiness = getReadiness(cur);
   var todayKey = getTodaySGT();
   var priorityCallbacks = (cbQueue || []).filter(cb => cb.status !== 'called' && cb.scheduled_date && cb.scheduled_date <= todayKey).sort((a, b) => String(a.scheduled_date + ' ' + a.scheduled_time).localeCompare(String(b.scheduled_date + ' ' + b.scheduled_time)));
-  var operatorQueue = [];
+  // ═══ Compute up to 15 upcoming leads so the prev/next arrow controls
+  // ═══ in the Dial idle preview can shift through them in pages of 3.
+  var operatorQueueFull = [];
   try {
     var _opSeen = new Set();
     var _opAfter = curIdx >= 0 ? curIdx : -1;
-    for (var _opI = 0; _opI < 3; _opI++) {
+    for (var _opI = 0; _opI < 15; _opI++) {
       var _opIdx = getNextDialable(leads, _opAfter, {
         ...dialFilters()
       });
       if (_opIdx < 0 || _opSeen.has(_opIdx)) break;
       _opSeen.add(_opIdx);
-      operatorQueue.push({
+      operatorQueueFull.push({
         idx: _opIdx,
         lead: leads[_opIdx]
       });
       _opAfter = _opIdx;
     }
   } catch (_opErr) {}
+  var _opPageStart = Math.max(0, Math.min(opPreviewOffset, Math.max(0, operatorQueueFull.length - 3)));
+  var operatorQueue = operatorQueueFull.slice(_opPageStart, _opPageStart + 3);
   var operatorCallbacks = priorityCallbacks.slice(0, 3);
   var _isIncompleteSetAppt = a => {
     if (!a || a._deleted) return false;
@@ -14702,7 +14724,23 @@ function App() {
       textTransform: 'uppercase',
       letterSpacing: '.08em'
     }
-  }, "Next 3"), operatorQueue.length ? operatorQueue.map(item => React.createElement("button", {
+  }, React.createElement("span", { style: { display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, width: '100%' } },
+    React.createElement("span", null, "Next 3", operatorQueueFull.length > 3 ? React.createElement("span", { style: { opacity: .55, fontWeight: 600, marginLeft: 4 } }, "(", _opPageStart + 1, "–", Math.min(_opPageStart + 3, operatorQueueFull.length), " of ", operatorQueueFull.length, ")") : null),
+    operatorQueueFull.length > 3 && React.createElement("span", { style: { display: 'inline-flex', gap: 4 } },
+      React.createElement("button", {
+        onClick: e => { e.stopPropagation(); setOpPreviewOffset(o => Math.max(0, o - 3)); },
+        disabled: _opPageStart === 0,
+        title: "Previous 3",
+        style: { width: 22, height: 22, padding: 0, borderRadius: 6, background: 'rgba(255,255,255,.04)', color: _opPageStart === 0 ? 'var(--text3)' : 'var(--text2)', border: '1px solid var(--border)', fontSize: 12, lineHeight: 1, cursor: _opPageStart === 0 ? 'not-allowed' : 'pointer', opacity: _opPageStart === 0 ? .35 : .85 }
+      }, "‹"),
+      React.createElement("button", {
+        onClick: e => { e.stopPropagation(); setOpPreviewOffset(o => Math.min(operatorQueueFull.length - 3, o + 3)); },
+        disabled: _opPageStart + 3 >= operatorQueueFull.length,
+        title: "Next 3",
+        style: { width: 22, height: 22, padding: 0, borderRadius: 6, background: 'rgba(255,255,255,.04)', color: _opPageStart + 3 >= operatorQueueFull.length ? 'var(--text3)' : 'var(--text2)', border: '1px solid var(--border)', fontSize: 12, lineHeight: 1, cursor: _opPageStart + 3 >= operatorQueueFull.length ? 'not-allowed' : 'pointer', opacity: _opPageStart + 3 >= operatorQueueFull.length ? .35 : .85 }
+      }, "›")
+    )
+  )), operatorQueue.length ? operatorQueue.map(item => React.createElement("button", {
     key: item.idx,
     onClick: () => running ? proceedToLead(item.idx) : setCurIdx(item.idx),
     style: {
@@ -14724,9 +14762,13 @@ function App() {
       textOverflow: 'ellipsis',
       whiteSpace: 'nowrap',
       fontSize: 11,
-      fontWeight: 800
+      fontWeight: 800,
+      flex: 1,
+      minWidth: 0
     }
   }, item.lead?.name || item.lead?.phone || 'Lead'), React.createElement("span", {
+    style: { fontSize: 9, color: 'var(--text3)', fontWeight: 700, flexShrink: 0 }
+  }, leadAgeText(item.lead)), React.createElement("span", {
     className: "pill",
     style: {
       background: 'var(--bg3)',
@@ -14754,7 +14796,7 @@ function App() {
       textTransform: 'uppercase',
       letterSpacing: '.08em'
     }
-  }, "Due CB"), operatorCallbacks.length ? operatorCallbacks.map(c => React.createElement("div", {
+  }, "Due for Callback"), operatorCallbacks.length ? operatorCallbacks.map(c => React.createElement("div", {
     key: c.id || c.lead_phone + c.scheduled_date,
     style: {
       display: 'flex',
