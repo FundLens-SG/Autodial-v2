@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0013';
+window.APP_VERSION='2026.05.03.0014';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1279,6 +1279,36 @@ window.gSheets={
       return true;
     }catch(e){console.warn('[appendLog] sheet write failed:',e?.message||e);return false}
   },
+  // ═══ Read all rows from the Appointments Set tab and parse into appointment
+  // ═══ objects. The Sheet is the source of truth: the caller reconciles this
+  // ═══ list against local state + Supabase, with Sheet rows always winning on
+  // ═══ conflicts. Returns [] on any failure (caller falls back to existing).
+  async readApptsFromSheet(id){
+    if(!id)return[];
+    try{
+      var tab=await this.ensureApptSheet(id);
+      if(!tab)return[];
+      var vals=await this.vals(id,tab+'!A:O');
+      if(!vals||vals.length<2)return[];
+      var rows=vals.slice(1);
+      return rows.map(function(r,i){
+        var raw={
+          dateSet:r[0]||'',admin:r[1]||'',name:r[2]||'',phone:r[3]||'',
+          apptDate:r[4]||'',apptTime:r[5]||'',location:r[6]||'',duration:+r[7]||60,
+          status:r[8]||'',followUp:(r[9]||'pending').toString().toLowerCase(),
+          tip:+r[10]||0,notes:r[11]||'',
+          autoId:r[12]||'',calEventId:r[13]||'',lastSynced:r[14]||''
+        };
+        // Skip blank rows
+        if(!raw.name&&!raw.phone&&!raw.autoId)return null;
+        return Object.assign({},raw,{
+          id:raw.autoId||('sheet_'+i),
+          _sheetRow:i+2,
+          _fromSheet:true
+        });
+      }).filter(Boolean);
+    }catch(e){console.warn('[readApptsFromSheet]',e?.message||e);return[]}
+  },
   async meta(id){return(await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'?fields=sheets.properties')).json()).sheets?.map(function(s){return{id:s.properties.sheetId,title:s.properties.title,rows:s.properties.gridProperties?.rowCount}})||[]},async vals(id,range){return(await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(range))).json()).values||[]},async put(id,range,val){await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(range)+'?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[[val]]})})}};
 window.gCal={async create(sum,desc,s,e,att,calId){var cid=calId||'primary';var b={summary:sum,description:desc,start:{dateTime:s,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone},end:{dateTime:e,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}};if(att?.length){b.attendees=att.map(function(e){return{email:e}});/* ═══ Auto-add Google Meet link when there are invitees. The lead gets a clickable Meet link in their calendar invite, increasing show-up rate. requestId must be unique per event. ═══ */b.conferenceData={createRequest:{requestId:'autodial-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),conferenceSolutionKey:{type:'hangoutsMeet'}}}}var _qs='?sendUpdates=all'+(att?.length?'&conferenceDataVersion=1':'');return(await(await gF('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cid)+'/events'+_qs,{method:'POST',body:JSON.stringify(b)})).json())},async events(min,max){return(await(await gF('https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin='+min+'&timeMax='+max+'&singleEvents=true&orderBy=startTime&maxResults=250&showDeleted=false')).json()).items||[]},async eventsFromCal(calId,min,max){try{return(await(await gF('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(calId)+'/events?timeMin='+min+'&timeMax='+max+'&singleEvents=true&orderBy=startTime&maxResults=250&showDeleted=false')).json()).items||[]}catch(e){return[]}},async loadWeek(calIds){var now=new Date();var min=new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();var max=new Date(now.getTime()+7*86400000).toISOString();var all=[];for(var i=0;i<(calIds||['primary']).length;i++){var cid=calIds[i];var evs=cid==='primary'?await this.events(min,max):await this.eventsFromCal(cid,min,max);evs.forEach(function(e){e._calId=cid});all=all.concat(evs)}all.sort(function(a,b){var ta=new Date(a.start?.dateTime||a.start?.date||0).getTime();var tb=new Date(b.start?.dateTime||b.start?.date||0).getTime();return ta-tb});return all},async del(eventId,calId){if(!eventId)return false;var cid=calId||'primary';try{await gF('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cid)+'/events/'+encodeURIComponent(eventId)+'?sendUpdates=all',{method:'DELETE'});return true}catch(e){console.warn('[gCal.del]',e?.message||e);return false}},async update(eventId,patch,calId){if(!eventId)return null;var cid=calId||'primary';try{return await(await gF('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cid)+'/events/'+encodeURIComponent(eventId)+'?sendUpdates=all',{method:'PATCH',body:JSON.stringify(patch)})).json()}catch(e){console.warn('[gCal.update]',e?.message||e);return null}},async loadRange(calIds,minD,maxD){var all=[];var list=(calIds||['primary']);for(var i=0;i<list.length;i++){var cid=list[i];try{var evs=cid==='primary'?await this.events(minD.toISOString(),maxD.toISOString()):await this.eventsFromCal(cid,minD.toISOString(),maxD.toISOString());evs.forEach(function(e){e._calId=cid});all=all.concat(evs)}catch(e){}}all.sort(function(a,b){var ta=new Date(a.start?.dateTime||a.start?.date||0).getTime();var tb=new Date(b.start?.dateTime||b.start?.date||0).getTime();return ta-tb});return all}};
 (function hardenCalendarFetch(){
@@ -1848,7 +1878,46 @@ window.gTimesheet={_id:null,
       var headers=vals[0];var rows=vals.slice(1);
       return rows.map(function(r){return{date:r[0]||'',day:r[1]||'',admin:r[2]||'',start:r[3]||'',end:r[4]||'',hours:r[5]||'',
         dialed:r[6]||'',np:r[7]||'',cb:r[8]||'',ni:r[9]||'',sets:r[10]||'',tier:r[11]||'',rate:r[12]||'',bonus:r[13]||'',pay:r[14]||'',status:r[15]||''}})
-    }catch(e){return[]}}
+    }catch(e){return[]}},
+  // ═══ Read all Timesheet rows and parse into session-shaped objects. The
+  // ═══ Sheet is the source of truth: any session that exists here but not in
+  // ═══ Supabase/local is considered live. Conflicts resolve in favour of the
+  // ═══ Sheet's status (Paid > Unpaid > Active). Returns [] on failure.
+  async readSessionsFromSheet(id,cfg){
+    if(!id)return[];
+    try{
+      var tab=await this.ensureSheet(id,this.tabName(cfg));
+      var rows=await gSheets.vals(id,tab+'!A:T');
+      if(!rows||rows.length<2)return[];
+      return rows.slice(1).map(function(r,i){
+        var raw={
+          date:r[0]||'',day:r[1]||'',admin:r[2]||'',startStr:r[3]||'',endStr:r[4]||'',
+          hours:parseFloat(r[5])||0,
+          dialed:+r[6]||0,np:+r[7]||0,cb:+r[8]||0,ni:+r[9]||0,sets:+r[10]||0,
+          tier:r[11]||'',rate:parseFloat(r[12])||0,
+          bonusStr:r[13]||'1x',
+          payStr:(r[14]||'').toString(),status:(r[15]||'').toString(),
+          autoId:r[16]||'',sessionKey:r[17]||'',lastSynced:r[18]||'',action:r[19]||''
+        };
+        if(!raw.autoId&&!raw.sessionKey&&!raw.date)return null;
+        var pay=parseFloat(raw.payStr.replace(/[^0-9.\-]/g,''))||0;
+        var startTime=null;
+        try{
+          var d=new Date(raw.date+' '+raw.startStr);
+          startTime=isNaN(d)?null:d.getTime();
+        }catch(_e){}
+        return Object.assign({},raw,{
+          id:raw.autoId||('sheet_'+i),
+          startTime:startTime,
+          pay:pay,
+          paid:/paid/i.test(raw.status)&&!/unpaid/i.test(raw.status),
+          ended:!/active/i.test(raw.status),
+          _sheetRow:i+2,
+          _fromSheet:true
+        });
+      }).filter(Boolean);
+    }catch(e){console.warn('[readSessionsFromSheet]',e?.message||e);return[]}
+  }
 };
 
 // ══════════════════════════════════════════════════════
@@ -11456,6 +11525,102 @@ function App() {
     if (!tsId || !localStorage.getItem('ad_gt')) return false;
     return gTimesheet.updateRow(tsId, sess, fields, userName, c);
   }, [myCfg, cfg.sheetId, userName]);
+  // ═══ Pull-from-Sheet reconcile. The Sheet is the source of truth, so when
+  // ═══ this runs, every Sheet row replaces its local/Supabase counterpart and
+  // ═══ any locally-tracked appointment that's missing from the Sheet is
+  // ═══ tombstoned (added to deletedApptIds + removed from local state).
+  // ═══ Returns {pulled, added, updated, removed, error?}.
+  var pullApptsFromSheet = useCallback(async (opts = {}) => {
+    var quiet = !!opts.quiet;
+    var sheetId = myCfg.timesheetId || cfg.sheetId || '';
+    if (!sheetId || !localStorage.getItem('ad_gt')) {
+      if (!quiet) toast('No linked sheet — nothing to pull from', 'err');
+      return { pulled: 0, added: 0, updated: 0, removed: 0, error: 'no sheet' };
+    }
+    if (!quiet) toast('↻ Pulling from Sheet…', 'info');
+    var sheetAppts = await gSheets.readApptsFromSheet(sheetId);
+    if (!sheetAppts) {
+      if (!quiet) toast('Could not read sheet', 'err');
+      return { pulled: 0, added: 0, updated: 0, removed: 0, error: 'read failed' };
+    }
+    var sheetByKey = new Map();
+    sheetAppts.forEach(s => {
+      var k = s.autoId || (s.phone + '|' + s.apptDate);
+      if (k) sheetByKey.set(String(k), s);
+    });
+    var local = appointments || [];
+    var added = 0, updated = 0, removed = 0;
+    var nextAppts = [];
+    var keepLocalIds = new Set();
+    // Reconcile each local appt against the Sheet
+    local.forEach(la => {
+      var k = la.autoId || la.id || (la.phone + '|' + la.apptDate);
+      var match = sheetByKey.get(String(k));
+      if (match) {
+        // Sheet wins — overwrite local
+        nextAppts.push(Object.assign({}, la, match, {
+          id: la.id || match.id,
+          autoId: match.autoId || la.autoId
+        }));
+        sheetByKey.delete(String(k));
+        keepLocalIds.add(String(la.id || la.autoId));
+        updated++;
+      } else {
+        // Not in sheet — manually deleted; tombstone it
+        try {
+          var delIds = _readDeletedApptIds();
+          if (la.id) delIds.push(String(la.id));
+          if (la.autoId) delIds.push(String(la.autoId));
+          _writeDeletedApptIds(delIds);
+        } catch (_e) {}
+        removed++;
+      }
+    });
+    // Anything left in sheetByKey is new from the Sheet
+    sheetByKey.forEach(s => {
+      nextAppts.push(s);
+      added++;
+    });
+    setAppointments(nextAppts);
+    if (!quiet) toast('✓ Sheet pull: +' + added + ' new · ' + updated + ' updated · ' + removed + ' removed');
+    // Push the reconciled list to Supabase so other devices see it
+    try {
+      if (_SB && myEmail) {
+        var apptsLiveKey = 'live_appts_' + myEmail.toLowerCase();
+        _SB.from('autodial_admin_config').upsert({
+          admin_email: apptsLiveKey,
+          biz_name: JSON.stringify({ appts: nextAppts, ts: Date.now(), devId: window._devId, source: 'sheet-pull' })
+        }, { onConflict: 'admin_email' }).then(() => {}, () => {});
+      }
+    } catch (_e) {}
+    return { pulled: sheetAppts.length, added, updated, removed };
+  }, [myCfg.timesheetId, cfg.sheetId, appointments, myEmail]);
+  // ═══ Auto-reconcile from Sheet: once on app load (after initial sync settles)
+  // ═══ and once every 24 hours while the tab is open. Quiet mode = no toast
+  // ═══ unless something changed. Manual button still available in Settings → Sync.
+  useEffect(() => {
+    if (!_user || !localStorage.getItem('ad_gt')) return;
+    var sheetId = myCfg.timesheetId || cfg.sheetId || '';
+    if (!sheetId) return;
+    var lastKey = 'ad3_lastSheetReconcile_' + (myEmail || '').toLowerCase();
+    var doPull = () => {
+      pullApptsFromSheet({ quiet: true }).then(r => {
+        try { localStorage.setItem(lastKey, String(Date.now())); } catch (_e) {}
+        if (r && (r.added || r.updated || r.removed)) {
+          toast('Sheet reconcile: +' + r.added + ' · ' + r.updated + ' upd · ' + r.removed + ' del', 'info');
+        }
+      }).catch(e => console.warn('[Auto sheet reconcile]', e?.message || e));
+    };
+    var last = 0;
+    try { last = parseInt(localStorage.getItem(lastKey) || '0', 10) || 0; } catch (_e) {}
+    var since = Date.now() - last;
+    var ONE_DAY = 24 * 60 * 60 * 1000;
+    // First-load: if it's been > 6h since last reconcile, run after a brief delay
+    var initialDelay = since > 6 * 60 * 60 * 1000 ? 8000 : 60000;
+    var initial = setTimeout(doPull, initialDelay);
+    var interval = setInterval(doPull, ONE_DAY);
+    return () => { clearTimeout(initial); clearInterval(interval); };
+  }, [_user?.id, myCfg.timesheetId, cfg.sheetId, myEmail, pullApptsFromSheet]);
   var monthlyAppts = getMonthlyAppts(appointments, myEmail);
   var rank = getRank(monthlyAppts, cfg.starThresholds);
   var nextRank = getNextRank(monthlyAppts, cfg.starThresholds);
@@ -22896,7 +23061,15 @@ function App() {
         fontWeight: 900,
         color: '#f1f5f9'
       }
-    }, "Sync diagnostics"), diagRows.map(row => React.createElement("div", {
+    }, "Sync diagnostics"), React.createElement("div", {
+      style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '10px 12px', borderRadius: 10, background: 'rgba(99,102,241,.06)', border: '1px solid rgba(99,102,241,.22)', marginBottom: 10 }
+    }, React.createElement("div", { style: { minWidth: 0 } },
+      React.createElement("p", { style: { margin: 0, fontSize: 12, fontWeight: 800, color: '#f1f5f9' } }, "Pull from Sheet"),
+      React.createElement("p", { style: { margin: '2px 0 0', fontSize: 10, color: 'var(--text3)', lineHeight: 1.4 } }, "Re-reads the Appointments Set tab and reconciles vs local. Sheet wins on conflicts. Runs daily in background; tap to force now.")
+    ), React.createElement("button", {
+      onClick: async () => { try { await pullApptsFromSheet(); } catch (e) { toast('Pull failed: ' + (e?.message || e), 'err'); } },
+      style: { padding: '8px 14px', borderRadius: 10, background: 'var(--adim)', color: 'var(--accent2)', fontSize: 12, fontWeight: 800, border: '1px solid rgba(99,102,241,.32)', flexShrink: 0 }
+    }, "↻ Pull now")), diagRows.map(row => React.createElement("div", {
       key: row.label,
       style: {
         display: 'flex',
