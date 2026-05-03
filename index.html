@@ -624,7 +624,21 @@ var GC_ID='649883090396-mrhmtjaum8u4ec12ciq0p4m31npabbut.apps.googleusercontent.
 var GSCOPES='https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
 // ↓↓↓ SET THIS to your Cloudflare Worker URL for permanent Google auth ↓↓↓
 var WORKER_URL='https://autodial-google-auth.chungakwanc.workers.dev';
-window.claudeKey=function(){return((window._role||localStorage.getItem('autodial_role'))==='admin')?'':(localStorage.getItem('autodial_claude_key')||'')}; // e.g. 'https://autodial-google-auth.yourname.workers.dev'
+// Phase 8 polish: AI inference (Gemini + Claude) routes through ckg-ai-proxy,
+// which holds CKG-paid Anthropic + Gemini keys server-side and verifies the
+// caller's Supabase JWT before spending them. Per-user key entry is gone.
+// claudeKey() / geminiKey() now return a truthy stub for non-restricted users
+// so the legacy "do we have AI?" guards still pass.
+var AI_PROXY_URL='https://ckg-ai-proxy.chungakwanc.workers.dev';
+window.claudeKey=function(){return((window._role||localStorage.getItem('autodial_role'))==='admin')?'':'proxy'}; // admins still gated out (was UI-only restriction); everyone else uses shared CKG key
+window._aiAuthHeader=async function(){
+  try{
+    var s=await _SB?.auth.getSession();
+    var t=s?.data?.session?.access_token;
+    if(t)return{Authorization:'Bearer '+t};
+  }catch(_e){}
+  return{};
+};
 
 // ═══ SAVE TOKEN — shared helper ═══
 function _saveGToken(token){
@@ -1728,22 +1742,23 @@ const PROMPTS={
 };
 
 // ══════ GEMINI AI ══════
-window.geminiKey=function(){return localStorage.getItem('autodial_gemini')||localStorage.getItem('geminiKey')||''};
-window.aiAnalyzeSheet=async function(headers,rows){var key=geminiKey();if(!key)return null;
+// Phase 8 polish: returns a truthy stub now (real key lives in ckg-ai-proxy worker).
+window.geminiKey=function(){return'proxy'};
+window.aiAnalyzeSheet=async function(headers,rows){if(!AI_PROXY_URL)return null;
   var today=new Date().toISOString().slice(0,10);
   var prompt=PROMPTS.geminiAnalyzeSheet(today,headers,rows);
-  try{var r=await fetch('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key='+key,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:16000,temperature:.05}})});
-    var d=await r.json();if(d.error){console.warn('[AI]',d.error.message);return null}var t=(d.candidates?.[0]?.content?.parts?.[0]?.text||'').replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();return JSON.parse(t)}catch(e){console.warn('[AI Parse]',e.message);return null}};
+  try{var r=await fetch(AI_PROXY_URL+'/gemini',{method:'POST',headers:{'Content-Type':'application/json',...(await window._aiAuthHeader())},body:JSON.stringify({model:'gemini-2.0-flash',contents:[{parts:[{text:prompt}]}],generationConfig:{maxOutputTokens:16000,temperature:.05}})});
+    var d=await r.json();if(d.error){console.warn('[AI]',d.error.message||d.error);return null}var t=(d.candidates?.[0]?.content?.parts?.[0]?.text||'').replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();return JSON.parse(t)}catch(e){console.warn('[AI Parse]',e.message);return null}};
 
-// ═══ CLAUDE AI — sheet analysis via Cloudflare Worker proxy ═══
+// ═══ CLAUDE AI — sheet analysis via ckg-ai-proxy ═══
 window.claudeAnalyzeSheet=async function(headers,rows){
-  if(!WORKER_URL)return null;
+  if(!AI_PROXY_URL||!claudeKey())return null;
   var today=new Date().toISOString().slice(0,10);
   var sysPrompt=PROMPTS.claudeAnalyzeSheetSystem;
   var userPrompt=PROMPTS.claudeAnalyzeSheetUser(today,headers,rows);
   try{
-    var r=await fetch(WORKER_URL+'/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({api_key:claudeKey(),model:'claude-haiku-4-5-20251001',max_tokens:8192,system:sysPrompt,messages:[{role:'user',content:userPrompt}]})});
+    var r=await fetch(AI_PROXY_URL+'/claude',{method:'POST',headers:{'Content-Type':'application/json',...(await window._aiAuthHeader())},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:8192,system:sysPrompt,messages:[{role:'user',content:userPrompt}]})});
     if(!r.ok){var err=await r.json().catch(function(){return{}});console.warn('[Claude]',err.error||r.status);return null}
     var d=await r.json();var text=(d.content?.[0]?.text||'').replace(/```json\s*/g,'').replace(/```\s*/g,'').trim();
     DBG('[Claude] Sheet analysis complete');return JSON.parse(text)}
@@ -1752,7 +1767,7 @@ window.claudeAnalyzeSheet=async function(headers,rows){
 // ═══ CLAUDE POST-PROCESS — features 1,2,3,4 in ONE call ═══
 // 1: Validate column mapping  2: Classify unrecognized remarks  3: Extract missing names  4: Confidence scoring
 window.claudePostProcess=async function(leads,headers,rawRows,colMap){
-  if(!WORKER_URL||!leads.length)return leads;
+  if(!AI_PROXY_URL||!claudeKey()||!leads.length)return leads;
   // Collect problems to fix
   var unrec=[];var nameless=[];
   leads.forEach(function(l,i){
@@ -1764,8 +1779,8 @@ window.claudePostProcess=async function(leads,headers,rawRows,colMap){
   if(!unrec.length&&!nameless.length&&!colMap)return leads; // Nothing to fix
   var prompt=PROMPTS.claudePostProcess(colMap,headers,rawRows,unrec,nameless);
   try{
-    var r=await fetch(WORKER_URL+'/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({api_key:claudeKey(),model:'claude-haiku-4-5-20251001',max_tokens:4096,
+    var r=await fetch(AI_PROXY_URL+'/claude',{method:'POST',headers:{'Content-Type':'application/json',...(await window._aiAuthHeader())},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:4096,
         system:PROMPTS.claudePostProcessSystem,
         messages:[{role:'user',content:prompt}]})});
     if(!r.ok)return leads;
@@ -1794,14 +1809,14 @@ window.claudePostProcess=async function(leads,headers,rawRows,colMap){
 
 // ═══ CLAUDE DEDUP — feature 5 ═══
 window.claudeDedup=async function(leads){
-  if(!WORKER_URL||leads.length<10)return{dupes:[],leads:leads};
+  if(!AI_PROXY_URL||!claudeKey()||leads.length<10)return{dupes:[],leads:leads};
   // Send compact lead list for dedup analysis
   var compact=leads.map(function(l,i){return{i:i,n:l.name.slice(0,30),p:l.phone}});
   // Chunk to keep token count reasonable
   var chunk=compact.slice(0,300);
   try{
-    var r=await fetch(WORKER_URL+'/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({api_key:claudeKey(),model:'claude-haiku-4-5-20251001',max_tokens:2048,
+    var r=await fetch(AI_PROXY_URL+'/claude',{method:'POST',headers:{'Content-Type':'application/json',...(await window._aiAuthHeader())},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:2048,
         system:PROMPTS.claudeDedupSystem,
         messages:[{role:'user',content:PROMPTS.claudeDedup(chunk)}]})});
     if(!r.ok)return{dupes:[],leads:leads};
@@ -1820,10 +1835,10 @@ window.claudeDedup=async function(leads){
 
 // ═══ CLAUDE LEARN PATTERN — feature 6 ═══
 window.claudeLearnPattern=async function(remark,status,learnedPatterns){
-  if(!WORKER_URL||!remark)return null;
+  if(!AI_PROXY_URL||!claudeKey()||!remark)return null;
   try{
-    var r=await fetch(WORKER_URL+'/api/claude',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({api_key:claudeKey(),model:'claude-haiku-4-5-20251001',max_tokens:512,
+    var r=await fetch(AI_PROXY_URL+'/claude',{method:'POST',headers:{'Content-Type':'application/json',...(await window._aiAuthHeader())},
+      body:JSON.stringify({model:'claude-haiku-4-5-20251001',max_tokens:512,
         system:PROMPTS.claudeLearnPatternSystem,
         messages:[{role:'user',content:PROMPTS.claudeLearnPattern(remark,status,learnedPatterns)}]})});
     if(!r.ok)return null;
@@ -26101,6 +26116,26 @@ function App() {
     }
   }, "\u21BB Hard reload"))), React.createElement("div", {
     className: "card",
+    style: { marginBottom: 12 }
+  }, React.createElement("h3", {
+    style: { fontSize: 14, fontWeight: 700, marginBottom: 6, color: 'var(--accent2)' }
+  }, "\uD83E\uDDE0 AI ", React.createElement("span", {
+    style: { fontSize: 10, fontWeight: 400, color: 'var(--text3)' }
+  }, "(provided by CKG)"), " ", React.createElement(InfoHint, {
+    label: "AI inference"
+  }, "Gemini and Claude are routed through a CKG-paid proxy. No key entry needed \u2014 every signed-in user gets AI for free. AI is only used to classify messy lead imports and suggest column matches; it does not change rows until you approve or fetch with the selected mapping.")),
+    React.createElement("p", {
+      style: { margin: '0 0 8px', fontSize: 11, color: 'var(--text2)' }
+    }, "\u2713 AI is enabled. Re-trigger analysis on the current sheet below."),
+    leads.length > 0 && React.createElement("button", {
+      onClick: () => {
+        if (rawSheet) reanalyzeWithAI(rawSheet.headers, rawSheet.rows); else if (cfg.sheetId) fetchLeads();
+      },
+      disabled: aiAnalyzing,
+      style: { padding: '8px 14px', borderRadius: 8, background: 'var(--gdim)', color: 'var(--green)', fontSize: 12, fontWeight: 600 }
+    }, aiAnalyzing ? 'Analyzing\u2026' : '\uD83E\uDDE0 Re-analyze Leads')
+  ), false && React.createElement("div", {
+    className: "card",
     style: {
       marginBottom: 12
     }
@@ -26202,7 +26237,7 @@ function App() {
       fontWeight: 600,
       marginLeft: 6
     }
-  }, "\uD83E\uDDE0 Re-analyze Leads"))), role !== 'admin' && WORKER_URL && React.createElement("div", {
+  }, "\uD83E\uDDE0 Re-analyze Leads"))), false && role !== 'admin' && WORKER_URL && React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 12
