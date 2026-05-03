@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0014';
+window.APP_VERSION='2026.05.03.0015';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1011,6 +1011,9 @@ window.gSheets={
     // ═══ Hidden audit log. Every undo/delete/status-change writes one row here so the
     // ═══ visible Appointments Set / Timesheet tabs only show CURRENT state, not history.
     if(c==='Logs')return['Timestamp','Admin','Action','Entity','Entity ID','Lead/Session','Phone','Date','Notes'];
+    // ═══ Read-only month-by-month rollup populated via formula. The user gets
+    // ═══ totals + per-month subtotals without manual sort/sum work.
+    if(c==='Monthly Summary')return['Month','Sessions','Hours','Dialed','Set','NP','CB','NI','Pay $','Appts'];
     return[]
   },
   async repairTabHeaders(id,tab,canonical){
@@ -1040,6 +1043,7 @@ window.gSheets={
     if(canonical==='Appointments Set')return{red:0.024,green:0.373,blue:0.275}; // emerald-800
     if(canonical==='Pay')return{red:0.573,green:0.251,blue:0.055}; // amber-700
     if(canonical==='Logs')return{red:0.310,green:0.310,blue:0.310}; // zinc-700
+    if(canonical==='Monthly Summary')return{red:0.373,green:0.227,blue:0.541}; // purple-700
     return null;
   },
   _hideTabByDefault(canonical){
@@ -1088,6 +1092,58 @@ window.gSheets={
       return true;
     }catch(e){console.warn('[formatTabVisuals]',tab,e?.message||e);return false}
   },
+  // ═══ Populate the Monthly Summary tab with formulas that aggregate the
+  // ═══ Timesheet (sessions/hours/dialed/set/np/cb/ni/pay) and Appointments Set
+  // ═══ (counts) tabs by month. Pure formula-driven — re-runs idempotently and
+  // ═══ updates whenever new rows are added to the source tabs.
+  async populateMonthlySummary(id){
+    if(!id)return false;
+    try{
+      // Build 24 month labels going back from today, formatted as "MMM YYYY"
+      var now=new Date();
+      var months=[];
+      for(var i=0;i<24;i++){
+        var d=new Date(now.getFullYear(),now.getMonth()-i,1);
+        var label=d.toLocaleDateString('en-SG',{month:'short',year:'numeric'});
+        var monthKey=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+        months.push({label:label,key:monthKey});
+      }
+      // For each month, build SUMPRODUCT formulas filtering Timesheet col A by month/year text match
+      var rows=months.map(m=>{
+        var monthFilter='ISNUMBER(SEARCH("'+m.label.split(' ')[0]+'",TEXT(Timesheet!A:A,"mmm")))*(YEAR(Timesheet!A:A)='+m.label.split(' ')[1]+')';
+        var apptMonthFilter='ISNUMBER(SEARCH("'+m.label.split(' ')[0]+'",TEXT(\'Appointments Set\'!A:A,"mmm")))*(YEAR(\'Appointments Set\'!A:A)='+m.label.split(' ')[1]+')';
+        return [
+          m.label,
+          '=SUMPRODUCT(--('+monthFilter+'))',                  // Sessions count
+          '=SUMPRODUCT(('+monthFilter+')*(Timesheet!F:F))',    // Hours (col F)
+          '=SUMPRODUCT(('+monthFilter+')*(Timesheet!G:G))',    // Dialed (col G)
+          '=SUMPRODUCT(('+monthFilter+')*(Timesheet!K:K))',    // Set (col K)
+          '=SUMPRODUCT(('+monthFilter+')*(Timesheet!H:H))',    // NP (col H)
+          '=SUMPRODUCT(('+monthFilter+')*(Timesheet!I:I))',    // CB (col I)
+          '=SUMPRODUCT(('+monthFilter+')*(Timesheet!J:J))',    // NI (col J)
+          '=SUMPRODUCT(('+monthFilter+')*IFERROR(VALUE(REGEXEXTRACT(Timesheet!O:O,"[0-9.]+")),0))', // Pay $ (col O)
+          '=SUMPRODUCT(--('+apptMonthFilter+'))'               // Appts count
+        ];
+      });
+      // Append a Total row at the bottom
+      var totalRow=['TOTAL',
+        '=SUM(B2:B'+(rows.length+1)+')',
+        '=SUM(C2:C'+(rows.length+1)+')',
+        '=SUM(D2:D'+(rows.length+1)+')',
+        '=SUM(E2:E'+(rows.length+1)+')',
+        '=SUM(F2:F'+(rows.length+1)+')',
+        '=SUM(G2:G'+(rows.length+1)+')',
+        '=SUM(H2:H'+(rows.length+1)+')',
+        '=SUM(I2:I'+(rows.length+1)+')',
+        '=SUM(J2:J'+(rows.length+1)+')'
+      ];
+      rows.push(totalRow);
+      var range='Monthly Summary!A2:J'+(rows.length+1);
+      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(range)+'?valueInputOption=USER_ENTERED',
+        {method:'PUT',body:JSON.stringify({values:rows})});
+      return true;
+    }catch(e){console.warn('[populateMonthlySummary]',e?.message||e);return false}
+  },
   async ensureTabs(id,tabNames){
     try{
       var meta=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'?fields=sheets.properties')).json();
@@ -1110,11 +1166,16 @@ window.gSheets={
           existingMeta=(meta2.sheets||[]).map(function(s){return{title:s.properties.title,id:s.properties.sheetId}});
         }catch(_e){}
       }
+      var monthlyPlanned=false;
       for(var i=0;i<planned.length;i++){
         await this.repairTabHeaders(id,planned[i].actual,planned[i].canonical);
         var meta_i=existingMeta.find(m=>m.title===planned[i].actual);
         if(meta_i)await this.formatTabVisuals(id,planned[i].actual,planned[i].canonical,meta_i.id);
+        if(planned[i].canonical==='Monthly Summary')monthlyPlanned=true;
       }
+      // ═══ If Monthly Summary is among the tabs, populate (or refresh) its
+      // ═══ formula rows. Idempotent — safe to overwrite the same range each run.
+      if(monthlyPlanned)await this.populateMonthlySummary(id);
       if(missing.length)toast(missing.length+' tab(s) created: '+missing.join(', '));
       return existing;
     }catch(e){console.warn('[EnsureTabs]',e.message);return[]}
@@ -12021,7 +12082,7 @@ function App() {
     if (isAdminCallingSession && localStorage.getItem('ad_gt')) {
       var tsId = myCfg.timesheetId || cfg.sheetId || '';
       if (tsId) {
-        gSheets.ensureTabs(tsId, ['Timesheet', 'Appointments Set', 'Pay', 'Logs']);
+        gSheets.ensureTabs(tsId, ['Timesheet', 'Appointments Set', 'Pay', 'Logs', 'Monthly Summary']);
       }
       // ═══ End-session: try to UPDATE the row created at start, fall back to
       // ═══ append if no start row exists (legacy sessions, manual cleanup).
@@ -24499,7 +24560,7 @@ function App() {
       if (!ac.timesheetId) return toast('Link a Google Sheet first', 'err');
       try {
         toast('Creating/repairing tabs...', 'info');
-        var _tabs2 = await gSheets.ensureTabs(ac.timesheetId, ['Timesheet', 'Appointments Set', 'Pay', 'Logs']);
+        var _tabs2 = await gSheets.ensureTabs(ac.timesheetId, ['Timesheet', 'Appointments Set', 'Pay', 'Logs', 'Monthly Summary']);
         var tsTab = _tabs2.find(t => /time.?sheet|pay.?sheet|hours|payroll|salary|wage|pay.?slip|earning|compensation|cha.?ching|hourly/i.test(t)) || 'Timesheet';
         var apptTab = _tabs2.find(t => gSheets._canonicalTab(t) === 'Appointments Set') || 'Appointments Set';
         setAdminConfigs(p => ({
@@ -25115,7 +25176,7 @@ function App() {
           var adminSheetIds = [...new Set(Object.values(adminConfigs || {}).map(ac => ac?.timesheetId).filter(Boolean))];
           for (var i = 0; i < adminSheetIds.length; i++) {
             try {
-              await gSheets.ensureTabs(adminSheetIds[i], ['Timesheet', 'Appointments Set', 'Pay', 'Logs']);
+              await gSheets.ensureTabs(adminSheetIds[i], ['Timesheet', 'Appointments Set', 'Pay', 'Logs', 'Monthly Summary']);
               repairedTabs++;
             } catch (_e) {}
           }
