@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0019';
+window.APP_VERSION='2026.05.03.0020';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -12645,6 +12645,38 @@ function App() {
       } catch (_logErr) {}
     }
   };
+  // Wraps endSession with a stats-aware confirmation. The raw endSession
+  // function commits payroll, writes to the timesheet, and clears state — all
+  // irreversible without a manual undo. A single misclick on the End button
+  // (especially the prominent red "End Session" full-width button) was the
+  // single most common friction point in the field, so we gate every entry
+  // point through here.
+  var endSessionConfirm = async () => {
+    if (!session) return;
+    var dialed = session.dialed || 0;
+    var sets = session.sets || 0;
+    var elapsedSec = Math.max(elapsed || 0, Math.floor((Date.now() - (Number(session.startTime) || Date.now())) / 1000));
+    var hh = Math.floor(elapsedSec / 3600);
+    var mm = Math.floor((elapsedSec % 3600) / 60);
+    var dur = hh > 0 ? hh + 'h ' + mm + 'm' : mm + ' min';
+    var slotH = session.selectedSlot ? n(session.selectedSlot.hours, 0) : 0;
+    var apptsBar = session.selectedSlot ? n(session.selectedSlot.apptsBar, 0) : n(myCfg.mThresh, 2);
+    var line1 = 'Duration: ' + dur + (slotH ? ' / ' + slotH + 'h slot' : '');
+    var line2 = 'Dialed: ' + dialed + '   Sets: ' + sets + (apptsBar ? ' / ' + apptsBar : '');
+    var warn = '';
+    if (slotH && elapsedSec < (slotH * 3600 - 20 * 60)) {
+      warn = '\n\n⚠ You are ending early — credit may drop to actual hours.';
+    } else if (apptsBar && sets < apptsBar) {
+      warn = '\n\n⚠ You are below the ' + apptsBar + '-set bar for full credit.';
+    }
+    var ok = await confirmAsync(line1 + '\n' + line2 + warn, {
+      title: 'End session?',
+      confirmLabel: 'End session',
+      cancelLabel: 'Keep going',
+      danger: true
+    });
+    if (ok) endSession();
+  };
   var broadcastStats = useCallback(() => {
     if (!_SB || !_user || !session || session.ended) return;
     if (role === 'main') return;
@@ -13412,16 +13444,26 @@ function App() {
   var finishPostCall = useCallback(() => {
     if (postCallNote.trim() && showPostCall) {
       var idx = showPostCall.leadIdx;
+      var trimmedNote = postCallNote.trim();
       setLeads(p => p.map((l, i) => i === idx ? {
         ...l,
-        notes: (l.notes ? l.notes + ' | ' : '') + postCallNote.trim()
+        notes: (l.notes ? l.notes + ' | ' : '') + trimmedNote
       } : l));
+      var _sheetWritten = false;
       if (cfg.sheetId && leads[idx]?.statusCol >= 0 && leads[idx]?.sheetRow) {
         var lead = leads[idx];
         var col = a1Col(lead.statusCol);
-        var val = (lead.notes ? lead.notes + ' | ' : '') + postCallNote.trim();
-        if (localStorage.getItem('ad_gt')) gSheets.put(cfg.sheetId, (cfg.sheetTab || 'Sheet1') + '!' + col + lead.sheetRow, val);
+        var val = (lead.notes ? lead.notes + ' | ' : '') + trimmedNote;
+        if (localStorage.getItem('ad_gt')) {
+          gSheets.put(cfg.sheetId, (cfg.sheetTab || 'Sheet1') + '!' + col + lead.sheetRow, val);
+          _sheetWritten = true;
+        }
       }
+      // Visible save confirmation. The previous behavior silently dismissed the
+      // post-call card, so users couldn't tell whether their note was actually
+      // captured. A short toast removes that ambiguity without slowing the
+      // call-to-call flow.
+      toast(_sheetWritten ? '💾 Note saved · synced to Sheet' : '💾 Note saved locally', 'info');
     }
     setShowPostCall(null);
     var nextIdx = nextLeadRef.current;
@@ -13456,6 +13498,21 @@ function App() {
     }
     var startedSession = session && !session.ended ? session : null;
     if (!session || session.ended) {
+      // Pre-flight: check there's actually something to dial BEFORE we open
+      // the slot-picker modal. Previously the picker opened first, the user
+      // committed to a slot, startSession ran (writing a row to the
+      // Timesheet), and only then we discovered there were zero dialable
+      // leads — which forced us to clear the session and show an error,
+      // leaving an orphan "Active" row in the sheet.
+      var _preCheck = getNextDialable(leads, -1, {
+        ...dialFilters()
+      });
+      if (_preCheck === -1) {
+        toast('No eligible leads to dial — adjust filters or refresh the sheet', 'err');
+        setRunning(false);
+        setPhase('idle');
+        return;
+      }
       var slots = (myCfg.sessionSlots || []).filter(sl => n(sl.hours, 0) > 0);
       if (slots.length > 1 && !chosenSlot) {
         setShowSlotPicker(true);
@@ -15406,7 +15463,7 @@ function App() {
       border: '1px solid rgba(210,153,34,.25)'
     }
   }, "Pause"), running && React.createElement("button", {
-    onClick: endSession,
+    onClick: endSessionConfirm,
     style: {
       padding: '10px',
       borderRadius: 12,
@@ -15441,18 +15498,24 @@ function App() {
     }
   }, label))), cur && running && phase === 'calling' && React.createElement("button", {
     onClick: skipCurrentLead,
+    title: "Skip without recording an outcome \u2014 only use if you didn't actually dial",
     style: {
-      width: '100%',
-      padding: '11px 12px',
-      marginBottom: 8,
-      borderRadius: 12,
-      background: 'rgba(88,166,255,.10)',
-      color: 'var(--blue)',
-      fontSize: 13,
-      fontWeight: 900,
-      border: '1px solid rgba(88,166,255,.26)'
+      // Toned down: previously a full-width bright-blue button that competed
+      // with the primary outcome row and was easy to misclick. Now a subtle
+      // ghost link, narrower and centered, that stays discoverable but no
+      // longer feels like a primary action.
+      display: 'block',
+      margin: '0 auto 8px',
+      padding: '6px 14px',
+      borderRadius: 8,
+      background: 'transparent',
+      color: 'var(--text3)',
+      fontSize: 11,
+      fontWeight: 600,
+      border: '1px solid var(--border)',
+      opacity: .8
     }
-  }, "Skip lead \u2192"), session && !session.ended && React.createElement("div", {
+  }, "Skip without outcome \u2192"), session && !session.ended && React.createElement("div", {
     style: {
       display: 'grid',
       gridTemplateColumns: callbackLookupOpen ? '1fr auto' : '1fr',
@@ -15969,7 +16032,7 @@ function App() {
       fontSize: 10
     }
   }, n(session.selectedSlot.hours, 5), "h \uD83C\uDFAF", n(session.selectedSlot.apptsBar, 2)), React.createElement("button", {
-    onClick: endSession,
+    onClick: endSessionConfirm,
     style: {
       padding: '5px 10px',
       borderRadius: 8,
@@ -16899,9 +16962,10 @@ function App() {
       margin: '6px 0 0',
       fontSize: 10,
       color: 'var(--green)',
-      textAlign: 'center'
+      textAlign: 'center',
+      fontWeight: 600
     }
-  }, "\uD83D\uDCBE Note will be saved when you tap Next Lead")), showNextPreview && nextPreviewLead && running && React.createElement("div", {
+  }, "\u2713 ", postCallNote.trim().length, " char", postCallNote.trim().length === 1 ? '' : 's', " ready \u2014 tap NEXT LEAD or press Enter to save")), showNextPreview && nextPreviewLead && running && React.createElement("div", {
     className: "card fi",
     style: {
       marginBottom: 12,
@@ -17251,7 +17315,7 @@ function App() {
       boxShadow: '0 6px 24px rgba(245,158,11,.3)'
     }
   }, "\u23F8 Pause"), React.createElement("button", {
-    onClick: endSession,
+    onClick: endSessionConfirm,
     style: {
       width: '100%',
       padding: '16px',
@@ -29418,12 +29482,20 @@ WHERE p.id IS NULL;`;
       color: 'var(--amber)'
     }
   }, "\uD83D\uDCDD ", apptLead.notes)), (() => {
+    // "Location" is optional in the appointment flow (Create button only
+    // requires date + time). Previously the progress strip surfaced
+    // "Add location" as the active next step the moment a slot was picked,
+    // which made users feel they had to fill it before continuing. Now we
+    // label it explicitly as optional and skip past it in the active-step
+    // calculation so the user sees "Create appointment" as the real next
+    // action right after picking a slot.
     var steps = [{
       label: 'Pick slot',
       done: !!(apptDate && apptTime)
     }, {
-      label: 'Add location',
-      done: !!String(apptLocation || '').trim()
+      label: 'Location (optional)',
+      done: !!String(apptLocation || '').trim(),
+      optional: true
     }, {
       label: 'Create appointment',
       done: false
@@ -29431,7 +29503,7 @@ WHERE p.id IS NULL;`;
       label: 'WhatsApp',
       done: false
     }];
-    var activeIdx = apptDate && apptTime ? String(apptLocation || '').trim() ? 2 : 1 : 0;
+    var activeIdx = apptDate && apptTime ? 2 : 0;
     return React.createElement("div", {
       style: {
         display: 'grid',
@@ -30445,7 +30517,7 @@ WHERE p.id IS NULL;`;
   })), React.createElement("input", {
     value: apptLocation,
     onChange: ev => setApptLocation(ev.target.value),
-    placeholder: "\uD83D\uDCCD Location (e.g. Starbucks Raffles Place)",
+    placeholder: "\uD83D\uDCCD Location \u2014 optional (e.g. Starbucks Raffles Place)",
     style: {
       marginBottom: 8
     }
