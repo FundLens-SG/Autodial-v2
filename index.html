@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0012';
+window.APP_VERSION='2026.05.03.0013';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1772,6 +1772,38 @@ window.gTimesheet={_id:null,
         {userEnteredValue:{stringValue:'Status'}}
       ]}]}]}]})});
       var d=await r.json();this._id=d.spreadsheetId;localStorage.setItem('ad_ts_id',this._id);return this._id}catch(e){return null}},
+
+  // ═══ Append a row at session START. Status='Active', end blank, metrics 0.
+  // ═══ The row is updated in place at session END via updateRow (fallback to
+  // ═══ append if the start row is missing — e.g. session was started before
+  // ═══ this version shipped). Idempotent guard via sessionId/sessionKey lookup.
+  async appendStart(s,name,cfg,customSheetId){
+    var id=await this.ensure(customSheetId);if(!id)return false;
+    var tabName=await this.ensureSheet(id,this.tabName(cfg));
+    try{
+      var existing=await this.findRow(id,s,cfg,tabName);
+      if(existing&&existing.row)return existing; // already started
+    }catch(_e){}
+    var startDate=new Date(s.startTime);
+    var startRound=round30(startDate);
+    var dayName=DAYS[startDate.getDay()];
+    var row=[
+      startDate.toLocaleDateString('en-SG',{day:'2-digit',month:'2-digit',year:'numeric'}),
+      dayName,name,
+      startRound.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',hour12:false}),
+      '',  // End — blank until session ends
+      '0.0',  // Hours
+      0,0,0,0,0,  // dialed/np/cb/ni/sets
+      '',0,'1x','$0.00',  // tier/rate/bonus/pay
+      'Active'  // Status
+    ];
+    row.push(this.sessionId(s),this.sessionKey(s,name),new Date().toLocaleString('en-SG'),'Started');
+    try{
+      var res=await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tabName)+'!A:T:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
+        {method:'POST',body:JSON.stringify({values:[row]})});
+      try{return await res.json()}catch(_e){return{ok:true}}
+    }catch(e){console.warn('[TS appendStart]',e?.message||e);return false}
+  },
 
   async append(s,name,cfg,customSheetId){
     var id=await this.ensure(customSheetId);if(!id)return false;
@@ -11624,6 +11656,32 @@ function App() {
     setElapsed(0);
     setShowSlotPicker(false);
     toast(chosenSlot ? '🔥 ' + n(chosenSlot.hours, 5) + 'h challenge accepted!' : 'Session started! 🔥');
+    // ═══ Log session START to the Timesheet tab as an "Active" row. The same
+    // ═══ row is updated to "Ended" with totals at endSession. Best-effort:
+    // ═══ failure here doesn't block the session, just leaves a gap in the
+    // ═══ sheet that the daily reconcile can backfill.
+    var _tsId = myCfg.timesheetId || cfg.sheetId || '';
+    if (_tsId && localStorage.getItem('ad_gt')) {
+      gTimesheet.appendStart(nextSession, userName, myCfg, _tsId).then(res => {
+        var rng = res?.updates?.updatedRange || '';
+        if (rng) {
+          // Remember the row range so endSession can update in place
+          appStateRef.current._currentSessionTsRange = rng;
+        }
+        try {
+          gSheets.appendLog(_tsId, {
+            admin: userName,
+            action: 'Session Start',
+            entity: 'Session',
+            entityId: nextSession.id || '',
+            session: userName,
+            phone: '',
+            date: new Date(startedAt).toLocaleString('en-SG'),
+            notes: chosenSlot ? n(chosenSlot.hours, 5) + 'h challenge' : ''
+          });
+        } catch (_logErr) {}
+      }).catch(e => console.warn('[appendStart]', e?.message || e));
+    }
     return nextSession;
   };
   var endSession = () => {
@@ -11800,16 +11858,63 @@ function App() {
       if (tsId) {
         gSheets.ensureTabs(tsId, ['Timesheet', 'Appointments Set', 'Pay', 'Logs']);
       }
-      gTimesheet.append(s, userName, myCfg, tsId || undefined).then(res => {
-        var rng = res?.updates?.updatedRange || '';
-        setSessionLog(p => p.map(x => (x.id && x.id === s.id) || x.startTime === s.startTime ? {
-          ...x,
-          timesheetSheetId: tsId,
-          timesheetRange: rng,
-          timesheetAutoId: s.timesheetAutoId,
-          sessionKey: s.sessionKey
-        } : x));
+      // ═══ End-session: try to UPDATE the row created at start, fall back to
+      // ═══ append if no start row exists (legacy sessions, manual cleanup).
+      // ═══ This prevents duplicates while still surviving missing start rows.
+      var _endFields = {
+        hours: (function () {
+          var endRound = round30(s.endTime ? new Date(s.endTime) : new Date());
+          var startRound = round30(new Date(s.startTime));
+          var hrs = s.creditHours || (s.fullSession ? (+myCfg.sessionDur || 5) : (endRound.getTime() - startRound.getTime()) / 3600000);
+          return Math.max(0, hrs).toFixed(1);
+        })(),
+        dialed: s.dialed || 0,
+        np: s.np || 0,
+        cb: s.cb || 0,
+        ni: s.ni || 0,
+        sets: s.sets || 0,
+        tier: s.tier || '',
+        rate: s.hourlyRate || 0,
+        bonus: s.bonus ? (s.bonusMult || 1.5) + 'x' : '1x',
+        pay: '$' + (s.pay || 0).toFixed(2),
+        status: s.tsNote ? 'Unpaid - ' + s.tsNote : 'Unpaid',
+        action: 'Session ended by ' + userName
+      };
+      gTimesheet.updateRow(tsId, s, _endFields, userName, myCfg).then(row => {
+        if (row) {
+          setSessionLog(p => p.map(x => (x.id && x.id === s.id) || x.startTime === s.startTime ? {
+            ...x,
+            timesheetSheetId: tsId,
+            timesheetAutoId: s.timesheetAutoId,
+            sessionKey: s.sessionKey
+          } : x));
+        } else {
+          // No start-row found: append a full row so the session is still recorded.
+          gTimesheet.append(s, userName, myCfg, tsId || undefined).then(res => {
+            var rng = res?.updates?.updatedRange || '';
+            setSessionLog(p => p.map(x => (x.id && x.id === s.id) || x.startTime === s.startTime ? {
+              ...x,
+              timesheetSheetId: tsId,
+              timesheetRange: rng,
+              timesheetAutoId: s.timesheetAutoId,
+              sessionKey: s.sessionKey
+            } : x));
+          }).catch(() => {});
+        }
       }).catch(() => {});
+      // Audit-log the session end alongside the row update
+      try {
+        gSheets.appendLog(tsId, {
+          admin: userName,
+          action: 'Session End',
+          entity: 'Session',
+          entityId: s.id || '',
+          session: userName,
+          phone: '',
+          date: new Date(endedAt).toLocaleString('en-SG'),
+          notes: (s.dialed || 0) + ' dialed · ' + (s.sets || 0) + ' set · ' + (_endFields.hours) + 'h'
+        });
+      } catch (_logErr) {}
     }
   };
   var broadcastStats = useCallback(() => {
