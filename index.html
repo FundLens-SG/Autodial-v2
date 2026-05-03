@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0021';
+window.APP_VERSION='2026.05.03.0022';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -14782,7 +14782,33 @@ function App() {
       padding: '2px 7px',
       animation: 'pulse 1.5s infinite'
     }
-  }, "\u2601\uFE0F Syncing"), (() => {
+  }, "\u2601\uFE0F Syncing"), !isCallMode && React.createElement("button", {
+    // Header Start-Calling button. Shown whenever the user is NOT already in
+    // call mode so it's reachable from any tab (Home, Leads, Cal, Appts,
+    // More) without scrolling back to the Quick Actions panel. For Mains:
+    // flips the manage/call toggle and lands on Home so the operator pane
+    // appears. For Admins: just lands on Home.
+    type: "button",
+    title: "Start a calling session",
+    onClick: () => {
+      if (role === 'main') setMainMode('call');
+      setTab('home');
+    },
+    style: {
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 4,
+      padding: '4px 10px',
+      borderRadius: 999,
+      background: 'linear-gradient(135deg,rgba(34,197,94,.18),rgba(16,185,129,.10))',
+      color: 'var(--green)',
+      fontSize: 10,
+      fontWeight: 800,
+      letterSpacing: '.04em',
+      border: '1px solid rgba(34,197,94,.4)',
+      whiteSpace: 'nowrap'
+    }
+  }, "\uD83D\uDCDE Call"), (() => {
     var _isCreator = isCreatorUser || isCreator(window._user?.email || '');
     var _hasNotice = (_isCreator && pendingUsers.length > 0) || hasActionActivity;
     var _initials = (userName || 'U').split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase()).join('') || 'U';
@@ -25301,11 +25327,20 @@ function App() {
       whiteSpace: 'nowrap'
     }
   }, "Load Tabs"), ac.timesheetId && React.createElement("button", {
+    title: "Best-attempt: creates any missing system tabs (Timesheet, Appointments Set, Pay, Logs, Monthly Summary). Won't delete or overwrite tabs you already have.",
     onClick: async () => {
       if (!gOk) return toast('Connect Google', 'err');
       if (!ac.timesheetId) return toast('Link a Google Sheet first', 'err');
+      // Pre-confirmation so the user knows this is non-destructive. Removes
+      // the anxiety that the button might wipe the sheet — friction the user
+      // flagged in 2026.05.03.
+      var ok = await confirmAsync(
+        'AutoDial will check for these tabs and add any that are missing:\n\n• Timesheet\n• Appointments Set\n• Pay\n• Logs\n• Monthly Summary\n\nExisting tabs are left alone. Existing data is not modified.',
+        { title: 'Set up tabs?', confirmLabel: 'Set up tabs', cancelLabel: 'Cancel', danger: false }
+      );
+      if (!ok) return;
       try {
-        toast('Creating/repairing tabs...', 'info');
+        toast('Setting up tabs…', 'info');
         var _tabs2 = await gSheets.ensureTabs(ac.timesheetId, ['Timesheet', 'Appointments Set', 'Pay', 'Logs', 'Monthly Summary']);
         var tsTab = _tabs2.find(t => /time.?sheet|pay.?sheet|hours|payroll|salary|wage|pay.?slip|earning|compensation|cha.?ching|hourly/i.test(t)) || 'Timesheet';
         var apptTab = _tabs2.find(t => gSheets._canonicalTab(t) === 'Appointments Set') || 'Appointments Set';
@@ -25318,9 +25353,9 @@ function App() {
             _detectedAppt: apptTab
           }
         }));
-        toast('Tabs ready: Timesheet, ' + apptTab + ', Pay');
+        toast('✓ Tabs ready: Timesheet, ' + apptTab + ', Pay');
       } catch (e) {
-        toast('Repair failed: ' + e.message, 'err');
+        toast('Setup failed: ' + e.message, 'err');
       }
     },
     style: {
@@ -25332,7 +25367,7 @@ function App() {
       fontWeight: 700,
       whiteSpace: 'nowrap'
     }
-  }, "Create / Repair Tabs Now")), ac.sheetTab && React.createElement("p", {
+  }, "Set up tabs")), ac.sheetTab && React.createElement("p", {
     style: {
       fontSize: 10,
       color: 'var(--green)',
@@ -25590,19 +25625,7 @@ function App() {
       margin: '6px 0 0',
       lineHeight: 1.4
     }
-  }, "\uD83D\uDCA1 Just add the leads sheet \u2014 ", React.createElement("b", {
-    style: {
-      color: 'var(--accent2)'
-    }
-  }, "Timesheet"), ", ", React.createElement("b", {
-    style: {
-      color: 'var(--accent2)'
-    }
-  }, "Appointments"), " & ", React.createElement("b", {
-    style: {
-      color: 'var(--accent2)'
-    }
-  }, "Pay"), " tabs are system tabs. Use Create / Repair Tabs Now if you want AutoDial to create or fix them. Only press the detected import buttons when this sheet already contains past appointment/pay history.")), React.createElement("div", {
+  }, "\uD83D\uDCA1 Paste your leads sheet \u2014 AutoDial handles the rest.")), React.createElement("div", {
     style: {
       marginBottom: 6
     }
