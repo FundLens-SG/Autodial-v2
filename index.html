@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0023';
+window.APP_VERSION='2026.05.03.0024';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -16109,30 +16109,65 @@ function App() {
       textTransform: 'uppercase',
       letterSpacing: '.08em'
     }
-  }, "Due for Callback"), operatorCallbacks.length ? operatorCallbacks.map(c => React.createElement("div", {
-    key: c.id || c.lead_phone + c.scheduled_date,
-    style: {
-      display: 'flex',
-      justifyContent: 'space-between',
-      gap: 6,
-      padding: '7px 0',
-      borderTop: '1px solid var(--border)',
-      fontSize: 11
+  }, "Due for Callback", (() => {
+    // Count overdue callbacks across the FULL priority list (not just the
+    // 3 shown) so the user sees at a glance how many got missed. Today's
+    // due-now items aren't counted here — they show in the row below
+    // with their scheduled time.
+    var lateCount = priorityCallbacks.filter(c => c.scheduled_date < todayKey).length;
+    if (!lateCount) return null;
+    return React.createElement("span", {
+      style: {
+        marginLeft: 6,
+        padding: '1px 6px',
+        borderRadius: 999,
+        background: 'var(--rdim)',
+        color: 'var(--red)',
+        fontSize: 9,
+        fontWeight: 900,
+        letterSpacing: '.04em',
+        verticalAlign: 'middle'
+      }
+    }, lateCount, " late");
+  })()), operatorCallbacks.length ? operatorCallbacks.map(c => {
+    var isLate = c.scheduled_date < todayKey;
+    var lateLabel = '';
+    if (isLate) {
+      try {
+        var _d = new Date(c.scheduled_date + 'T00:00:00');
+        var _today = new Date(todayKey + 'T00:00:00');
+        var _days = Math.round((_today - _d) / 86400000);
+        lateLabel = _days === 1 ? '1d late' : _days + 'd late';
+      } catch (_e) {
+        lateLabel = 'late';
+      }
     }
-  }, React.createElement("span", {
-    style: {
-      color: '#f1f5f9',
-      fontWeight: 800,
-      overflow: 'hidden',
-      textOverflow: 'ellipsis',
-      whiteSpace: 'nowrap'
-    }
-  }, c.lead_name || c.lead_phone), React.createElement("span", {
-    className: "mono",
-    style: {
-      color: c.scheduled_date < todayKey ? 'var(--red)' : 'var(--blue)'
-    }
-  }, c.scheduled_date < todayKey ? 'late' : c.scheduled_time || 'today'))) : React.createElement("p", {
+    return React.createElement("div", {
+      key: c.id || c.lead_phone + c.scheduled_date,
+      style: {
+        display: 'flex',
+        justifyContent: 'space-between',
+        gap: 6,
+        padding: '7px 0',
+        borderTop: '1px solid var(--border)',
+        fontSize: 11
+      }
+    }, React.createElement("span", {
+      style: {
+        color: '#f1f5f9',
+        fontWeight: 800,
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        whiteSpace: 'nowrap'
+      }
+    }, c.lead_name || c.lead_phone), React.createElement("span", {
+      className: "mono",
+      style: {
+        color: isLate ? 'var(--red)' : 'var(--blue)',
+        fontWeight: isLate ? 800 : 600
+      }
+    }, isLate ? lateLabel : (c.scheduled_time || 'today')));
+  }) : React.createElement("p", {
     style: {
       margin: 0,
       fontSize: 11,
@@ -28205,340 +28240,55 @@ function App() {
       color: 'var(--text3)',
       margin: 0
     }
-  }, role === 'admin' ? 'Caller Guide' : 'Manager Guide')), role === 'admin' ? React.createElement(React.Fragment, null, React.createElement("div", {
-    style: {
-      marginBottom: 12
-    }
-  }, React.createElement("h3", {
-    style: {
-      fontSize: 13,
-      fontWeight: 700,
-      color: 'var(--accent2)',
-      margin: '0 0 6px'
-    }
-  }, "\u26A1 Smart Calling"), React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: 'var(--text2)',
-      lineHeight: 1.6
-    }
-  }, React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "1. ", React.createElement("b", null, "Dial tab"), " \u2192 tap ", React.createElement("b", {
-    style: {
-      color: 'var(--green)'
-    }
-  }, "Start Session"), " \u2192 pick your slot"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "2. Leads auto-load from your assigned sheet"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "3. Mark each call: ", React.createElement("b", {
-    style: {
-      color: 'var(--green)'
-    }
-  }, "Set"), ", ", React.createElement("b", {
-    style: {
-      color: 'var(--amber)'
-    }
-  }, "CB"), ", ", React.createElement("b", {
-    style: {
-      color: 'var(--red)'
-    }
-  }, "NP"), ", or ", React.createElement("b", null, "NI")), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "4. ", React.createElement("b", {
-    style: {
-      color: 'var(--gold)'
-    }
-  }, "NI / NP auto-advance"), " \u2014 instantly dials next lead, zero extra taps!"), React.createElement("p", {
-    style: {
-      margin: 0
-    }
-  }, "5. ", React.createElement("b", null, "CB / Set"), " show a remarks screen for notes"))), React.createElement("div", {
-    style: {
-      marginBottom: 12
-    }
-  }, React.createElement("h3", {
-    style: {
-      fontSize: 13,
-      fontWeight: 700,
-      color: 'var(--gold)',
-      margin: '0 0 6px'
-    }
-  }, "\u2B50 Stars & Ranking"), React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: 'var(--text2)',
-      lineHeight: 1.6
-    }
-  }, React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "You earn ", React.createElement("b", {
-    style: {
-      color: 'var(--gold)'
-    }
-  }, "stars"), ", not pay. Stars are your achievement currency!"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "Earn ", React.createElement("b", {
-    style: {
-      color: 'var(--gold)'
-    }
-  }, "milestone \u2B50"), " when you rank up each month"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, React.createElement("b", null, "Milestone \u2B50 on rank-up"), " \u2014 Elite +10\u2B50, Master +25\u2B50 \u2026 Mythic +500\u2B50"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "Rank resets monthly \u2192 stars get ", React.createElement("b", null, "banked forever"), " \uD83C\uDFE6"), React.createElement("p", {
-    style: {
-      margin: 0
-    }
-  }, "Check ", React.createElement("b", null, "Rank"), " tab for progress + ", React.createElement("b", null, "\uD83C\uDFC6 Live Leaderboard")))), React.createElement("div", {
-    style: {
-      marginBottom: 12
-    }
-  }, React.createElement("h3", {
-    style: {
-      fontSize: 13,
-      fontWeight: 700,
-      color: 'var(--green)',
-      margin: '0 0 6px'
-    }
-  }, "\uD83D\uDEE1\uFE0F Smart Features"), React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: 'var(--text2)',
-      lineHeight: 1.6
-    }
-  }, React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, React.createElement("b", {
-    style: {
-      color: 'var(--gold)'
-    }
-  }, "\u21A9\uFE0F 10s Undo"), " \u2014 mis-tapped NI? Undo within 10 seconds"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, React.createElement("b", {
-    style: {
-      color: 'var(--green)'
-    }
-  }, "\uD83D\uDEE1\uFE0F Conflict Check"), " \u2014 won't dial a lead someone else is already calling"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, React.createElement("b", null, "\uD83D\uDCF4 Offline Mode"), " \u2014 keep calling even without WiFi, syncs when back"), React.createElement("p", {
-    style: {
-      margin: 0
-    }
-  }, React.createElement("b", null, "\uD83D\uDD04 Session Recovery"), " \u2014 app crash? Reloads to exact same position"))), React.createElement("div", {
-    style: {
-      marginBottom: 12
-    }
-  }, React.createElement("h3", {
-    style: {
-      fontSize: 13,
-      fontWeight: 700,
-      color: 'var(--accent2)',
-      margin: '0 0 6px'
-    }
-  }, "\uD83E\uDDE0 AI Setup (Optional)"), React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: 'var(--text2)',
-      lineHeight: 1.6
-    }
-  }, React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, React.createElement("b", null, "Claude AI"), " \u2014 add your own key in Settings \u2192 \uD83E\uDDE0 Claude AI (~$4/mo)"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "Or use your manager's shared Claude key (auto-synced)"), React.createElement("p", {
-    style: {
-      margin: 0
-    }
-  }, React.createElement("b", null, "Gemini AI"), " \u2014 free alternative, add key in Settings \u2192 \uD83E\uDD16 Gemini")))) : React.createElement(React.Fragment, null, React.createElement("div", {
-    style: {
-      marginBottom: 12
-    }
-  }, React.createElement("h3", {
-    style: {
-      fontSize: 13,
-      fontWeight: 700,
-      color: 'var(--accent2)',
-      margin: '0 0 6px'
-    }
-  }, "\uD83D\uDD04 CALL \u2194 MGMT Toggle"), React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: 'var(--text2)',
-      lineHeight: 1.6
-    }
-  }, React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, React.createElement("b", null, "CALL mode"), " \u2014 You become a caller: dial leads, track stats, earn \u2B50 stars"), React.createElement("p", {
-    style: {
-      margin: 0
-    }
-  }, React.createElement("b", null, "MGMT mode"), " \u2014 Manage your team: live dashboard, tracking, settings"))), React.createElement("div", {
-    style: {
-      marginBottom: 12
-    }
-  }, React.createElement("h3", {
-    style: {
-      fontSize: 13,
-      fontWeight: 700,
-      color: 'var(--green)',
-      margin: '0 0 6px'
-    }
-  }, "\uD83D\uDC65 Setting Up Admins"), React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: 'var(--text2)',
-      lineHeight: 1.6
-    }
-  }, React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "1. ", React.createElement("b", null, "Settings \u2192 Users"), ": Approve new signups with the \uD83D\uDC65 badge in header"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "2. ", React.createElement("b", null, "Settings \u2192 Admin Pay"), ": Add email, set session hours, appts/bonus bars"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "3. ", React.createElement("b", null, "Link their Leads Sheet"), ": Google Sheet \u2192 select their tab \u2192 ", React.createElement("b", null, "\u2601\uFE0F Sync")), React.createElement("p", {
-    style: {
-      margin: 0
-    }
-  }, "4. ", React.createElement("b", null, "\u2601\uFE0F Sync All"), " in Team Rules to push global admin settings"))), React.createElement("div", {
-    style: {
-      marginBottom: 12
-    }
-  }, React.createElement("h3", {
-    style: {
-      fontSize: 13,
-      fontWeight: 700,
-      color: 'var(--gold)',
-      margin: '0 0 6px'
-    }
-  }, "\u2B50 Stars & Ranking System"), React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: 'var(--text2)',
-      lineHeight: 1.6
-    }
-  }, React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "Mains earn ", React.createElement("b", {
-    style: {
-      color: 'var(--gold)'
-    }
-  }, "stars"), " (not pay) \u2014 gamified achievement currency"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "Ranks: Warrior \u2192 Elite \u2192 Master \u2192 Grandmaster \u2192 Epic \u2192 Legend \u2192 ", React.createElement("b", {
-    style: {
-      color: 'var(--red)'
-    }
-  }, "Mythic")), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, "Monthly reset: stars banked forever \uD83C\uDFE6 \u2014 rank starts fresh"), React.createElement("p", {
-    style: {
-      margin: 0
-    }
-  }, "Owner can customize thresholds & milestone stars in Settings"))), React.createElement("div", {
-    style: {
-      marginBottom: 12
-    }
-  }, React.createElement("h3", {
-    style: {
-      fontSize: 13,
-      fontWeight: 700,
-      color: 'var(--amber)',
-      margin: '0 0 6px'
-    }
-  }, "\uD83C\uDFC6 Leaderboard & Team"), React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: 'var(--text2)',
-      lineHeight: 1.6
-    }
-  }, React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, React.createElement("b", null, "Live Leaderboard"), " \u2014 Rank tab shows all Mains ranked by today's sets"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, React.createElement("b", null, "\uD83D\uDEE1\uFE0F Conflict Resolution"), " \u2014 prevents two callers dialing the same lead"), React.createElement("p", {
-    style: {
-      margin: 0
-    }
-  }, React.createElement("b", null, "\uD83D\uDCF4 Offline Mode"), " \u2014 team can call even without WiFi, syncs later"))), React.createElement("div", {
-    style: {
-      marginBottom: 12
-    }
-  }, React.createElement("h3", {
-    style: {
-      fontSize: 13,
-      fontWeight: 700,
-      color: '#8B5CF6',
-      margin: '0 0 6px'
-    }
-  }, "\uD83E\uDDE0 AI & Integrations"), React.createElement("div", {
-    style: {
-      fontSize: 11,
-      color: 'var(--text2)',
-      lineHeight: 1.6
-    }
-  }, React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, React.createElement("b", null, "Google"), " \u2014 Connect once, token shared with all admins permanently"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, React.createElement("b", null, "Claude AI"), " \u2014 Add key in Settings \u2192 \uD83E\uDDE0 \u2192 tap \"Share\" to sync to admins"), React.createElement("p", {
-    style: {
-      margin: '0 0 4px'
-    }
-  }, React.createElement("b", null, "Gemini AI"), " \u2014 Free option, add key \u2192 tap \"Share\" to sync to admins"), React.createElement("p", {
-    style: {
-      margin: 0
-    }
-  }, React.createElement("b", null, "WhatsApp Templates"), " \u2014 Create in Settings \u2192 Templates, then choose which one each admin receives")))), React.createElement("button", {
+  }, role === 'admin' ? 'Caller Guide' : 'Manager Guide')), (() => {
+    // \u2500\u2500\u2500 Concise onboarding (revised 2026.05.03) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    // Replaced the 4\u20135 verbose sections with a single tight "How it
+    // works" + "Good to know" pair per role. Single-line bullets, no
+    // redundant icons, no overlap with what's already obvious from the
+    // UI itself. Cuts wall-of-text feel without losing the essentials.
+    var section = (color, title, lines) => React.createElement("div", {
+      style: { marginBottom: 14 }
+    }, React.createElement("h3", {
+      style: { fontSize: 12, fontWeight: 800, color, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '.06em' }
+    }, title), React.createElement("ul", {
+      style: { margin: 0, padding: '0 0 0 16px', fontSize: 12, color: 'var(--text2)', lineHeight: 1.55 }
+    }, lines.map((ln, i) => React.createElement("li", { key: i, style: { marginBottom: 3 } }, ln))));
+    if (role === 'admin') {
+      return React.createElement(React.Fragment, null,
+        section('var(--accent2)', 'How a session works', [
+          React.createElement(React.Fragment, { key: 1 }, React.createElement("b", null, "Tap Call"), " in the header \u2192 pick your slot. Leads load from the tab the Main assigned you."),
+          React.createElement(React.Fragment, { key: 2 }, "Mark each call ", React.createElement("b", { style: { color: 'var(--green)' } }, "Set"), " \u00B7 ", React.createElement("b", { style: { color: 'var(--blue)' } }, "CB"), " \u00B7 ", React.createElement("b", { style: { color: 'var(--amber)' } }, "NP"), " \u00B7 ", React.createElement("b", { style: { color: 'var(--red)' } }, "NI"), " \u2014 NP/NI auto-advance to the next lead."),
+          React.createElement(React.Fragment, { key: 3 }, React.createElement("b", null, "End Session"), " writes your hours and appts to the Timesheet tab. Confirm dialog shows your stats first.")
+        ]),
+        section('var(--gold)', 'Stars & rank', [
+          'You earn stars (not pay). Each rank-up bonuses extra stars; monthly reset banks them forever.',
+          'Live leaderboard + your rank progress live in the Rank tab.'
+        ]),
+        section('var(--green)', 'Good to know', [
+          React.createElement(React.Fragment, { key: 1 }, React.createElement("b", null, "10s undo"), " on every outcome \u00B7 ", React.createElement("b", null, "conflict check"), " stops two callers dialing the same lead."),
+          React.createElement(React.Fragment, { key: 2 }, React.createElement("b", null, "Offline-safe"), " \u2014 keep calling without WiFi, app syncs when reconnected."),
+          React.createElement(React.Fragment, { key: 3 }, "AI is optional \u2014 your Main shares a key, or add your own under Settings \u2192 AI.")
+        ])
+      );
+    }
+    return React.createElement(React.Fragment, null,
+      section('var(--accent2)', 'First-time setup (5 min)', [
+        React.createElement(React.Fragment, { key: 1 }, "Connect Google in Settings \u2192 Integrations (Sheets \u00B7 Drive \u00B7 Calendar in one shot)."),
+        React.createElement(React.Fragment, { key: 2 }, "Paste the URL of your leads Google Sheet, pick the tab \u2014 AutoDial auto-creates the Timesheet, Appointments and Pay tabs for you."),
+        React.createElement(React.Fragment, { key: 3 }, "Approve admins in Settings \u2192 Users \u00B7 assign each one a leads tab in Admin Pay \u00B7 share a script + WhatsApp template.")
+      ]),
+      section('var(--gold)', 'Day-to-day', [
+        React.createElement(React.Fragment, { key: 1 }, "Header pill ", React.createElement("b", null, "MGMT \u2194 CALL"), " switches between managing the team and calling yourself."),
+        React.createElement(React.Fragment, { key: 2 }, "Home \u2192 live stats, action items, today's queue. Appts \u2192 set/met/flykite/paid log. Cal \u2192 upcoming bookings."),
+        React.createElement(React.Fragment, { key: 3 }, "Stars are gamified \u2014 separate from real pay. Owner can tune the thresholds in Settings \u2192 Owner.")
+      ]),
+      section('var(--green)', 'Good to know', [
+        React.createElement(React.Fragment, { key: 1 }, "All scripts auto-back up to your Google Drive (AutoDial folder). Use ", React.createElement("b", null, "\uD83D\uDD0D Check Drive sync"), " if you edit on multiple devices."),
+        React.createElement(React.Fragment, { key: 2 }, "The linked Sheet is the source of truth \u2014 daily reconcile pulls in any rows admins added directly."),
+        React.createElement(React.Fragment, { key: 3 }, "Add a shared Claude/Gemini key once and tap Share to push it to every admin.")
+      ])
+    );
+  })(), React.createElement("button", {
     onClick: () => {
       setShowHelp(false);
       localStorage.setItem('autodial_seen_help', '1');
