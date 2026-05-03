@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0020';
+window.APP_VERSION='2026.05.03.0021';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1109,14 +1109,45 @@ window.gSheets={
   _hideTabByDefault(canonical){
     return canonical==='Logs';
   },
+  // ═══ Sweep existing banded ranges and conditional format rules off a tab so
+  // ═══ formatTabVisuals can re-add fresh ones without "overlapping banding"
+  // ═══ errors. Best-effort — failures here just warn.
+  async _clearBandingsAndRules(id,sheetId){
+    try{
+      var metaResp=await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'?fields=sheets(properties.sheetId,bandedRanges.bandedRangeId,conditionalFormats)');
+      var meta=await metaResp.json();
+      var sheet=(meta.sheets||[]).find(s=>s.properties&&s.properties.sheetId===sheetId);
+      if(!sheet)return;
+      var requests=[];
+      (sheet.bandedRanges||[]).forEach(b=>{
+        if(b.bandedRangeId!=null)requests.push({deleteBanding:{bandedRangeId:b.bandedRangeId}});
+      });
+      // Conditional formats are positional — delete from highest index down
+      var cfCount=(sheet.conditionalFormats||[]).length;
+      for(var i=cfCount-1;i>=0;i--){
+        requests.push({deleteConditionalFormatRule:{sheetId:sheetId,index:i}});
+      }
+      if(requests.length){
+        await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:requests})});
+      }
+    }catch(e){console.warn('[_clearBandingsAndRules]',e?.message||e)}
+  },
   // ═══ Apply: bold+colored frozen header row, hide tracking-ID columns, set
-  // ═══ sensible column widths. Idempotent — safe to re-run on every ensureTabs.
-  // ═══ Best-effort: any one failed batchUpdate just logs a warning.
+  // ═══ sensible column widths, banded alternating rows, and per-status cell
+  // ═══ coloring for the Met (green when filled) and Fly Kite (red when
+  // ═══ filled) columns on Appointments Set. Idempotent — first clears
+  // ═══ existing bandings/conditional rules, then re-adds. Best-effort: any
+  // ═══ one failed batchUpdate just logs a warning.
   async formatTabVisuals(id,tab,canonical,sheetId){
     var headers=this._headersForTab(canonical||tab);
     if(!id||sheetId==null||!headers.length)return false;
     var trackCols=this._trackingColsForTab(canonical||tab);
     var color=this._headerColorForTab(canonical||tab);
+    var canon=canonical||tab;
+    // Sweep prior bandings + rules so we can re-add cleanly.
+    if(canon==='Appointments Set'||canon==='Timesheet'){
+      await this._clearBandingsAndRules(id,sheetId);
+    }
     var requests=[];
     if(color){
       requests.push({repeatCell:{
@@ -1133,7 +1164,7 @@ window.gSheets={
       properties:{sheetId:sheetId,gridProperties:{frozenRowCount:1}},
       fields:'gridProperties.frozenRowCount'
     }});
-    if(this._hideTabByDefault(canonical||tab)){
+    if(this._hideTabByDefault(canon)){
       requests.push({updateSheetProperties:{
         properties:{sheetId:sheetId,hidden:true},
         fields:'hidden'
@@ -1146,6 +1177,70 @@ window.gSheets={
         fields:'hiddenByUser'
       }});
     });
+    // Banded alternating rows for the data area (skip header). Subtle so the
+    // colored cells in Met/Fly Kite still read clearly.
+    if(canon==='Appointments Set'||canon==='Timesheet'){
+      var bandFirst=canon==='Appointments Set'
+        ?{red:1,green:1,blue:1}
+        :{red:1,green:1,blue:1};
+      var bandSecond=canon==='Appointments Set'
+        ?{red:0.953,green:0.984,blue:0.965}  // very light emerald tint
+        :{red:0.949,green:0.957,blue:0.984}; // very light indigo tint
+      requests.push({addBanding:{bandedRange:{
+        range:{sheetId:sheetId,startRowIndex:1,startColumnIndex:0,endColumnIndex:headers.length},
+        rowProperties:{
+          firstBandColor:bandFirst,
+          secondBandColor:bandSecond
+        }
+      }}});
+    }
+    // Per-status cell coloring on Appointments Set:
+    //   Met (col J / index 9)       → soft green when not blank
+    //   Fly Kite (col K / index 10) → soft red when not blank
+    //   Paid (col L / index 11)     → soft gold when not blank
+    // Lets the user scan the sheet at a glance and instantly see which
+    // appointments converted vs flaked, plus which got paid out.
+    if(canon==='Appointments Set'){
+      requests.push({addConditionalFormatRule:{
+        rule:{
+          ranges:[{sheetId:sheetId,startRowIndex:1,startColumnIndex:9,endColumnIndex:10}],
+          booleanRule:{
+            condition:{type:'NOT_BLANK'},
+            format:{
+              backgroundColor:{red:0.776,green:0.937,blue:0.792},
+              textFormat:{bold:true,foregroundColor:{red:0.039,green:0.298,blue:0.106}}
+            }
+          }
+        },
+        index:0
+      }});
+      requests.push({addConditionalFormatRule:{
+        rule:{
+          ranges:[{sheetId:sheetId,startRowIndex:1,startColumnIndex:10,endColumnIndex:11}],
+          booleanRule:{
+            condition:{type:'NOT_BLANK'},
+            format:{
+              backgroundColor:{red:0.992,green:0.835,blue:0.835},
+              textFormat:{bold:true,foregroundColor:{red:0.502,green:0.078,blue:0.078}}
+            }
+          }
+        },
+        index:1
+      }});
+      requests.push({addConditionalFormatRule:{
+        rule:{
+          ranges:[{sheetId:sheetId,startRowIndex:1,startColumnIndex:11,endColumnIndex:12}],
+          booleanRule:{
+            condition:{type:'NOT_BLANK'},
+            format:{
+              backgroundColor:{red:0.992,green:0.929,blue:0.749},
+              textFormat:{bold:true,foregroundColor:{red:0.486,green:0.314,blue:0.027}}
+            }
+          }
+        },
+        index:2
+      }});
+    }
     if(!requests.length)return true;
     try{
       await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:requests})});
@@ -5412,6 +5507,13 @@ function App() {
   });
   var [curIdx, setCurIdx] = useState(() => load('curIdx') || -1);
   var [countdown, setCountdown] = useState(0);
+  // Tracks the phone being dialed RIGHT NOW so the operator UI can show an
+  // inline "Dialing…" pill during the 1–2s gap between dial() being invoked
+  // and the OS dialer / paired phone actually surfacing the call. Cleared by
+  // a short timer in dial() so the pill auto-disappears even if the user
+  // never gets visible feedback from the OS.
+  var [dialingFor, setDialingFor] = useState('');
+  var dialingClearRef = useRef(null);
   var [phase, setPhase] = useState(() => {
     var s = load('activeSession');
     if (!s || s.ended) return 'idle';
@@ -12050,6 +12152,9 @@ function App() {
   // ═══ "Backup to Drive" button at least once). Skips the very first effect
   // ═══ run after mount so we don't double-write on app boot.
   var _scriptsAutoBackupSkipFirst = useRef(true);
+  // Track when we last warned about divergence so the auto-backup loop
+  // doesn't spam the toast every 3 seconds while the user ignores it.
+  var _scriptsDivergenceWarnedAt = useRef(0);
   useEffect(() => {
     if (role !== 'main') return;
     if (!cfg.scriptsDriveFileId) return;
@@ -12058,11 +12163,29 @@ function App() {
       _scriptsAutoBackupSkipFirst.current = false;
       return;
     }
-    var t = setTimeout(() => {
-      backupScriptsToDrive({ quiet: true }).catch(e => console.warn('[Auto Drive backup]', e?.message || e));
+    var t = setTimeout(async () => {
+      try {
+        // Pre-flight divergence check. If the Drive copy contains versions
+        // we don't have locally (suggesting another device edited Drive
+        // since we last synced), bail out of the silent auto-backup and
+        // surface a one-time toast prompting the user to resolve manually.
+        // This prevents quiet clobbers.
+        var diff = await compareScriptsWithDrive();
+        if (diff && !diff.inSync && diff.driveOnly.length) {
+          var now = Date.now();
+          if (now - _scriptsDivergenceWarnedAt.current > 5 * 60 * 1000) {
+            _scriptsDivergenceWarnedAt.current = now;
+            toast('⚠ Drive has scripts not on this device — open Settings → Check Drive sync', 'err');
+          }
+          return;
+        }
+        await backupScriptsToDrive({ quiet: true });
+      } catch (e) {
+        console.warn('[Auto Drive backup]', e?.message || e);
+      }
     }, 3000);
     return () => clearTimeout(t);
-  }, [role, scriptVersions, cfg.scriptsDriveFileId, backupScriptsToDrive]);
+  }, [role, scriptVersions, cfg.scriptsDriveFileId, backupScriptsToDrive, compareScriptsWithDrive]);
   // ═══ Auto-restore scripts from Drive on first boot — ONLY when local
   // ═══ scriptVersions array is empty AND a Drive file ID is configured. Avoids
   // ═══ ever clobbering local edits the user hasn't pushed yet (manual restore
@@ -12118,6 +12241,87 @@ function App() {
     toast('✓ Restored ' + fromDrive.length + ' script versions from Drive');
     return true;
   }, [role, cfg.scriptsDriveFileId, confirmAsync]);
+  // ═══ Drive vs local divergence check. Loads the Drive copy and compares
+  // ═══ against current local scriptVersions by name + content. Used by both
+  // ═══ the manual "Check Drive sync" button and the pre-auto-backup guard.
+  var compareScriptsWithDrive = useCallback(async () => {
+    if (role !== 'main') return null;
+    if (!localStorage.getItem('ad_gt')) return null;
+    var fileId = cfg.scriptsDriveFileId;
+    if (!fileId) return null;
+    var fromDrive = await window.gScripts.load(fileId).catch(() => []);
+    var local = Array.isArray(scriptVersions) ? scriptVersions : [];
+    var drive = Array.isArray(fromDrive) ? fromDrive : [];
+    var localByName = {}, driveByName = {};
+    local.forEach(v => { localByName[(v.name || '').trim()] = v; });
+    drive.forEach(v => { driveByName[(v.name || '').trim()] = v; });
+    var localOnly = local.filter(v => !driveByName[(v.name || '').trim()]).map(v => v.name || '(unnamed)');
+    var driveOnly = drive.filter(v => !localByName[(v.name || '').trim()]).map(v => v.name || '(unnamed)');
+    var contentDiffer = [];
+    Object.keys(localByName).forEach(name => {
+      if (!name) return;
+      var d = driveByName[name], l = localByName[name];
+      if (d && (d.content || '') !== (l.content || '')) contentDiffer.push(name);
+    });
+    var inSync = !localOnly.length && !driveOnly.length && !contentDiffer.length;
+    return { inSync, localOnly, driveOnly, contentDiffer, driveCount: drive.length, localCount: local.length };
+  }, [role, cfg.scriptsDriveFileId, scriptVersions]);
+  // ═══ Three-way conflict resolution: KEEP LOCAL (push to Drive, overwrite),
+  // ═══ PULL DRIVE (replace local), or DO NOTHING. Surfaces a divergence
+  // ═══ summary so the user understands what's at stake before choosing.
+  var resolveScriptsConflict = useCallback(async () => {
+    if (role !== 'main') {
+      toast('Drive sync check is for Main accounts only', 'err');
+      return;
+    }
+    if (!localStorage.getItem('ad_gt')) {
+      toast('Connect Google first (Settings → Integrations)', 'err');
+      return;
+    }
+    if (!cfg.scriptsDriveFileId) {
+      toast('No Drive backup yet — tap "Backup to Drive" first', 'info');
+      return;
+    }
+    toast('↻ Checking Drive…', 'info');
+    var diff = await compareScriptsWithDrive();
+    if (!diff) {
+      toast('Could not read Drive — check console', 'err');
+      return;
+    }
+    if (diff.inSync) {
+      toast('✓ In sync · ' + diff.localCount + ' versions match Drive');
+      return;
+    }
+    var lines = [];
+    lines.push('Local: ' + diff.localCount + ' versions   Drive: ' + diff.driveCount + ' versions');
+    if (diff.localOnly.length) lines.push('• Only on local: ' + diff.localOnly.slice(0, 4).join(', ') + (diff.localOnly.length > 4 ? '…' : ''));
+    if (diff.driveOnly.length) lines.push('• Only on Drive: ' + diff.driveOnly.slice(0, 4).join(', ') + (diff.driveOnly.length > 4 ? '…' : ''));
+    if (diff.contentDiffer.length) lines.push('• Different content: ' + diff.contentDiffer.slice(0, 4).join(', ') + (diff.contentDiffer.length > 4 ? '…' : ''));
+    var summary = lines.join('\n');
+    var keepLocal = await confirmAsync(summary + '\n\nKEEP LOCAL → push your local versions up to Drive (overwrites the Drive copy completely).', {
+      title: 'Scripts diverged',
+      confirmLabel: 'Keep local & push',
+      cancelLabel: 'Other options'
+    });
+    if (keepLocal) {
+      var ok = await backupScriptsToDrive();
+      if (ok) toast('✓ Local pushed to Drive');
+      return;
+    }
+    var pullDrive = await confirmAsync('PULL DRIVE → replace your local versions with what is on Drive (you lose local-only and locally-edited versions).', {
+      title: 'Pull from Drive?',
+      confirmLabel: 'Pull Drive (discard local)',
+      cancelLabel: 'Do nothing'
+    });
+    if (pullDrive) {
+      var fromDrive2 = await window.gScripts.load(cfg.scriptsDriveFileId);
+      setScriptVersions(fromDrive2 || []);
+      setCfg(p => ({ ...p, scriptVersions: fromDrive2 || [] }));
+      toast('✓ Pulled ' + ((fromDrive2 || []).length) + ' from Drive');
+    } else {
+      toast('No changes made — use Backup or Restore manually when ready', 'info');
+    }
+  }, [role, cfg.scriptsDriveFileId, compareScriptsWithDrive, backupScriptsToDrive, confirmAsync]);
   // ═══ Tidy Drive: ensure AutoDial folder exists, then move the user's linked
   // ═══ leads/timesheet sheet INTO that folder (alongside the scripts file).
   // ═══ Idempotent — moving an already-in-folder file is a no-op.
@@ -12242,6 +12446,13 @@ function App() {
       running: true,
       session: session || null
     };
+    // Inline dialing-state feedback. Shown immediately so the user gets a
+    // visual confirmation that the dial actually fired during the 1–2s gap
+    // before the system dialer (mobile) or paired-phone notification
+    // (desktop) surfaces.
+    setDialingFor(ph || '');
+    if (dialingClearRef.current) clearTimeout(dialingClearRef.current);
+    dialingClearRef.current = setTimeout(() => setDialingFor(''), 4500);
     if (callAssist && document.visibilityState !== 'visible') {
       showNextLeadNotification(lead || {
         name: 'Next lead',
@@ -13441,43 +13652,12 @@ function App() {
       }
     }
   }, [applyOutcome, curIdx, leads, filters, cfg, myCfg, bestStreak, session, dial, dialFilters]);
-  var finishPostCall = useCallback(() => {
-    if (postCallNote.trim() && showPostCall) {
-      var idx = showPostCall.leadIdx;
-      var trimmedNote = postCallNote.trim();
-      setLeads(p => p.map((l, i) => i === idx ? {
-        ...l,
-        notes: (l.notes ? l.notes + ' | ' : '') + trimmedNote
-      } : l));
-      var _sheetWritten = false;
-      if (cfg.sheetId && leads[idx]?.statusCol >= 0 && leads[idx]?.sheetRow) {
-        var lead = leads[idx];
-        var col = a1Col(lead.statusCol);
-        var val = (lead.notes ? lead.notes + ' | ' : '') + trimmedNote;
-        if (localStorage.getItem('ad_gt')) {
-          gSheets.put(cfg.sheetId, (cfg.sheetTab || 'Sheet1') + '!' + col + lead.sheetRow, val);
-          _sheetWritten = true;
-        }
-      }
-      // Visible save confirmation. The previous behavior silently dismissed the
-      // post-call card, so users couldn't tell whether their note was actually
-      // captured. A short toast removes that ambiguity without slowing the
-      // call-to-call flow.
-      toast(_sheetWritten ? '💾 Note saved · synced to Sheet' : '💾 Note saved locally', 'info');
-    }
-    setShowPostCall(null);
-    var nextIdx = nextLeadRef.current;
-    if (nextIdx === -1) {
-      setRunning(false);
-      setPhase('idle');
-      setCurIdx(-1);
-      toast('All leads done!', 'info');
-    } else {
-      setNextPreviewIdx(nextIdx);
-      setShowNextPreview(true);
-      setPhase('preview');
-    }
-  }, [postCallNote, showPostCall, leads, curIdx, filters, cfg, myCfg]);
+  // Note: the legacy `finishPostCall` callback and its associated post-call
+  // notes card were removed in 2026.05.03.0021 — the showPostCall state was
+  // never set to a truthy value anywhere in the app, so the entire flow was
+  // dead. The `showPostCall` state hook and its `setShowPostCall(null)`
+  // resets are intentionally left in place as harmless no-ops to avoid
+  // touching the dozen-plus dependency arrays that reference them.
   useEffect(() => {
     if (phase === 'waiting' && countdown > 0 && running) {
       cdRef.current = setTimeout(() => setCountdown(c => c - 1), 1000);
@@ -15419,7 +15599,24 @@ function App() {
       fontSize: 13,
       color: 'var(--accent2)'
     }
-  }, cur.phone || 'No phone'), React.createElement("p", {
+  }, cur.phone || 'No phone'), dialingFor && phoneDigits(dialingFor) === phoneDigits(cur.phone || '') && React.createElement("div", {
+    // Inline dialing-state badge. Auto-clears after 4.5s via dialingClearRef.
+    style: {
+      marginTop: 6,
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: 6,
+      padding: '4px 10px',
+      borderRadius: 999,
+      background: 'linear-gradient(135deg,rgba(34,197,94,.18),rgba(16,185,129,.10))',
+      border: '1px solid rgba(34,197,94,.4)',
+      color: 'var(--green)',
+      fontSize: 10,
+      fontWeight: 800,
+      letterSpacing: '.06em',
+      animation: 'pulse 1.4s ease-in-out infinite'
+    }
+  }, "📞 ", isMob ? 'Opening dialer…' : 'Dial sent — check phone'), React.createElement("p", {
     style: {
       margin: '5px 0 0',
       fontSize: 10,
@@ -15685,20 +15882,52 @@ function App() {
         opacity: callbackLookupBusy ? .65 : 1
       }
     }, callbackLookupBusy ? 'Updating...' : picked ? 'Update ' + (picked.name || picked.phone || 'lead') + ' as ' + callbackLookupStatus.toUpperCase() : 'Select lead to update'));
-  })(), showCallbackReturnButton && React.createElement("button", {
+  })(), showCallbackReturnButton && React.createElement("div", {
+    // Detour banner: surfaces the bookmarked-lead pointer prominently when
+    // the operator has stepped away to log a callback. Previously this was a
+    // small subdued pill at the bottom of the callback-lookup section, so it
+    // was easy to forget the detour and lose your place in the queue.
+    style: {
+      marginBottom: 10,
+      padding: '12px 14px',
+      borderRadius: 14,
+      background: 'linear-gradient(135deg,rgba(88,166,255,.18),rgba(99,102,241,.10))',
+      border: '1px solid rgba(88,166,255,.45)',
+      boxShadow: '0 0 16px rgba(88,166,255,.18)'
+    }
+  }, React.createElement("p", {
+    style: {
+      margin: '0 0 8px',
+      fontSize: 10,
+      fontWeight: 800,
+      letterSpacing: '.12em',
+      textTransform: 'uppercase',
+      color: 'var(--accent)'
+    }
+  }, "📌 On callback detour"), React.createElement("p", {
+    style: {
+      margin: '0 0 10px',
+      fontSize: 12,
+      color: 'var(--text2)',
+      fontWeight: 600
+    }
+  }, "Your queue position is bookmarked at: ", React.createElement("span", {
+    style: { color: 'var(--accent2)', fontWeight: 800 }
+  }, callbackBookmark.name || callbackBookmark.phone || 'bookmarked lead')), React.createElement("button", {
     onClick: returnToCallbackBookmark,
     style: {
       width: '100%',
-      padding: '10px 12px',
-      marginBottom: 8,
+      padding: '12px',
       borderRadius: 12,
-      background: 'rgba(88,166,255,.12)',
-      color: 'var(--blue)',
-      fontSize: 12,
+      background: 'linear-gradient(135deg,#2563eb,#3b82f6)',
+      color: '#fff',
+      fontSize: 13,
       fontWeight: 900,
-      border: '1px solid rgba(88,166,255,.30)'
+      border: '1px solid rgba(255,255,255,.12)',
+      boxShadow: '0 4px 14px rgba(59,130,246,.35)',
+      letterSpacing: '.04em'
     }
-  }, "Back to calling lead - ", callbackBookmark.name || callbackBookmark.phone || 'bookmarked lead'), session && !session.ended && React.createElement("div", {
+  }, "← Return to my queue position")), session && !session.ended && React.createElement("div", {
     style: {
       display: 'grid',
       gridTemplateColumns: 'repeat(5,1fr)',
@@ -16911,61 +17140,7 @@ function App() {
       fontSize: 10,
       color: s.ok ? 'var(--green)' : 'var(--amber)'
     }
-  }, s.ok ? 'OK ' : 'Check ', s.label, s.detail ? ' - ' + s.detail : ''))))), showPostCall && !showNextPreview && React.createElement("div", {
-    className: "card fi",
-    style: {
-      marginBottom: 12,
-      borderColor: 'rgba(16,185,129,.3)',
-      background: 'linear-gradient(135deg,rgba(16,185,129,.05),rgba(6,182,212,.03))'
-    }
-  }, React.createElement("button", {
-    onClick: finishPostCall,
-    style: {
-      width: '100%',
-      padding: '18px',
-      background: 'linear-gradient(135deg,#10b981 0%,#06b6d4 50%,#3b82f6 100%)',
-      color: '#fff',
-      fontSize: 17,
-      fontWeight: 800,
-      borderRadius: 14,
-      textTransform: 'uppercase',
-      letterSpacing: '.08em',
-      boxShadow: '0 0 28px rgba(16,185,129,.5),0 6px 20px rgba(6,182,212,.35),inset 0 1px 0 rgba(255,255,255,.2)',
-      border: '1px solid rgba(255,255,255,.15)',
-      textShadow: '0 1px 2px rgba(0,0,0,.3)',
-      marginBottom: 10,
-      animation: 'glowEmerald 2.5s ease-in-out infinite'
-    }
-  }, "\u27A1\uFE0F  NEXT LEAD  \u2192"), React.createElement("p", {
-    style: {
-      margin: '0 0 6px',
-      fontSize: 10,
-      fontWeight: 700,
-      color: 'var(--text3)',
-      textTransform: 'uppercase',
-      letterSpacing: '.1em'
-    }
-  }, "Quick note (optional)"), React.createElement("input", {
-    value: postCallNote,
-    onChange: e => setPostCallNote(e.target.value),
-    onKeyDown: e => {
-      if (e.key === 'Enter') finishPostCall();
-    },
-    placeholder: "Receptiveness, tone, objections...",
-    style: {
-      marginBottom: 0,
-      fontSize: 12
-    },
-    autoFocus: true
-  }), postCallNote.trim() && React.createElement("p", {
-    style: {
-      margin: '6px 0 0',
-      fontSize: 10,
-      color: 'var(--green)',
-      textAlign: 'center',
-      fontWeight: 600
-    }
-  }, "\u2713 ", postCallNote.trim().length, " char", postCallNote.trim().length === 1 ? '' : 's', " ready \u2014 tap NEXT LEAD or press Enter to save")), showNextPreview && nextPreviewLead && running && React.createElement("div", {
+  }, s.ok ? 'OK ' : 'Check ', s.label, s.detail ? ' - ' + s.detail : ''))))), showNextPreview && nextPreviewLead && running && React.createElement("div", {
     className: "card fi",
     style: {
       marginBottom: 12,
@@ -26082,6 +26257,11 @@ function App() {
       onClick: restoreScriptsFromDrive,
       style: { padding: '8px 14px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', fontSize: 11, fontWeight: 700, border: '1px solid var(--border)' }
     }, "\u2B07 Restore from Drive"),
+    React.createElement("button", {
+      onClick: resolveScriptsConflict,
+      title: "Compare your local scripts against the Drive copy and resolve any divergence",
+      style: { padding: '8px 14px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', fontSize: 11, fontWeight: 700, border: '1px solid var(--border)' }
+    }, "\uD83D\uDD0D Check Drive sync"),
     React.createElement("button", {
       onClick: moveSheetToAutoDialFolder,
       title: "Move your linked AutoDial sheet into the same AutoDial folder in Drive",
