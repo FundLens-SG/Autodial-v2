@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0018';
+window.APP_VERSION='2026.05.03.0019';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1006,7 +1006,16 @@ window.gSheets={
   _headersForTab(tab){
     var c=this._canonicalTab(tab);
     if(c==='Timesheet')return['Date','Day','Admin','Start','End','Hours','Dialed','NP','CB','NI','Set','Tier','$/hr','Bonus','Total Pay','Status','AutoDial ID','Session Key','Last Synced','Sync Action'];
-    if(c==='Appointments Set')return['Date Set','Admin','Lead Name','Phone','Appt Date','Appt Time','Location','Duration','Status','Follow-Up','Tip/EFYC','Notes','AutoDial ID','Calendar Event ID','Last Synced'];
+    // ═══ Appointments Set columns mirror the user's manual sheet layout:
+    // ═══ A Name · B Phone · C Gender · D Age · E Time · F Appt Date ·
+    // ═══ G Location · H Industry · I Remarks · J Met · K Fly Kite ·
+    // ═══ L Paid · M Tip · N Date Set · O Admin · P Duration · Q Status ·
+    // ═══ R Follow-Up · S AutoDial ID · T Calendar Event ID · U Last Synced.
+    // ═══ Met / Fly Kite / Paid are TRUE/FALSE checkbox-style cols. The
+    // ═══ "review" columns (Date Set, Admin, Duration, Status, Follow-Up)
+    // ═══ live to the right of the user-facing block; tracking IDs are at
+    // ═══ the rightmost positions (S-U) and auto-hidden by formatTabVisuals.
+    if(c==='Appointments Set')return['Name','Hp Number','Gender','Age','Time','Appt Date','Location','Industry','Any other remarks','Met','Fly Kite','Paid','Tip','Date Set','Admin','Duration','Status','Follow-Up','AutoDial ID','Calendar Event ID','Last Synced'];
     if(c==='Pay')return['Date','Admin','Amount','Sessions','Hours','Incentives','Invoice #','Screenshot','Status'];
     // ═══ Hidden audit log. Every undo/delete/status-change writes one row here so the
     // ═══ visible Appointments Set / Timesheet tabs only show CURRENT state, not history.
@@ -1024,6 +1033,55 @@ window.gSheets={
       var range=tab+'!A1:'+end+'1';
       var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(range))).json();
       var h=vals.values&&vals.values[0]?vals.values[0]:[];
+      // ═══ Schema migration for Appointments Set: old layout had "Date Set"
+      // ═══ in column A; new layout has "Name" in column A. If we see the old
+      // ═══ header, remap every existing data row before rewriting headers so
+      // ═══ no data is lost. Idempotent — only runs when we detect old shape.
+      if((canonical||tab)==='Appointments Set'&&String(h[0]||'').trim().toLowerCase()==='date set'){
+        try{
+          var allOld=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab+'!A2:O'))).json();
+          var oldRows=(allOld.values||[]).filter(function(r){return r&&(r[2]||r[3]||r[12])});
+          var migrated=oldRows.map(function(r){
+            // Old: 0 Date Set, 1 Admin, 2 Name, 3 Phone, 4 Appt Date, 5 Appt Time,
+            //      6 Location, 7 Duration, 8 Status, 9 Follow-Up, 10 Tip, 11 Notes,
+            //      12 AutoDial ID, 13 Calendar Event ID, 14 Last Synced.
+            var status=(r[8]||'').toString().toLowerCase();
+            var followUp=(r[9]||'').toString().toLowerCase();
+            var met=followUp==='met'||status==='met';
+            var flyKite=followUp==='fly kite'||followUp==='fly_kite'||followUp==='flykite';
+            return [
+              r[2]||'',                         // A Name
+              r[3]||'',                         // B Phone
+              '',                                // C Gender (not stored in old schema)
+              '',                                // D Age (not stored in old schema)
+              r[5]||'',                         // E Time
+              r[4]||'',                         // F Appt Date
+              r[6]||'',                         // G Location
+              '',                                // H Industry
+              r[11]||'',                        // I Remarks (was Notes)
+              met,                               // J Met
+              flyKite,                           // K Fly Kite
+              false,                             // L Paid
+              r[10]||0,                         // M Tip
+              r[0]||'',                         // N Date Set
+              r[1]||'',                         // O Admin
+              r[7]||60,                         // P Duration
+              r[8]||'',                         // Q Status
+              r[9]||'Pending',                  // R Follow-Up
+              r[12]||'',                        // S AutoDial ID
+              r[13]||'',                        // T Calendar Event ID
+              r[14]||new Date().toLocaleString('en-SG')  // U Last Synced
+            ];
+          });
+          // Clear old A:O range, write new headers + migrated data
+          await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab+'!A:U:clear'),{method:'POST',body:JSON.stringify({})});
+          var writeBody=[headers].concat(migrated);
+          await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab+'!A1')+'?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:writeBody})});
+          console.info('[Appts schema] migrated '+migrated.length+' rows to new layout');
+          if(typeof toast==='function')toast('✓ Appointments Set tab upgraded ('+migrated.length+' rows migrated)');
+          return true;
+        }catch(migrateErr){console.warn('[Appts schema migration]',migrateErr?.message||migrateErr);}
+      }
       var next=[...h];
       for(var i=0;i<headers.length;i++)if(!next[i])next[i]=headers[i];
       if(next.join('|')!==h.join('|'))await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(range)+'?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[next]})});
@@ -1034,7 +1092,9 @@ window.gSheets={
   // ═══ from the user when reviewing the sheet) and the header bar color.
   _trackingColsForTab(canonical){
     if(canonical==='Timesheet')return[16,17,18,19]; // AutoDial ID, Session Key, Last Synced, Sync Action
-    if(canonical==='Appointments Set')return[12,13,14]; // AutoDial ID, Calendar Event ID, Last Synced
+    // Appointments Set: hide N–U (Date Set/Admin/Duration/Status/Follow-Up + tracking IDs).
+    // Keep A–M visible: Name, Phone, Gender, Age, Time, Appt Date, Location, Industry, Remarks, Met, Fly Kite, Paid, Tip.
+    if(canonical==='Appointments Set')return[13,14,15,16,17,18,19,20];
     if(canonical==='Logs')return[4]; // Entity ID — internal reference
     return[];
   },
@@ -1108,10 +1168,11 @@ window.gSheets={
         var monthKey=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
         months.push({label:label,key:monthKey});
       }
-      // For each month, build SUMPRODUCT formulas filtering Timesheet col A by month/year text match
+      // For each month, build SUMPRODUCT formulas filtering Timesheet col A by month/year text match.
+      // Appointments Set: appt date is now col F (was col A under the legacy schema).
       var rows=months.map(m=>{
         var monthFilter='ISNUMBER(SEARCH("'+m.label.split(' ')[0]+'",TEXT(Timesheet!A:A,"mmm")))*(YEAR(Timesheet!A:A)='+m.label.split(' ')[1]+')';
-        var apptMonthFilter='ISNUMBER(SEARCH("'+m.label.split(' ')[0]+'",TEXT(\'Appointments Set\'!A:A,"mmm")))*(YEAR(\'Appointments Set\'!A:A)='+m.label.split(' ')[1]+')';
+        var apptMonthFilter='ISNUMBER(SEARCH("'+m.label.split(' ')[0]+'",TEXT(\'Appointments Set\'!F:F,"mmm")))*(YEAR(\'Appointments Set\'!F:F)='+m.label.split(' ')[1]+')';
         return [
           m.label,
           '=SUMPRODUCT(--('+monthFilter+'))',                  // Sessions count
@@ -1208,27 +1269,51 @@ window.gSheets={
   async appendAppt(id,appt,adminName){
     var apptTab=await this.ensureApptSheet(id);
     if(!apptTab)return false;
+    // ═══ Schema: A Name · B Phone · C Gender · D Age · E Time · F Appt Date ·
+    // ═══ G Location · H Industry · I Remarks · J Met · K Fly Kite · L Paid ·
+    // ═══ M Tip · N Date Set · O Admin · P Duration · Q Status · R Follow-Up ·
+    // ═══ S AutoDial ID · T Calendar Event ID · U Last Synced.
     try{var row=[
-      new Date().toLocaleDateString('en-SG',{day:'2-digit',month:'2-digit',year:'numeric'}),
-      adminName,appt.name||'',appt.phone||'',appt.apptDate||'',appt.apptTime||'',
-      appt.location||'',appt.duration||60,'Set','Pending',appt.tip||appt.efyc||0,appt.remarks||'',
-      appt.autoId||appt.id||'',appt.calEventId||'',new Date().toLocaleString('en-SG')
+      appt.name||'',                                    // A Name
+      appt.phone||'',                                   // B Phone
+      appt.gender||'',                                  // C Gender (from lead if available)
+      appt.age||appt.computed_age||'',                  // D Age
+      appt.apptTime||'',                                // E Time
+      appt.apptDate||'',                                // F Appt Date
+      appt.location||'',                                // G Location
+      appt.industry||'',                                // H Industry
+      appt.remarks||appt.notes||'',                     // I Remarks
+      false,                                            // J Met (checkbox)
+      false,                                            // K Fly Kite (checkbox)
+      false,                                            // L Paid (checkbox)
+      appt.tip||appt.efyc||0,                           // M Tip
+      new Date().toLocaleDateString('en-SG',{day:'2-digit',month:'2-digit',year:'numeric'}),  // N Date Set
+      adminName,                                        // O Admin
+      appt.duration||60,                                // P Duration
+      'Set',                                            // Q Status
+      'Pending',                                        // R Follow-Up
+      appt.autoId||appt.id||'',                         // S AutoDial ID
+      appt.calEventId||'',                              // T Calendar Event ID
+      new Date().toLocaleString('en-SG')                // U Last Synced
     ];
-    var res=await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(apptTab)+'!A:O:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
+    var res=await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(apptTab)+'!A:U:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
       {method:'POST',body:JSON.stringify({values:[row]})});
     try{return await res.json()}catch(_e){return{ok:true}}}catch(e){console.warn('[appendAppt] sheet write failed:',e?.message||e);return false}
   },
   async markApptUndo(id,appendRange,actor){
+    // Legacy helper — current undo flow uses deleteApptRow + appendLog instead.
+    // Kept for backward compatibility with column letters mapped to the new
+    // schema (Q Status, R Follow-Up, I Remarks, U Last Synced).
     try{
       var m=String(appendRange||'').match(/!A(\d+):/);
       if(!m)return false;
       var row=m[1];
       var tabMatch=String(appendRange||'').match(/^'?([^'!]+)'?!/);
       var tab=tabMatch?tabMatch[1]:await this.resolveTab(id,'Appointments Set');
-      await this.put(id,tab+'!I'+row,'Undone');
-      await this.put(id,tab+'!J'+row,'Undo');
-      await this.put(id,tab+'!L'+row,'Undone by '+(actor||'AutoDial')+' '+new Date().toLocaleString());
-      await this.put(id,tab+'!O'+row,new Date().toLocaleString('en-SG'));
+      await this.put(id,tab+'!Q'+row,'Undone');
+      await this.put(id,tab+'!R'+row,'Undo');
+      await this.put(id,tab+'!I'+row,'Undone by '+(actor||'AutoDial')+' '+new Date().toLocaleString());
+      await this.put(id,tab+'!U'+row,new Date().toLocaleString('en-SG'));
       return true
     }catch(e){return false}
   },
@@ -1251,20 +1336,24 @@ window.gSheets={
           return true;
         }
       }catch(_e){}
-      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab+'!A'+row+':O'+row)+':clear',{method:'POST',body:JSON.stringify({})});
+      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab+'!A'+row+':U'+row)+':clear',{method:'POST',body:JSON.stringify({})});
       return true
     }catch(e){console.warn('[deleteApptRow]',e?.message||e);return false}
   },
   async findApptRow(id,appt){
     try{
       var tab=await this.ensureApptSheet(id);
-      var rows=await this.vals(id,tab+'!A:O');
+      var rows=await this.vals(id,tab+'!A:U');
+      // ═══ Schema cols (0-indexed): 0 Name · 1 Phone · 2 Gender · 3 Age · 4 Time ·
+      // ═══ 5 Appt Date · 6 Location · 7 Industry · 8 Remarks · 9 Met · 10 Fly Kite ·
+      // ═══ 11 Paid · 12 Tip · 13 Date Set · 14 Admin · 15 Duration · 16 Status ·
+      // ═══ 17 Follow-Up · 18 AutoDial ID · 19 Calendar Event ID · 20 Last Synced.
       var autoId=String(appt.apptSheetAutoId||appt.dbApptId||appt.id||appt.autoId||'');
       var calId=String(appt.calEventId||'');
       for(var i=rows.length-1;i>=1;i--){
         var r=rows[i]||[];
-        if(autoId&&String(r[12]||'')===autoId)return i+1;
-        if(calId&&String(r[13]||'')===calId)return i+1;
+        if(autoId&&String(r[18]||'')===autoId)return i+1;
+        if(calId&&String(r[19]||'')===calId)return i+1;
       }
       var phone=normalizePhone(appt.phone||'');
       var date=String(appt.apptDate||'');
@@ -1272,10 +1361,10 @@ window.gSheets={
       var name=String(appt.name||'').trim().toLowerCase();
       for(var j=rows.length-1;j>=1;j--){
         var row=rows[j]||[];
-        var rowPhone=normalizePhone(row[3]||'');
-        var rowDate=String(row[4]||'');
-        var rowTime=String(row[5]||'').slice(0,5);
-        var rowName=String(row[2]||'').trim().toLowerCase();
+        var rowName=String(row[0]||'').trim().toLowerCase();
+        var rowPhone=normalizePhone(row[1]||'');
+        var rowTime=String(row[4]||'').slice(0,5);
+        var rowDate=String(row[5]||'');
         if(phone&&rowPhone===phone&&(date&&rowDate===date||time&&rowTime===time||name&&rowName===name))return j+1;
       }
     }catch(e){}
@@ -1291,17 +1380,29 @@ window.gSheets={
       if(!row)return false;
       var data=[];
       function set(col,val){data.push({range:tab+'!'+col+row,values:[[val==null?'':val]]})}
-      if('apptDate'in fields)set('E',fields.apptDate);
-      if('apptTime'in fields)set('F',fields.apptTime);
+      // New column letters: A Name, B Phone, C Gender, D Age, E Time, F Appt Date,
+      // G Location, H Industry, I Remarks, J Met, K Fly Kite, L Paid, M Tip,
+      // N Date Set, O Admin, P Duration, Q Status, R Follow-Up,
+      // S AutoDial ID, T Calendar Event ID, U Last Synced.
+      if('apptTime'in fields)set('E',fields.apptTime);
+      if('apptDate'in fields)set('F',fields.apptDate);
       if('location'in fields)set('G',fields.location);
-      if('duration'in fields)set('H',fields.duration);
-      if('status'in fields)set('I',fields.status);
-      if('followUp'in fields)set('J',fields.followUp);
-      if('tip'in fields)set('K',fields.tip);
-      if('notes'in fields)set('L',fields.notes);
-      if(appt.apptSheetAutoId||appt.dbApptId||appt.id)set('M',appt.apptSheetAutoId||appt.dbApptId||appt.id);
-      if(appt.calEventId)set('N',appt.calEventId);
-      set('O',new Date().toLocaleString('en-SG')+(actor?' by '+actor:''));
+      if('industry'in fields)set('H',fields.industry);
+      if('notes'in fields)set('I',fields.notes);
+      if('followUp'in fields){
+        var fu=String(fields.followUp||'').toLowerCase();
+        // Update the checkbox columns based on follow-up status
+        set('J',fu==='met'?true:false);
+        set('K',fu==='fly kite'||fu==='fly_kite'||fu==='flykite'?true:false);
+        set('R',fields.followUp);
+      }
+      if('paid'in fields)set('L',!!fields.paid);
+      if('tip'in fields)set('M',fields.tip);
+      if('duration'in fields)set('P',fields.duration);
+      if('status'in fields)set('Q',fields.status);
+      if(appt.apptSheetAutoId||appt.dbApptId||appt.id)set('S',appt.apptSheetAutoId||appt.dbApptId||appt.id);
+      if(appt.calEventId)set('T',appt.calEventId);
+      set('U',new Date().toLocaleString('en-SG')+(actor?' by '+actor:''));
       if(!data.length)return false;
       await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values:batchUpdate?valueInputOption=USER_ENTERED',{method:'POST',body:JSON.stringify({data})});
       return row
@@ -1349,16 +1450,29 @@ window.gSheets={
     try{
       var tab=await this.ensureApptSheet(id);
       if(!tab)return[];
-      var vals=await this.vals(id,tab+'!A:O');
+      var vals=await this.vals(id,tab+'!A:U');
       if(!vals||vals.length<2)return[];
       var rows=vals.slice(1);
+      // ═══ Schema columns: 0 Name · 1 Phone · 2 Gender · 3 Age · 4 Time ·
+      // ═══ 5 Appt Date · 6 Location · 7 Industry · 8 Remarks · 9 Met ·
+      // ═══ 10 Fly Kite · 11 Paid · 12 Tip · 13 Date Set · 14 Admin · 15 Duration ·
+      // ═══ 16 Status · 17 Follow-Up · 18 AutoDial ID · 19 Calendar Event ID ·
+      // ═══ 20 Last Synced. Met / Fly Kite / Paid are TRUE/FALSE strings.
+      function truthy(v){return String(v||'').toLowerCase()==='true'||v===true}
       return rows.map(function(r,i){
+        var met=truthy(r[9]);
+        var flyKite=truthy(r[10]);
+        var paid=truthy(r[11]);
+        var followUpRaw=(r[17]||'').toString().toLowerCase();
+        // Derive followUp from checkbox cols if column R is empty
+        var followUp=followUpRaw||(met?'met':flyKite?'fly kite':'pending');
         var raw={
-          dateSet:r[0]||'',admin:r[1]||'',name:r[2]||'',phone:r[3]||'',
-          apptDate:r[4]||'',apptTime:r[5]||'',location:r[6]||'',duration:+r[7]||60,
-          status:r[8]||'',followUp:(r[9]||'pending').toString().toLowerCase(),
-          tip:+r[10]||0,notes:r[11]||'',
-          autoId:r[12]||'',calEventId:r[13]||'',lastSynced:r[14]||''
+          name:r[0]||'',phone:r[1]||'',gender:r[2]||'',age:r[3]||'',
+          apptTime:r[4]||'',apptDate:r[5]||'',location:r[6]||'',industry:r[7]||'',
+          notes:r[8]||'',met:met,flyKite:flyKite,paid:paid,tip:+r[12]||0,
+          dateSet:r[13]||'',admin:r[14]||'',duration:+r[15]||60,
+          status:r[16]||'',followUp:followUp,
+          autoId:r[18]||'',calEventId:r[19]||'',lastSynced:r[20]||''
         };
         // Skip blank rows
         if(!raw.name&&!raw.phone&&!raw.autoId)return null;
@@ -30903,6 +31017,11 @@ WHERE p.id IS NULL;`;
             calEventId: evt?.id || '',
             name: lead?.name,
             phone: lead?.phone,
+            // Pull demographic fields from the lead so the new Appts schema
+            // (Gender, Age, Industry) lands populated rather than blank.
+            gender: lead?.gender || '',
+            age: lead?.age || lead?.computed_age || '',
+            industry: lead?.industry || lead?.company || '',
             apptDate,
             apptTime,
             location: apptLocation,
