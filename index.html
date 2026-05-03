@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0022';
+window.APP_VERSION='2026.05.03.0023';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -10111,6 +10111,14 @@ function App() {
   var _liveSyncRef = useRef({
     lastAppliedTs: 0,
     lastLeadsHash: '',
+    // Tracks the timestamp + source of the most recent leads snapshot we
+    // applied locally. Used by _applyLeadPayload to reject stale snapshots
+    // from a "loser" source after a fresher one has already been applied —
+    // fixes the alt-tab flicker where pullLeads (own progress key) and
+    // pullAssignedLeads (Main's assignment key) returned different snapshots
+    // and oscillated the operator queue every visibility cycle.
+    lastLeadsAppliedTs: 0,
+    lastLeadsSource: '',
     lastApptsHash: '',
     suppressPushKeys: {},
     livePushTimer: null,
@@ -10339,8 +10347,24 @@ function App() {
       if (!payloadId || !payloadTab) return false;
       return (!expectedId || payloadId === expectedId) && (!expectedTab || payloadTab === expectedTab);
     };
-    var _applyLeadPayload = (p, label) => {
+    var _applyLeadPayload = (p, label, sourceKey) => {
       if (!_leadPayloadMatchesSource(p)) return false;
+      // ─── Stale-snapshot guard ────────────────────────────────────────
+      // Two different Supabase rows can feed leads for an admin user:
+      //   1. `leads_<email>`         — admin's own progress push
+      //   2. `assigned_leads_<email>` — Main's assignment push
+      // Each row's snapshot can lag the other by a few seconds. Without
+      // a timestamp check, alt-tabbing fires both pulls and whichever
+      // response arrives last wins — causing the visible queue to flip
+      // back and forth between two stale snapshots on every alt-tab.
+      // Reject any payload that's older than the freshest one already
+      // applied (with a small grace window for clock skew).
+      var payloadTs = Number(p?.ts) || 0;
+      var ref = _liveSyncRef.current;
+      if (payloadTs && ref.lastLeadsAppliedTs && payloadTs < ref.lastLeadsAppliedTs - 500) {
+        DBG('[LiveSync] rejected stale leads snapshot from', sourceKey || label || '?', 'ts=' + payloadTs, '<', ref.lastLeadsAppliedTs);
+        return false;
+      }
       var sourceMeta = {
         sourceSheetId: p.sheetId || p.sourceSheetId || p.leads[0]?._sourceSheetId || '',
         sourceSheetTab: p.sheetTab || p.sourceSheetTab || p.leads[0]?._sourceSheetTab || '',
@@ -10366,11 +10390,18 @@ function App() {
         }
       }
       var newHash = _hashLeads(nextLeads);
-      if (newHash === _liveSyncRef.current.lastLeadsHash) return false;
-      _liveSyncRef.current.lastLeadsHash = newHash;
+      if (newHash === ref.lastLeadsHash) {
+        // Same content but newer timestamp — bump our "last applied"
+        // marker so subsequent stale snapshots stay rejected.
+        if (payloadTs) ref.lastLeadsAppliedTs = Math.max(ref.lastLeadsAppliedTs, payloadTs);
+        return false;
+      }
+      ref.lastLeadsHash = newHash;
+      if (payloadTs) ref.lastLeadsAppliedTs = payloadTs;
+      ref.lastLeadsSource = sourceKey || label || '';
       _markSuppressedPush('leads');
       setLeads(nextLeads);
-      DBG('[LiveSync] applied', nextLeads.length, label || 'leads');
+      DBG('[LiveSync] applied', nextLeads.length, label || 'leads', 'from', sourceKey || '?', 'ts=' + payloadTs);
       return true;
     };
     var applySharedAdminCfg = rawBizName => {
@@ -10543,7 +10574,7 @@ function App() {
         if (r.data && r.data.biz_name) {
           var p = JSON.parse(r.data.biz_name);
           if (p && p.devId === window._devId) return;
-          _applyLeadPayload(p, 'lead progress from cloud');
+          _applyLeadPayload(p, 'lead progress from cloud', 'leads');
         }
       } catch (e) {
         console.warn('[LiveSync leads pull]', e?.message || e);
@@ -10556,7 +10587,7 @@ function App() {
         if (r.data && r.data.biz_name) {
           var p = JSON.parse(r.data.biz_name);
           if (p && p.devId === window._devId) return;
-          _applyLeadPayload(p, 'assigned leads from Main');
+          _applyLeadPayload(p, 'assigned leads from Main', 'assigned_leads');
         }
       } catch (e) {
         console.warn('[LiveSync assigned leads pull]', e?.message || e);
@@ -10836,7 +10867,7 @@ function App() {
           if (row && row.biz_name) {
             var p = JSON.parse(row.biz_name);
             if (p && p.devId === window._devId) return;
-            _applyLeadPayload(p, 'lead progress from realtime');
+            _applyLeadPayload(p, 'lead progress from realtime', 'leads');
           }
         } catch (e) {}
       }).on('postgres_changes', {
@@ -10896,7 +10927,7 @@ function App() {
             if (!row || !row.biz_name) return;
             var p = JSON.parse(row.biz_name);
             if (p && p.devId === window._devId) return;
-            _applyLeadPayload(p, 'assigned leads from realtime');
+            _applyLeadPayload(p, 'assigned leads from realtime', 'assigned_leads');
           } catch (e) {}
         });
       }
