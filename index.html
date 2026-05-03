@@ -6916,8 +6916,10 @@ function App() {
   var [tsSearch, setTsSearch] = useState('');
   var [leadSearch, setLeadSearch] = useState('');
   var billingDate = cfg.billingDate || 1;
-  var [usersList, setUsersList] = useState([]);
-  var [pendingUsers, setPendingUsers] = useState([]);
+  // Phase 7B2: usersList / pendingUsers state vars removed — User Management UI
+  // moved to the ckgtools.com hub. The avatar-button notice dot and the
+  // "Add admin" datalist (which were the only consumers) were updated to
+  // ignore them.
   var [showApprovalModal, setShowApprovalModal] = useState(false);
   var [showHelp, setShowHelp] = useState(!localStorage.getItem('autodial_seen_help'));
   var [showMoreMenu, setShowMoreMenu] = useState(false);
@@ -13869,7 +13871,9 @@ function App() {
     }
   }, "\uD83D\uDCDE Call"), (() => {
     var _isCreator = isCreatorUser || isCreator(window._user?.email || '');
-    var _hasNotice = (_isCreator && pendingUsers.length > 0) || hasActionActivity;
+    // Phase 7B2: pendingUsers always 0 here (UM moved to hub); notice dot
+    // now reflects only action-activity (undo timers, etc.).
+    var _hasNotice = hasActionActivity;
     var _initials = (userName || 'U').split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase()).join('') || 'U';
     return React.createElement("button", {
       ref: avatarBtnRef,
@@ -23234,10 +23238,7 @@ function App() {
     }
   }), React.createElement("datalist", {
     id: "approved-users-list"
-  }, usersList.filter(u => u.approved && !isCreator(u.email) && !adminConfigs[u.email?.toLowerCase()]).map(u => React.createElement("option", {
-    key: u.id,
-    value: u.email
-  }, u.full_name || u.email)))), React.createElement("button", {
+  })), React.createElement("button", {
     onClick: async () => {
       var em = newAdminEmail.trim().toLowerCase();
       if (!em.includes('@')) return toast('Invalid email', 'err');
