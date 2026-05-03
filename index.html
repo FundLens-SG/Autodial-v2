@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0017';
+window.APP_VERSION='2026.05.03.0018';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1485,6 +1485,24 @@ window.gDrive={
       await gF('https://www.googleapis.com/drive/v3/files/'+fileId+'?addParents='+folderId+'&removeParents='+oldParents+'&fields=id,parents',{method:'PATCH',body:JSON.stringify({})});
       return true;
     }catch(e){console.warn('[gDrive.moveFileToFolder]',e?.message||e);return false}
+  },
+  // ═══ Grant an email read (or write) access to a file. Used to share Main's
+  // ═══ AutoDial Scripts sheet with their admins so admin apps can pull
+  // ═══ scripts directly from Drive instead of through the Supabase mirror.
+  // ═══ Idempotent — Drive's permissions API tolerates duplicate grants.
+  async shareFileWithEmail(fileId,email,role){
+    if(!fileId||!email||!email.includes('@'))return false;
+    var roleStr=role==='writer'?'writer':'reader';
+    try{
+      await gF('https://www.googleapis.com/drive/v3/files/'+fileId+'/permissions?sendNotificationEmail=false&fields=id',
+        {method:'POST',body:JSON.stringify({role:roleStr,type:'user',emailAddress:email})});
+      return true;
+    }catch(e){
+      // 409 / 400 sometimes when permission already exists — treat as success
+      if(/already|exist/i.test(e?.message||''))return true;
+      console.warn('[gDrive.shareFileWithEmail]',email,e?.message||e);
+      return false;
+    }
   }
 };
 // ═══ Helper to load and save scripts to a Drive-hosted sheet. Each row is
@@ -8971,6 +8989,36 @@ function App() {
                 var s = JSON.parse(sr.data.biz_name);
                 applySharedScriptPayload(s);
               }
+              // ═══ Drive-backed scripts: if Main has shared a Drive scripts file
+              // ═══ with this admin (file ID written into shared_admincfg by
+              // ═══ Main's backupScriptsToDrive), read it and use that as the
+              // ═══ source of truth — overrides the Supabase Mirror payload above.
+              // ═══ Best-effort: if the read fails (no Drive permission, stale
+              // ═══ file ID), the Supabase fallback above still applies.
+              var ownCfgRow = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', 'shared_admincfg_' + myEmail).maybeSingle();
+              var ownCfg = {};
+              try { ownCfg = ownCfgRow && ownCfgRow.data && ownCfgRow.data.biz_name ? JSON.parse(ownCfgRow.data.biz_name) : {}; } catch (_e) {}
+              if (ownCfg.scriptsDriveFileId && localStorage.getItem('ad_gt') && window.gScripts) {
+                try {
+                  var driveScripts = await window.gScripts.load(ownCfg.scriptsDriveFileId);
+                  if (driveScripts && driveScripts.length) {
+                    var sharedOnly = driveScripts.filter(v => v.shareWithAdmins);
+                    if (sharedOnly.length) {
+                      // Mirror the Drive content into the local cfg blob so
+                      // existing render paths work unchanged
+                      var pickedVersion = sharedOnly[0];
+                      applySharedScriptPayload({
+                        content: pickedVersion.content || '',
+                        scriptShareName: pickedVersion.name || 'Drive script',
+                        scriptShareUpdatedAt: pickedVersion.updatedAt || Date.now(),
+                        versions: sharedOnly,
+                        _fromDrive: true
+                      });
+                      DBG('[AutoDial] Loaded ' + sharedOnly.length + ' script version(s) from Main\'s Drive');
+                    }
+                  }
+                } catch (_driveErr) { console.warn('[Drive scripts admin read]', _driveErr?.message || _driveErr); }
+              }
             } catch (e) {}
           })(), (async () => {
             try {
@@ -11844,13 +11892,43 @@ function App() {
       setCfg(p => ({ ...p, scriptsDriveFileId: fileId }));
     }
     var ok = await window.gScripts.save(fileId, scriptVersions, userName);
-    if (ok) {
-      if (!quiet) toast('✓ ' + scriptVersions.length + ' script version(s) backed up to Drive');
-      return fileId;
+    if (!ok) {
+      if (!quiet) toast('Drive save failed — check console', 'err');
+      return false;
     }
-    if (!quiet) toast('Drive save failed — check console', 'err');
-    return false;
-  }, [role, cfg.scriptsDriveFileId, scriptVersions, userName]);
+    // ═══ Auto-share the scripts file (and folder) with every configured
+    // ═══ admin so their app can pull scripts directly from Drive. Also
+    // ═══ propagate the file ID into each admin's shared config row so the
+    // ═══ admin app knows where to look. Best-effort and silent; failures
+    // ═══ for individual admins don't block the backup.
+    try {
+      var adminEmails = Object.keys(adminConfigs || {}).filter(em => em && em.includes('@'));
+      if (adminEmails.length) {
+        var folderId = await window.gDrive.ensureFolder('AutoDial');
+        await Promise.all(adminEmails.map(async em => {
+          try {
+            await window.gDrive.shareFileWithEmail(fileId, em, 'reader');
+            if (folderId) await window.gDrive.shareFileWithEmail(folderId, em, 'reader');
+            // Push the file ID into the admin's shared config row in Supabase
+            if (_SB) {
+              var key = 'shared_admincfg_' + em.toLowerCase();
+              var existing = await _SB.from('autodial_admin_config').select('biz_name').eq('admin_email', key).maybeSingle();
+              var existingCfg = {};
+              try { existingCfg = existing && existing.data && existing.data.biz_name ? JSON.parse(existing.data.biz_name) : {}; } catch (_e) { existingCfg = {}; }
+              existingCfg.scriptsDriveFileId = fileId;
+              existingCfg.scriptsDriveSyncedAt = Date.now();
+              await _SB.from('autodial_admin_config').upsert({
+                admin_email: key,
+                biz_name: JSON.stringify(existingCfg)
+              }, { onConflict: 'admin_email' });
+            }
+          } catch (e) { console.warn('[Drive admin share]', em, e?.message || e); }
+        }));
+      }
+    } catch (e) { console.warn('[Drive admin share batch]', e?.message || e); }
+    if (!quiet) toast('✓ ' + scriptVersions.length + ' script version(s) backed up to Drive' + (Object.keys(adminConfigs || {}).filter(em => em.includes('@')).length ? ' & shared with admins' : ''));
+    return fileId;
+  }, [role, cfg.scriptsDriveFileId, scriptVersions, userName, adminConfigs]);
   // ═══ Auto-backup scripts to Drive whenever scriptVersions changes — debounced
   // ═══ 3s so a flurry of edits coalesces into one write. Quiet mode (no toast)
   // ═══ since this happens in the background. Only fires for Main users with a
