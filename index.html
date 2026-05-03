@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0015';
+window.APP_VERSION='2026.05.03.0016';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1446,7 +1446,116 @@ window.gCal={async create(sum,desc,s,e,att,calId){var cid=calId||'primary';var b
   };
   window.gCal._hardened=true;
 })();
-window.gDrive={async search(q){var fq="mimeType='application/vnd.google-apps.spreadsheet'";if(q)fq+=" and name contains '"+q.replace(/'/g,"\\'")+"'";return(await(await gF('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(fq)+'&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&pageSize=20')).json()).files||[]}};
+window.gDrive={
+  async search(q){
+    var fq="mimeType='application/vnd.google-apps.spreadsheet'";
+    if(q)fq+=" and name contains '"+q.replace(/'/g,"\\'")+"'";
+    return(await(await gF('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(fq)+'&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&pageSize=20')).json()).files||[]
+  },
+  // ═══ Find or create a folder by name in My Drive root. Returns folder ID.
+  async ensureFolder(name){
+    if(!name)return'';
+    try{
+      var fq="mimeType='application/vnd.google-apps.folder' and name='"+name.replace(/'/g,"\\'")+"' and trashed=false";
+      var found=(await(await gF('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(fq)+'&fields=files(id,name)&pageSize=5')).json()).files||[];
+      if(found.length)return found[0].id;
+      var r=await(await gF('https://www.googleapis.com/drive/v3/files?fields=id,name',{method:'POST',body:JSON.stringify({name:name,mimeType:'application/vnd.google-apps.folder'})})).json();
+      return r.id||'';
+    }catch(e){console.warn('[gDrive.ensureFolder]',e?.message||e);return''}
+  },
+  // ═══ Find or create a Google Sheet inside the given folder. Returns sheet ID.
+  async ensureSheetFile(folderId,name){
+    if(!folderId||!name)return'';
+    try{
+      var fq="'"+folderId+"' in parents and name='"+name.replace(/'/g,"\\'")+"' and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false";
+      var found=(await(await gF('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(fq)+'&fields=files(id,name)&pageSize=5')).json()).files||[];
+      if(found.length)return found[0].id;
+      var r=await(await gF('https://www.googleapis.com/drive/v3/files?fields=id,name',{method:'POST',body:JSON.stringify({name:name,mimeType:'application/vnd.google-apps.spreadsheet',parents:[folderId]})})).json();
+      return r.id||'';
+    }catch(e){console.warn('[gDrive.ensureSheetFile]',e?.message||e);return''}
+  },
+  // ═══ Move a file into a folder (removes other parents). Use after detecting
+  // ═══ the user's existing AutoDial Timesheet/leads sheet to organise.
+  async moveFileToFolder(fileId,folderId){
+    if(!fileId||!folderId)return false;
+    try{
+      // Get current parents
+      var meta=await(await gF('https://www.googleapis.com/drive/v3/files/'+fileId+'?fields=parents')).json();
+      var oldParents=(meta.parents||[]).join(',');
+      await gF('https://www.googleapis.com/drive/v3/files/'+fileId+'?addParents='+folderId+'&removeParents='+oldParents+'&fields=id,parents',{method:'PATCH',body:JSON.stringify({})});
+      return true;
+    }catch(e){console.warn('[gDrive.moveFileToFolder]',e?.message||e);return false}
+  }
+};
+// ═══ Helper to load and save scripts to a Drive-hosted sheet. Each row is
+// ═══ one script version: Name · Content (HTML) · Description · Updated · UpdatedBy · ShareWithAdmins.
+window.gScripts={
+  async ensureFile(){
+    var folderId=await gDrive.ensureFolder('AutoDial');
+    if(!folderId)return'';
+    var sheetId=await gDrive.ensureSheetFile(folderId,'AutoDial Scripts');
+    if(!sheetId)return'';
+    // Make sure the header row is in place
+    try{
+      var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/Sheet1!A1:F1')).json();
+      var headers=vals.values&&vals.values[0]?vals.values[0]:[];
+      var canon=['Name','Content','Description','Updated','Updated By','Share With Admins'];
+      if(headers.join('|')!==canon.join('|')){
+        await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/Sheet1!A1:F1?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[canon]})});
+        // Style the header
+        try{
+          var meta=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'?fields=sheets.properties')).json();
+          var sid=meta.sheets&&meta.sheets[0]?meta.sheets[0].properties.sheetId:0;
+          await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+':batchUpdate',{method:'POST',body:JSON.stringify({requests:[
+            {repeatCell:{range:{sheetId:sid,startRowIndex:0,endRowIndex:1,startColumnIndex:0,endColumnIndex:6},cell:{userEnteredFormat:{backgroundColor:{red:0.224,green:0.094,blue:0.337},textFormat:{foregroundColor:{red:1,green:1,blue:1},bold:true,fontSize:11}}},fields:'userEnteredFormat(backgroundColor,textFormat)'}},
+            {updateSheetProperties:{properties:{sheetId:sid,gridProperties:{frozenRowCount:1}},fields:'gridProperties.frozenRowCount'}}
+          ]})});
+        }catch(_e){}
+      }
+    }catch(e){console.warn('[gScripts.ensureFile header]',e?.message||e)}
+    return sheetId;
+  },
+  async save(sheetId,versions,actor){
+    if(!sheetId||!Array.isArray(versions))return false;
+    try{
+      var rows=versions.map(function(v){return[
+        v.name||'',
+        v.content||'',
+        v.description||'',
+        new Date(v.updatedAt||Date.now()).toLocaleString('en-SG'),
+        actor||v.updatedBy||'',
+        v.shareWithAdmins?'TRUE':'FALSE'
+      ]});
+      // Clear existing rows beyond header, then write fresh
+      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/Sheet1!A2:F:clear',{method:'POST',body:JSON.stringify({})});
+      if(rows.length){
+        await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/Sheet1!A2?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:rows})});
+      }
+      return true;
+    }catch(e){console.warn('[gScripts.save]',e?.message||e);return false}
+  },
+  async load(sheetId){
+    if(!sheetId)return[];
+    try{
+      var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/Sheet1!A2:F')).json();
+      var rows=vals.values||[];
+      return rows.map(function(r,i){
+        var name=r[0]||'';
+        if(!name)return null;
+        return{
+          id:'drive_'+i+'_'+(name.toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,20)),
+          name:name,
+          content:r[1]||'',
+          description:r[2]||'',
+          updatedAt:r[3]||new Date().toISOString(),
+          updatedBy:r[4]||'',
+          shareWithAdmins:String(r[5]||'').toUpperCase()==='TRUE',
+          _fromDrive:true
+        };
+      }).filter(Boolean);
+    }catch(e){console.warn('[gScripts.load]',e?.message||e);return[]}
+  }
+};
 
 // ══════ AI PROMPTS — centralized ══════
 // All Claude/Gemini prompts live here so they can be edited in one place
@@ -11656,6 +11765,121 @@ function App() {
     } catch (_e) {}
     return { pulled: sheetAppts.length, added, updated, removed };
   }, [myCfg.timesheetId, cfg.sheetId, appointments, myEmail]);
+  // ═══ Same shape as pullApptsFromSheet but for Timesheet sessions. The Sheet
+  // ═══ row's status field (Active / Unpaid / Paid) is the authoritative one;
+  // ═══ totals (hours/dialed/sets/etc.) reconcile in too. Local sessionLog
+  // ═══ entries that don't appear in the sheet are LEFT alone (we don't tombstone
+  // ═══ sessions — they happened) so the manager can still see locally-cached
+  // ═══ history even if the sheet was wiped.
+  var pullSessionsFromSheet = useCallback(async (opts = {}) => {
+    var quiet = !!opts.quiet;
+    var sheetId = myCfg.timesheetId || cfg.sheetId || '';
+    if (!sheetId || !localStorage.getItem('ad_gt')) {
+      if (!quiet) toast('No linked sheet — nothing to pull from', 'err');
+      return { pulled: 0, updated: 0, added: 0, error: 'no sheet' };
+    }
+    var sheetSessions = await gTimesheet.readSessionsFromSheet(sheetId, myCfg);
+    if (!sheetSessions) return { pulled: 0, updated: 0, added: 0, error: 'read failed' };
+    var byKey = new Map();
+    sheetSessions.forEach(s => {
+      var k = s.autoId || s.sessionKey || (s.startTime + '|' + s.admin);
+      if (k) byKey.set(String(k), s);
+    });
+    var added = 0, updated = 0;
+    var existing = sessionLog || [];
+    var nextLog = existing.map(local => {
+      var k = local.timesheetAutoId || local.id || local.sessionKey || (local.startTime + '|' + (local.adminEmail || local.adminName || ''));
+      var match = byKey.get(String(k));
+      if (!match) return local;
+      byKey.delete(String(k));
+      var changed = false;
+      var merged = Object.assign({}, local);
+      ['paid', 'pay', 'sets', 'dialed', 'np', 'cb', 'ni', 'tier', 'status'].forEach(f => {
+        if (match[f] !== undefined && local[f] !== match[f]) {
+          merged[f] = match[f];
+          changed = true;
+        }
+      });
+      if (changed) updated++;
+      return merged;
+    });
+    // Anything left in byKey is in the sheet but not local — add it
+    byKey.forEach(s => {
+      // Only add sessions that look real (have a startTime)
+      if (s.startTime) {
+        nextLog.push(Object.assign({}, s, {
+          _fromSheet: true,
+          ended: s.ended !== false
+        }));
+        added++;
+      }
+    });
+    if (added || updated) setSessionLog(nextLog);
+    if (!quiet) toast('✓ Sessions sync: ' + added + ' added · ' + updated + ' updated');
+    return { pulled: sheetSessions.length, added, updated };
+  }, [myCfg, cfg.sheetId, sessionLog, myEmail]);
+  // ═══ Drive-backed scripts (Main only). Manual MVP: backup writes the current
+  // ═══ scriptVersions to a Google Sheet inside an "AutoDial" folder in Main's
+  // ═══ Drive; restore reads them back. Sheet ID stored in cfg.scriptsDriveFileId
+  // ═══ so subsequent saves go to the same file. Auto-sync is off by default —
+  // ═══ user opts in by tapping the buttons.
+  var backupScriptsToDrive = useCallback(async () => {
+    if (role !== 'main') {
+      toast('Drive backup is for Main accounts only', 'err');
+      return false;
+    }
+    if (!localStorage.getItem('ad_gt')) {
+      toast('Connect Google first (Settings → Integrations)', 'err');
+      return false;
+    }
+    toast('↻ Backing up scripts to Drive…', 'info');
+    var fileId = cfg.scriptsDriveFileId || '';
+    if (!fileId) {
+      fileId = await window.gScripts.ensureFile();
+      if (!fileId) {
+        toast('Could not create AutoDial folder/file in Drive', 'err');
+        return false;
+      }
+      setCfg(p => ({ ...p, scriptsDriveFileId: fileId }));
+    }
+    var ok = await window.gScripts.save(fileId, scriptVersions, userName);
+    if (ok) {
+      toast('✓ ' + scriptVersions.length + ' script version(s) backed up to Drive');
+      return fileId;
+    }
+    toast('Drive save failed — check console', 'err');
+    return false;
+  }, [role, cfg.scriptsDriveFileId, scriptVersions, userName]);
+  var restoreScriptsFromDrive = useCallback(async () => {
+    if (role !== 'main') {
+      toast('Drive restore is for Main accounts only', 'err');
+      return false;
+    }
+    if (!localStorage.getItem('ad_gt')) {
+      toast('Connect Google first', 'err');
+      return false;
+    }
+    toast('↻ Reading scripts from Drive…', 'info');
+    var fileId = cfg.scriptsDriveFileId || '';
+    if (!fileId) {
+      fileId = await window.gScripts.ensureFile();
+      if (!fileId) {
+        toast('No AutoDial folder found in Drive', 'err');
+        return false;
+      }
+      setCfg(p => ({ ...p, scriptsDriveFileId: fileId }));
+    }
+    var fromDrive = await window.gScripts.load(fileId);
+    if (!fromDrive || !fromDrive.length) {
+      toast('No scripts found in Drive (or sheet is empty)', 'info');
+      return false;
+    }
+    if (!(await confirmAsync('Replace your local script versions with ' + fromDrive.length + ' from Drive? Local copies are saved in cloud and can be restored.', { title: 'Restore scripts', confirmLabel: 'Replace' }))) return false;
+    setScriptVersions(fromDrive);
+    setCfg(p => ({ ...p, scriptVersions: fromDrive }));
+    toast('✓ Restored ' + fromDrive.length + ' script versions from Drive');
+    return true;
+  }, [role, cfg.scriptsDriveFileId, confirmAsync]);
   // ═══ Auto-reconcile from Sheet: once on app load (after initial sync settles)
   // ═══ and once every 24 hours while the tab is open. Quiet mode = no toast
   // ═══ unless something changed. Manual button still available in Settings → Sync.
@@ -11665,12 +11889,20 @@ function App() {
     if (!sheetId) return;
     var lastKey = 'ad3_lastSheetReconcile_' + (myEmail || '').toLowerCase();
     var doPull = () => {
-      pullApptsFromSheet({ quiet: true }).then(r => {
+      Promise.all([
+        pullApptsFromSheet({ quiet: true }).catch(e => { console.warn('[Auto appts reconcile]', e?.message || e); return null; }),
+        pullSessionsFromSheet({ quiet: true }).catch(e => { console.warn('[Auto sessions reconcile]', e?.message || e); return null; })
+      ]).then(([apptR, sessR]) => {
         try { localStorage.setItem(lastKey, String(Date.now())); } catch (_e) {}
-        if (r && (r.added || r.updated || r.removed)) {
-          toast('Sheet reconcile: +' + r.added + ' · ' + r.updated + ' upd · ' + r.removed + ' del', 'info');
+        var msgs = [];
+        if (apptR && (apptR.added || apptR.updated || apptR.removed)) {
+          msgs.push('appts +' + apptR.added + '/' + apptR.updated + 'u/' + apptR.removed + 'd');
         }
-      }).catch(e => console.warn('[Auto sheet reconcile]', e?.message || e));
+        if (sessR && (sessR.added || sessR.updated)) {
+          msgs.push('sessions +' + sessR.added + '/' + sessR.updated + 'u');
+        }
+        if (msgs.length) toast('Sheet reconcile: ' + msgs.join(' · '), 'info');
+      });
     };
     var last = 0;
     try { last = parseInt(localStorage.getItem(lastKey) || '0', 10) || 0; } catch (_e) {}
@@ -23128,7 +23360,12 @@ function App() {
       React.createElement("p", { style: { margin: 0, fontSize: 12, fontWeight: 800, color: '#f1f5f9' } }, "Pull from Sheet"),
       React.createElement("p", { style: { margin: '2px 0 0', fontSize: 10, color: 'var(--text3)', lineHeight: 1.4 } }, "Re-reads the Appointments Set tab and reconciles vs local. Sheet wins on conflicts. Runs daily in background; tap to force now.")
     ), React.createElement("button", {
-      onClick: async () => { try { await pullApptsFromSheet(); } catch (e) { toast('Pull failed: ' + (e?.message || e), 'err'); } },
+      onClick: async () => {
+        try {
+          var [a, s] = await Promise.all([pullApptsFromSheet(), pullSessionsFromSheet()]);
+          // toast inside each, no need to combine
+        } catch (e) { toast('Pull failed: ' + (e?.message || e), 'err'); }
+      },
       style: { padding: '8px 14px', borderRadius: 10, background: 'var(--adim)', color: 'var(--accent2)', fontSize: 12, fontWeight: 800, border: '1px solid rgba(99,102,241,.32)', flexShrink: 0 }
     }, "↻ Pull now")), diagRows.map(row => React.createElement("div", {
       key: row.label,
@@ -25490,6 +25727,28 @@ function App() {
     onClick: () => { try { location.reload(true); } catch (_e) { location.reload(); } },
     style: { padding: '8px 14px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', fontSize: 11, fontWeight: 700, border: '1px solid var(--border)' }
   }, "\u21BB Hard reload"))), React.createElement("div", {
+    className: "card",
+    style: { marginBottom: 12 }
+  }, React.createElement("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 6 } },
+    React.createElement("h3", { style: { fontSize: 14, fontWeight: 700, margin: 0 } }, "\uD83D\uDCC1 Scripts on Drive"),
+    cfg.scriptsDriveFileId && React.createElement("a", {
+      href: 'https://docs.google.com/spreadsheets/d/' + cfg.scriptsDriveFileId,
+      target: '_blank',
+      rel: 'noopener',
+      style: { fontSize: 10, color: 'var(--accent2)', textDecoration: 'none', fontWeight: 700 }
+    }, "Open in Drive \u2197")
+  ), React.createElement("p", { style: { margin: '0 0 10px', fontSize: 10, color: 'var(--text3)', lineHeight: 1.4 } },
+    "Backs up your saved script versions to a Google Sheet inside an ", React.createElement("b", null, "AutoDial"), " folder in your Drive. Single source of truth for scripts; admins can read via the same file once shared. Manual for now \u2014 auto-sync coming."
+  ), React.createElement("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
+    React.createElement("button", {
+      onClick: backupScriptsToDrive,
+      style: { padding: '8px 14px', borderRadius: 10, background: 'var(--adim)', color: 'var(--accent2)', fontSize: 11, fontWeight: 800, border: '1px solid rgba(99,102,241,.32)' }
+    }, "\u2B06 Backup to Drive"),
+    React.createElement("button", {
+      onClick: restoreScriptsFromDrive,
+      style: { padding: '8px 14px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', fontSize: 11, fontWeight: 700, border: '1px solid var(--border)' }
+    }, "\u2B07 Restore from Drive")
+  )), React.createElement("div", {
     className: "card",
     style: {
       marginBottom: 12
