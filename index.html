@@ -294,6 +294,9 @@ button.free-slot{appearance:none;text-align:left}
 :root { --ckg-strip-h: 36px; }
 @media (max-width: 640px) { :root { --ckg-strip-h: 44px; } }
 body { padding-top: var(--ckg-strip-h) !important; }
+/* Override AutoDial's own sticky/fixed elements so they sit under the strip */
+.script-panel { top: var(--ckg-strip-h) !important; height: calc(100vh - var(--ckg-strip-h)) !important; }
+.script-toggle { top: calc(var(--ckg-strip-h) + 8px) !important; }
 .ckg-suite-strip {
   position: fixed; top: 0; left: 0; right: 0;
   height: var(--ckg-strip-h);
