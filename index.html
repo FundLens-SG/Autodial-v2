@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0009';
+window.APP_VERSION='2026.05.03.0010';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1083,7 +1083,7 @@ window.gSheets={
     ];
     var res=await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(apptTab)+'!A:O:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
       {method:'POST',body:JSON.stringify({values:[row]})});
-    try{return await res.json()}catch(_e){return{ok:true}}}catch(e){return false}
+    try{return await res.json()}catch(_e){return{ok:true}}}catch(e){console.warn('[appendAppt] sheet write failed:',e?.message||e);return false}
   },
   async markApptUndo(id,appendRange,actor){
     try{
@@ -1181,7 +1181,7 @@ window.gSheets={
       (payment.hours||0).toFixed(1),payment.incentives||0,payment.invoiceNum||'','','Paid'
     ];
     await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent('Pay')+'!A:I:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS',
-      {method:'POST',body:JSON.stringify({values:[row]})});return true}catch(e){return false}
+      {method:'POST',body:JSON.stringify({values:[row]})});return true}catch(e){console.warn('[appendPay] sheet write failed:',e?.message||e);return false}
   },
   async meta(id){return(await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'?fields=sheets.properties')).json()).sheets?.map(function(s){return{id:s.properties.sheetId,title:s.properties.title,rows:s.properties.gridProperties?.rowCount}})||[]},async vals(id,range){return(await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(range))).json()).values||[]},async put(id,range,val){await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(range)+'?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[[val]]})})}};
 window.gCal={async create(sum,desc,s,e,att,calId){var cid=calId||'primary';var b={summary:sum,description:desc,start:{dateTime:s,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone},end:{dateTime:e,timeZone:Intl.DateTimeFormat().resolvedOptions().timeZone}};if(att?.length){b.attendees=att.map(function(e){return{email:e}});/* ═══ Auto-add Google Meet link when there are invitees. The lead gets a clickable Meet link in their calendar invite, increasing show-up rate. requestId must be unique per event. ═══ */b.conferenceData={createRequest:{requestId:'autodial-'+Date.now()+'-'+Math.random().toString(36).slice(2,8),conferenceSolutionKey:{type:'hangoutsMeet'}}}}var _qs='?sendUpdates=all'+(att?.length?'&conferenceDataVersion=1':'');return(await(await gF('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cid)+'/events'+_qs,{method:'POST',body:JSON.stringify(b)})).json())},async events(min,max){return(await(await gF('https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin='+min+'&timeMax='+max+'&singleEvents=true&orderBy=startTime&maxResults=250&showDeleted=false')).json()).items||[]},async eventsFromCal(calId,min,max){try{return(await(await gF('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(calId)+'/events?timeMin='+min+'&timeMax='+max+'&singleEvents=true&orderBy=startTime&maxResults=250&showDeleted=false')).json()).items||[]}catch(e){return[]}},async loadWeek(calIds){var now=new Date();var min=new Date(now.getFullYear(),now.getMonth(),now.getDate()).toISOString();var max=new Date(now.getTime()+7*86400000).toISOString();var all=[];for(var i=0;i<(calIds||['primary']).length;i++){var cid=calIds[i];var evs=cid==='primary'?await this.events(min,max):await this.eventsFromCal(cid,min,max);evs.forEach(function(e){e._calId=cid});all=all.concat(evs)}all.sort(function(a,b){var ta=new Date(a.start?.dateTime||a.start?.date||0).getTime();var tb=new Date(b.start?.dateTime||b.start?.date||0).getTime();return ta-tb});return all},async del(eventId,calId){if(!eventId)return false;var cid=calId||'primary';try{await gF('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cid)+'/events/'+encodeURIComponent(eventId)+'?sendUpdates=all',{method:'DELETE'});return true}catch(e){console.warn('[gCal.del]',e?.message||e);return false}},async update(eventId,patch,calId){if(!eventId)return null;var cid=calId||'primary';try{return await(await gF('https://www.googleapis.com/calendar/v3/calendars/'+encodeURIComponent(cid)+'/events/'+encodeURIComponent(eventId)+'?sendUpdates=all',{method:'PATCH',body:JSON.stringify(patch)})).json()}catch(e){console.warn('[gCal.update]',e?.message||e);return null}},async loadRange(calIds,minD,maxD){var all=[];var list=(calIds||['primary']);for(var i=0;i<list.length;i++){var cid=list[i];try{var evs=cid==='primary'?await this.events(minD.toISOString(),maxD.toISOString()):await this.eventsFromCal(cid,minD.toISOString(),maxD.toISOString());evs.forEach(function(e){e._calId=cid});all=all.concat(evs)}catch(e){}}all.sort(function(a,b){var ta=new Date(a.start?.dateTime||a.start?.date||0).getTime();var tb=new Date(b.start?.dateTime||b.start?.date||0).getTime();return ta-tb});return all}};
@@ -32388,8 +32388,17 @@ WHERE p.id IS NULL;`;
             sessions: m.sessCount || 0,
             hours: m.totalHrs || 0,
             incentives: m.incCount || 0
-          })).catch(() => {});
-        } catch (e) {}
+          })).then(ok => {
+            if (ok === false) toast('⚠ Payment recorded locally but Sheet write failed — check Pay tab', 'err');
+          }).catch(e => {
+            console.warn('[Pay sheet append]', e?.message || e);
+            toast('⚠ Payment recorded locally but Sheet write failed', 'err');
+          });
+        } catch (e) {
+          console.warn('[Pay sheet append outer]', e?.message || e);
+        }
+      } else if (!_paySheetId) {
+        console.warn('[Pay] no Timesheet sheet linked for', em, '— payment kept in local + cloud only');
       }
       try {
         _pushPayEvt(em, {
