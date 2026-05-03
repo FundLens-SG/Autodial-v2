@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0016';
+window.APP_VERSION='2026.05.03.0017';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -11823,33 +11823,79 @@ function App() {
   // ═══ Drive; restore reads them back. Sheet ID stored in cfg.scriptsDriveFileId
   // ═══ so subsequent saves go to the same file. Auto-sync is off by default —
   // ═══ user opts in by tapping the buttons.
-  var backupScriptsToDrive = useCallback(async () => {
+  var backupScriptsToDrive = useCallback(async (opts = {}) => {
+    var quiet = !!opts.quiet;
     if (role !== 'main') {
-      toast('Drive backup is for Main accounts only', 'err');
+      if (!quiet) toast('Drive backup is for Main accounts only', 'err');
       return false;
     }
     if (!localStorage.getItem('ad_gt')) {
-      toast('Connect Google first (Settings → Integrations)', 'err');
+      if (!quiet) toast('Connect Google first (Settings → Integrations)', 'err');
       return false;
     }
-    toast('↻ Backing up scripts to Drive…', 'info');
+    if (!quiet) toast('↻ Backing up scripts to Drive…', 'info');
     var fileId = cfg.scriptsDriveFileId || '';
     if (!fileId) {
       fileId = await window.gScripts.ensureFile();
       if (!fileId) {
-        toast('Could not create AutoDial folder/file in Drive', 'err');
+        if (!quiet) toast('Could not create AutoDial folder/file in Drive', 'err');
         return false;
       }
       setCfg(p => ({ ...p, scriptsDriveFileId: fileId }));
     }
     var ok = await window.gScripts.save(fileId, scriptVersions, userName);
     if (ok) {
-      toast('✓ ' + scriptVersions.length + ' script version(s) backed up to Drive');
+      if (!quiet) toast('✓ ' + scriptVersions.length + ' script version(s) backed up to Drive');
       return fileId;
     }
-    toast('Drive save failed — check console', 'err');
+    if (!quiet) toast('Drive save failed — check console', 'err');
     return false;
   }, [role, cfg.scriptsDriveFileId, scriptVersions, userName]);
+  // ═══ Auto-backup scripts to Drive whenever scriptVersions changes — debounced
+  // ═══ 3s so a flurry of edits coalesces into one write. Quiet mode (no toast)
+  // ═══ since this happens in the background. Only fires for Main users with a
+  // ═══ scriptsDriveFileId already set (i.e. they've opted in via the Owner
+  // ═══ "Backup to Drive" button at least once). Skips the very first effect
+  // ═══ run after mount so we don't double-write on app boot.
+  var _scriptsAutoBackupSkipFirst = useRef(true);
+  useEffect(() => {
+    if (role !== 'main') return;
+    if (!cfg.scriptsDriveFileId) return;
+    if (!localStorage.getItem('ad_gt')) return;
+    if (_scriptsAutoBackupSkipFirst.current) {
+      _scriptsAutoBackupSkipFirst.current = false;
+      return;
+    }
+    var t = setTimeout(() => {
+      backupScriptsToDrive({ quiet: true }).catch(e => console.warn('[Auto Drive backup]', e?.message || e));
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [role, scriptVersions, cfg.scriptsDriveFileId, backupScriptsToDrive]);
+  // ═══ Auto-restore scripts from Drive on first boot — ONLY when local
+  // ═══ scriptVersions array is empty AND a Drive file ID is configured. Avoids
+  // ═══ ever clobbering local edits the user hasn't pushed yet (manual restore
+  // ═══ button still available for explicit overwrite).
+  var _scriptsAutoRestoreDone = useRef(false);
+  useEffect(() => {
+    if (_scriptsAutoRestoreDone.current) return;
+    if (role !== 'main') return;
+    if (!cfg.scriptsDriveFileId) return;
+    if (!localStorage.getItem('ad_gt')) return;
+    if (Array.isArray(scriptVersions) && scriptVersions.length > 0) return;
+    _scriptsAutoRestoreDone.current = true;
+    (async () => {
+      try {
+        var fromDrive = await window.gScripts.load(cfg.scriptsDriveFileId);
+        if (fromDrive && fromDrive.length) {
+          setScriptVersions(fromDrive);
+          setCfg(p => ({ ...p, scriptVersions: fromDrive }));
+          toast('Restored ' + fromDrive.length + ' script version(s) from Drive', 'info');
+        }
+      } catch (e) {
+        console.warn('[Auto Drive restore]', e?.message || e);
+      }
+    })();
+  }, [role, cfg.scriptsDriveFileId, scriptVersions]);
   var restoreScriptsFromDrive = useCallback(async () => {
     if (role !== 'main') {
       toast('Drive restore is for Main accounts only', 'err');
@@ -11880,6 +11926,38 @@ function App() {
     toast('✓ Restored ' + fromDrive.length + ' script versions from Drive');
     return true;
   }, [role, cfg.scriptsDriveFileId, confirmAsync]);
+  // ═══ Tidy Drive: ensure AutoDial folder exists, then move the user's linked
+  // ═══ leads/timesheet sheet INTO that folder (alongside the scripts file).
+  // ═══ Idempotent — moving an already-in-folder file is a no-op.
+  var moveSheetToAutoDialFolder = useCallback(async () => {
+    if (role !== 'main') {
+      toast('Drive organize is for Main accounts only', 'err');
+      return false;
+    }
+    if (!localStorage.getItem('ad_gt')) {
+      toast('Connect Google first', 'err');
+      return false;
+    }
+    var sheetId = cfg.sheetId || myCfg.timesheetId || '';
+    if (!sheetId) {
+      toast('No linked sheet to organize', 'err');
+      return false;
+    }
+    if (!(await confirmAsync('Move your linked AutoDial sheet into the "AutoDial" folder in your Drive? You can move it back manually anytime.', { title: 'Organize Drive', confirmLabel: 'Move' }))) return false;
+    toast('↻ Organizing Drive…', 'info');
+    var folderId = await window.gDrive.ensureFolder('AutoDial');
+    if (!folderId) {
+      toast('Could not create/find AutoDial folder', 'err');
+      return false;
+    }
+    var ok = await window.gDrive.moveFileToFolder(sheetId, folderId);
+    if (ok) {
+      toast('✓ Sheet moved into AutoDial folder');
+      return true;
+    }
+    toast('Move failed — check console for details', 'err');
+    return false;
+  }, [role, cfg.sheetId, myCfg.timesheetId, confirmAsync]);
   // ═══ Auto-reconcile from Sheet: once on app load (after initial sync settles)
   // ═══ and once every 24 hours while the tab is open. Quiet mode = no toast
   // ═══ unless something changed. Manual button still available in Settings → Sync.
@@ -25738,7 +25816,7 @@ function App() {
       style: { fontSize: 10, color: 'var(--accent2)', textDecoration: 'none', fontWeight: 700 }
     }, "Open in Drive \u2197")
   ), React.createElement("p", { style: { margin: '0 0 10px', fontSize: 10, color: 'var(--text3)', lineHeight: 1.4 } },
-    "Backs up your saved script versions to a Google Sheet inside an ", React.createElement("b", null, "AutoDial"), " folder in your Drive. Single source of truth for scripts; admins can read via the same file once shared. Manual for now \u2014 auto-sync coming."
+    "Backs up your saved script versions to a Google Sheet inside an ", React.createElement("b", null, "AutoDial"), " folder in your Drive. Once you've backed up once, future edits sync automatically (3-second debounce). Restore replaces local with what's in Drive."
   ), React.createElement("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
     React.createElement("button", {
       onClick: backupScriptsToDrive,
@@ -25747,7 +25825,12 @@ function App() {
     React.createElement("button", {
       onClick: restoreScriptsFromDrive,
       style: { padding: '8px 14px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', fontSize: 11, fontWeight: 700, border: '1px solid var(--border)' }
-    }, "\u2B07 Restore from Drive")
+    }, "\u2B07 Restore from Drive"),
+    React.createElement("button", {
+      onClick: moveSheetToAutoDialFolder,
+      title: "Move your linked AutoDial sheet into the same AutoDial folder in Drive",
+      style: { padding: '8px 14px', borderRadius: 10, background: 'var(--bg3)', color: 'var(--text2)', fontSize: 11, fontWeight: 700, border: '1px solid var(--border)' }
+    }, "\uD83D\uDCC2 Organize sheet")
   )), React.createElement("div", {
     className: "card",
     style: {
