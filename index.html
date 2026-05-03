@@ -365,7 +365,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0010';
+window.APP_VERSION='2026.05.03.0011';
 // ═══ INVITE LINK: parse ?invite=TOKEN from URL, remember the inviting Main ═══
 (function parseInvite(){try{
   var qs=new URLSearchParams(window.location.search);var tok=qs.get('invite');
@@ -1024,10 +1024,61 @@ window.gSheets={
       return true
     }catch(e){console.warn('[repairTabHeaders]',tab,e?.message||e);return false}
   },
+  // ═══ Per-tab visual config: which columns are tracking-IDs (hidden by default
+  // ═══ from the user when reviewing the sheet) and the header bar color.
+  _trackingColsForTab(canonical){
+    if(canonical==='Timesheet')return[16,17,18,19]; // AutoDial ID, Session Key, Last Synced, Sync Action
+    if(canonical==='Appointments Set')return[12,13,14]; // AutoDial ID, Calendar Event ID, Last Synced
+    return[];
+  },
+  _headerColorForTab(canonical){
+    if(canonical==='Timesheet')return{red:0.118,green:0.227,blue:0.541}; // indigo-800
+    if(canonical==='Appointments Set')return{red:0.024,green:0.373,blue:0.275}; // emerald-800
+    if(canonical==='Pay')return{red:0.573,green:0.251,blue:0.055}; // amber-700
+    return null;
+  },
+  // ═══ Apply: bold+colored frozen header row, hide tracking-ID columns, set
+  // ═══ sensible column widths. Idempotent — safe to re-run on every ensureTabs.
+  // ═══ Best-effort: any one failed batchUpdate just logs a warning.
+  async formatTabVisuals(id,tab,canonical,sheetId){
+    var headers=this._headersForTab(canonical||tab);
+    if(!id||sheetId==null||!headers.length)return false;
+    var trackCols=this._trackingColsForTab(canonical||tab);
+    var color=this._headerColorForTab(canonical||tab);
+    var requests=[];
+    if(color){
+      requests.push({repeatCell:{
+        range:{sheetId:sheetId,startRowIndex:0,endRowIndex:1,startColumnIndex:0,endColumnIndex:headers.length},
+        cell:{userEnteredFormat:{
+          backgroundColor:color,
+          textFormat:{foregroundColor:{red:1,green:1,blue:1},bold:true,fontSize:11},
+          horizontalAlignment:'CENTER',verticalAlignment:'MIDDLE'
+        }},
+        fields:'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)'
+      }});
+    }
+    requests.push({updateSheetProperties:{
+      properties:{sheetId:sheetId,gridProperties:{frozenRowCount:1}},
+      fields:'gridProperties.frozenRowCount'
+    }});
+    trackCols.forEach(c=>{
+      requests.push({updateDimensionProperties:{
+        range:{sheetId:sheetId,dimension:'COLUMNS',startIndex:c,endIndex:c+1},
+        properties:{hiddenByUser:true},
+        fields:'hiddenByUser'
+      }});
+    });
+    if(!requests.length)return true;
+    try{
+      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:requests})});
+      return true;
+    }catch(e){console.warn('[formatTabVisuals]',tab,e?.message||e);return false}
+  },
   async ensureTabs(id,tabNames){
     try{
       var meta=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'?fields=sheets.properties')).json();
       var existing=(meta.sheets||[]).map(function(s){return s.properties.title});
+      var existingMeta=(meta.sheets||[]).map(function(s){return{title:s.properties.title,id:s.properties.sheetId}});
       var planned=[];
       (tabNames||[]).forEach(t=>{
         var actual=this._pickExistingTab(existing,t);
@@ -1039,9 +1090,16 @@ window.gSheets={
       if(missing.length){
         var reqs=missing.map(function(t){return{addSheet:{properties:{title:t}}}});
         await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+':batchUpdate',{method:'POST',body:JSON.stringify({requests:reqs})});
+        // ═══ refresh sheet metadata so we can read the new sheetIds for formatting
+        try{
+          var meta2=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'?fields=sheets.properties')).json();
+          existingMeta=(meta2.sheets||[]).map(function(s){return{title:s.properties.title,id:s.properties.sheetId}});
+        }catch(_e){}
       }
       for(var i=0;i<planned.length;i++){
         await this.repairTabHeaders(id,planned[i].actual,planned[i].canonical);
+        var meta_i=existingMeta.find(m=>m.title===planned[i].actual);
+        if(meta_i)await this.formatTabVisuals(id,planned[i].actual,planned[i].canonical,meta_i.id);
       }
       if(missing.length)toast(missing.length+' tab(s) created: '+missing.join(', '));
       return existing;
@@ -24122,7 +24180,7 @@ function App() {
       color: 'var(--green)',
       margin: '4px 0 0'
     }
-  }, "\uD83D\uDCCB ", ac._tsName || 'Sheet', " \u2192 ", React.createElement("b", null, ac.sheetTab)), (ac._detectedTs || ac._detectedAppt) && React.createElement("div", {
+  }, "\uD83D\uDCCB ", ac._tsName || 'Sheet', " \u2192 ", React.createElement("b", null, ac.sheetTab)), false && (ac._detectedTs || ac._detectedAppt) && React.createElement("div", {
     style: {
       margin: '6px 0',
       padding: '8px',
