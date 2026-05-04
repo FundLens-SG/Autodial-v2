@@ -388,7 +388,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0027';
+window.APP_VERSION='2026.05.03.0028';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -23618,6 +23618,22 @@ function App() {
     onClick: async () => {
       var em = newAdminEmail.trim().toLowerCase();
       if (!em.includes('@')) return toast('Invalid email', 'err');
+      // Tether-conflict guard. The fuzzy picker hides admins tethered
+      // to other Mains, but a determined Main could still type the
+      // exact email. Block at submit time so admins can't be silently
+      // stolen — the rightful Main has to untether first.
+      var meLower = (myEmail || '').toLowerCase();
+      var hubMatch = hubAdminPool.find(p => p.email === em);
+      if (hubMatch && hubMatch.tetheredTo && hubMatch.tetheredTo !== meLower) {
+        return toast('🔒 ' + em + ' is already hired by ' + hubMatch.tetheredTo + '. Ask them to untether first.', 'err');
+      }
+      // If the email isn't in the hub yet, warn but don't block — the
+      // Main can pre-stage the local config and the tether row will
+      // get written the first time fetchHubAdminPool sees the user.
+      if (!hubMatch && hubAdminPoolFetched) {
+        var proceed = await confirmAsync(em + ' hasn\'t signed in to CKGtools yet, so the cross-Main tether will only register once they do.\n\nAdd locally now anyway?', { title: 'User not in CKGtools', confirmLabel: 'Add anyway', danger: false });
+        if (!proceed) return;
+      }
       setAdminConfigs(p => ({
         ...p,
         [em]: {
@@ -23712,7 +23728,24 @@ function App() {
       // Empty-state hint when search yields nothing
       !matches.length && q && hubAdminPool.length > 0 && React.createElement("p", {
         style: { margin: '0 0 10px', fontSize: 10, color: 'var(--text3)', fontStyle: 'italic', padding: '6px 4px' }
-      }, "No hub user matches \"" + newAdminEmail + "\". You can still type a full email above and tap Add \u2014 they'll be wired up once they sign in via CKGtools.")
+      }, (() => {
+        // Differentiate three empty-state cases so the message is honest:
+        //   a) typed email matches a hub user that's tethered to another Main
+        //   b) typed email isn't in the hub at all \u2192 can't tether yet
+        //   c) typed email looks like a partial query that just doesn't match
+        var typedLower = newAdminEmail.trim().toLowerCase();
+        if (!typedLower.includes('@')) {
+          return "Keep typing \u2014 searches name, email, and role.";
+        }
+        var hubMatch = hubAdminPool.find(p => p.email === typedLower);
+        if (hubMatch && hubMatch.tetheredTo && hubMatch.tetheredTo !== meLower) {
+          return "\ud83d\udd12 " + (hubMatch.name || typedLower) + " is already hired by another Main (" + hubMatch.tetheredTo + "). Ask them to untether first.";
+        }
+        if (!hubMatch) {
+          return "\u26a0 \"" + typedLower + "\" hasn't signed in to CKGtools yet. They need to sign in there at least once before you can hire them.";
+        }
+        return null;
+      })())
     );
   })(), React.createElement("div", {
     style: {
