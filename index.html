@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.04.0061'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0062'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -135,6 +135,40 @@ button.free-slot{appearance:none;text-align:left}
 @keyframes slideDown{from{opacity:0;transform:translateY(-10px);max-height:0}to{opacity:1;transform:translateY(0);max-height:200px}}
 @keyframes firePulse{0%,100%{text-shadow:0 0 10px rgba(240,180,41,.5)}50%{text-shadow:0 0 30px rgba(240,180,41,.8)}}
 @keyframes borderGlow{0%,100%{border-color:rgba(214,168,122,.3)}50%{border-color:rgba(214,168,122,.6)}}
+/* Phase 4 (design handoff): mobile sticky outcome dock + uniform outcome
+   button system. Per FORBIDDEN_PATTERNS §5: outcome buttons must be ≥64px
+   tall on mobile, ≥56px on desktop, and live in a 2×2 grid on mobile and
+   a 1×4 row on desktop. Each button carries its semantic status color as
+   a TINTED bg + saturated glyph (NP=amber, CB=blue, NI=red, Set=green).
+   The dock pins to the viewport bottom on mobile, above the 5-up nav.
+   End-session never shares a row with outcome buttons (handled in JSX). */
+.outcome-dock{position:sticky;bottom:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);padding:10px 12px 8px;display:flex;flex-direction:column;gap:8px;margin:0 -14px}
+.outcome-dock .dial-cta{min-height:52px;padding:0 18px;border-radius:14px;background:linear-gradient(135deg,var(--accent),#a37a4d);color:#1a1306;font-size:14px;font-weight:800;letter-spacing:.01em;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid rgba(214,168,122,.55);box-shadow:0 6px 18px -8px rgba(214,168,122,.55), inset 0 1px 0 rgba(255,255,255,.18);transition:transform .18s, box-shadow .18s, opacity .18s}
+.outcome-dock .dial-cta:active{transform:scale(.98)}
+.outcome-dock .dial-cta:disabled{opacity:.45;cursor:not-allowed}
+.outcome-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.outcome-grid .outcome{position:relative;min-height:64px;padding:10px 12px;border-radius:14px;background:var(--bg2);border:1px solid var(--border2);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:transform .12s, background-color .18s, border-color .18s}
+.outcome-grid .outcome:active{transform:scale(.97)}
+.outcome-grid .outcome[disabled]{opacity:.45;cursor:not-allowed}
+.outcome-grid .outcome .glyph{font-size:20px;font-weight:800;letter-spacing:0;line-height:1}
+.outcome-grid .outcome .lbl{font-size:10.5px;font-weight:700;color:var(--text2);letter-spacing:.06em}
+.outcome-grid .outcome .hint{position:absolute;top:6px;right:8px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;opacity:.55}
+.outcome-grid .outcome.np{background:var(--amdim);border-color:rgba(210,153,34,.32);color:var(--amber)}
+.outcome-grid .outcome.np .lbl{color:var(--amber);opacity:.8}
+.outcome-grid .outcome.cb{background:var(--bdim);border-color:rgba(88,166,255,.32);color:var(--blue)}
+.outcome-grid .outcome.cb .lbl{color:var(--blue);opacity:.8}
+.outcome-grid .outcome.ni{background:var(--rdim);border-color:rgba(248,81,73,.32);color:var(--red)}
+.outcome-grid .outcome.ni .lbl{color:var(--red);opacity:.8}
+.outcome-grid .outcome.set{background:var(--gdim);border-color:rgba(63,185,80,.32);color:var(--green)}
+.outcome-grid .outcome.set .lbl{color:var(--green);opacity:.8}
+@media(min-width:960px){
+  /* Desktop: 1×4 row, 56px tall (still readable but tighter than mobile).
+     Dock loses the sticky behavior and just sits inline above the
+     bottom nav — script panel covers the right side anyway. */
+  .outcome-grid{grid-template-columns:repeat(4,1fr)}
+  .outcome-grid .outcome{min-height:56px}
+  .outcome-dock{position:static;border-top:none;padding:0;margin:0}
+}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;backdrop-filter:blur(20px);transition:border-color .18s,background-color .18s,box-shadow .18s}
 .card:hover{border-color:var(--border2)}
 .pill{display:inline-block;padding:3px 10px;border-radius:8px;font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:.3px}
@@ -417,7 +451,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.04.0061';
+window.APP_VERSION='2026.05.05.0062';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -15773,27 +15807,27 @@ function App() {
   }, "End"))), cur && running && phase === 'calling' && !isMob && React.createElement("p", {
     style: { margin: '0 0 6px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.08em', textAlign: 'center', opacity: .7 }
   }, "Keyboard:  ", React.createElement("kbd", { style: { padding: '1px 5px', borderRadius: 4, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)', fontFamily: 'inherit' } }, "1"), " NP   ", React.createElement("kbd", { style: { padding: '1px 5px', borderRadius: 4, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)', fontFamily: 'inherit' } }, "2"), " CB   ", React.createElement("kbd", { style: { padding: '1px 5px', borderRadius: 4, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)', fontFamily: 'inherit' } }, "3"), " NI   ", React.createElement("kbd", { style: { padding: '1px 5px', borderRadius: 4, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)', fontFamily: 'inherit' } }, "4"), " Set"), cur && running && phase === 'calling' && React.createElement("div", {
-    style: {
-      display: 'grid',
-      gridTemplateColumns: 'repeat(4,1fr)',
-      gap: 6,
-      marginBottom: 8
-    }
-  }, [['np', 'NP', 'var(--amber)', 'var(--amdim)'], ['cb', 'CB', 'var(--blue)', 'var(--bdim)'], ['ni', 'NI', 'var(--red)', 'var(--rdim)'], ['set', 'Set', 'var(--green)', 'var(--gdim)']].map(([s, label, color, bg]) => React.createElement("button", {
+    // Phase 4 (design handoff): outcome row uses .outcome-grid (2×2 on
+    // mobile per spec §9, 1×4 on desktop ≥960px via media query). Each
+    // button is .outcome.<tone> for tinted-bg + saturated-glyph (per
+    // FORBIDDEN_PATTERNS §5). Keyboard hint visible at all times.
+    className: "outcome-grid",
+    style: { marginBottom: 8 }
+  }, [
+    ['np', 'NP', 'No pickup', '1'],
+    ['cb', 'CB', 'Callback', '2'],
+    ['ni', 'NI', 'No interest', '3'],
+    ['set', 'Set', 'Booked', '4']
+  ].map(([s, glyph, label, hint]) => React.createElement("button", {
     key: s,
+    className: 'outcome ' + s,
     onClick: () => s === 'cb' ? (setShowCb(true), setCbDate(''), setCbTime('')) : handleOutcome(s),
-    disabled: s === 'set' && (setDone || showPostCall?.status === 'set'),
-    style: {
-      padding: '11px 0',
-      borderRadius: 12,
-      background: bg,
-      color,
-      fontSize: 12,
-      fontWeight: 900,
-      border: '1px solid rgba(255,255,255,.06)',
-      opacity: s === 'set' && (setDone || showPostCall?.status === 'set') ? .5 : 1
-    }
-  }, label))), cur && running && phase === 'calling' && React.createElement("button", {
+    disabled: s === 'set' && (setDone || showPostCall?.status === 'set')
+  },
+    React.createElement('span', { className: 'hint' }, hint),
+    React.createElement('span', { className: 'glyph' }, glyph),
+    React.createElement('span', { className: 'lbl' }, label)
+  ))), cur && running && phase === 'calling' && React.createElement("button", {
     onClick: skipCurrentLead,
     title: "Skip without recording an outcome \u2014 useful if you didn't actually dial. Has 10s undo.",
     style: {
