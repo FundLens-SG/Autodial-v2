@@ -391,7 +391,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0033';
+window.APP_VERSION='2026.05.03.0034';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -14749,71 +14749,82 @@ function App() {
     // Tap on the bright icon = stay on Home tab.
     // Tap on the dim icon = jump to Home + flip the view in one go.
     if (k === 'home' && v === '__HOME_SWITCH__') {
+      // ─── Home / Call switch pill (Main only) ─────────────────────
+      // Two-halved pill, vertical divider down the middle. The ACTIVE
+      // half shines: gradient background, bright icon, soft outer glow,
+      // bold weight. The inactive half stays muted and small so the
+      // toggle is read at a glance. Tapping the dim half flips view +
+      // pulls the user to the Home tab in one go; tapping the bright
+      // half is a no-op.
       var _onHomeTab = tab === 'home';
       var _isCallView = mainMode === 'call';
-      var sideStyle = active => ({
+      var _activeHomeHere = _onHomeTab && !_isCallView;
+      var _activeCallHere = _onHomeTab && _isCallView;
+      var halfStyle = (active, color, bgGrad, glowRgb) => ({
         flex: 1,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        gap: 4,
-        padding: '4px 6px',
-        opacity: active ? 1 : .42,
-        color: active ? (_isCallView ? '#22c55e' : '#a78bfa') : 'var(--text3)',
-        fontSize: 11,
-        fontWeight: active ? 800 : 600,
+        gap: 5,
+        padding: '6px 4px',
+        background: active ? bgGrad : 'transparent',
+        color: active ? '#fff' : 'var(--text3)',
+        fontSize: active ? 14 : 12,
+        fontWeight: active ? 900 : 600,
+        textShadow: active ? '0 1px 2px rgba(0,0,0,.4)' : 'none',
+        boxShadow: active ? 'inset 0 0 14px ' + glowRgb : 'none',
         cursor: 'pointer',
-        transition: 'opacity .15s ease'
+        transition: 'background .18s ease, font-size .18s ease, box-shadow .18s ease',
+        opacity: active ? 1 : .55
       });
+      var goHome = e => {
+        e.stopPropagation();
+        if (!_onHomeTab) setTab('home');
+        if (_isCallView) { setMainMode('home'); save('mainMode', 'home'); }
+      };
+      var goCall = e => {
+        e.stopPropagation();
+        if (!_onHomeTab) setTab('home');
+        if (!_isCallView) { setMainMode('call'); save('mainMode', 'call'); }
+      };
       return React.createElement("button", {
         key: k,
         className: _onHomeTab ? 'active' : '',
-        onClick: () => setTab('home'),
-        style: { padding: 0, position: 'relative' }
+        onClick: () => { if (!_onHomeTab) setTab('home'); },
+        style: { padding: 0, overflow: 'hidden', borderRadius: 10 }
       },
-        React.createElement("span", {
-          // Diagonal divider line — pure CSS, no SVG.
-          style: {
-            position: 'absolute',
-            top: '50%', left: '50%',
-            width: '120%', height: 1,
-            background: 'var(--border2)',
-            transform: 'translate(-50%, -50%) rotate(-22deg)',
-            pointerEvents: 'none',
-            opacity: .55
-          }
-        }),
         React.createElement("div", {
-          style: { display: 'flex', alignItems: 'stretch', width: '100%', height: '100%' }
+          style: { display: 'flex', alignItems: 'stretch', width: '100%', height: '100%', position: 'relative' }
         },
           React.createElement("div", {
-            onClick: e => {
-              e.stopPropagation();
-              if (_onHomeTab && _isCallView) {
-                setMainMode('home');
-                save('mainMode', 'home');
-              } else if (!_onHomeTab) {
-                setTab('home');
-                if (_isCallView) { setMainMode('home'); save('mainMode', 'home'); }
-              }
-            },
-            style: sideStyle(_onHomeTab && !_isCallView)
+            onClick: goHome,
+            title: 'Home — manager dashboard',
+            style: halfStyle(_activeHomeHere, '#a78bfa', 'linear-gradient(135deg,#6366f1,#8b5cf6)', 'rgba(167,139,250,.55)')
           }, '🏠'),
+          // Vertical divider — only shows when neither side is "shining"
+          // hard, so the active gradient gets to bleed cleanly to the edge.
           React.createElement("div", {
-            onClick: e => {
-              e.stopPropagation();
-              if (_onHomeTab && !_isCallView) {
-                setMainMode('call');
-                save('mainMode', 'call');
-              } else if (!_onHomeTab) {
-                setTab('home');
-                setMainMode('call');
-                save('mainMode', 'call');
-              }
-            },
-            style: sideStyle(_onHomeTab && _isCallView)
+            style: {
+              width: 1,
+              background: 'var(--border2)',
+              opacity: (_activeHomeHere || _activeCallHere) ? 0 : .6,
+              alignSelf: 'stretch',
+              pointerEvents: 'none'
+            }
+          }),
+          React.createElement("div", {
+            onClick: goCall,
+            title: 'Call — operator workspace',
+            style: halfStyle(_activeCallHere, '#22c55e', 'linear-gradient(135deg,#16a34a,#22c55e)', 'rgba(34,197,94,.55)')
           }, '📞', cbDue ? React.createElement("span", {
-            style: { fontSize: 9, fontWeight: 800, color: 'var(--amber)' }
+            style: {
+              fontSize: 9,
+              fontWeight: 900,
+              padding: '1px 4px',
+              borderRadius: 999,
+              background: _activeCallHere ? 'rgba(255,255,255,.22)' : 'var(--amdim)',
+              color: _activeCallHere ? '#fff' : 'var(--amber)'
+            }
           }, cbDue) : null)
         )
       );
