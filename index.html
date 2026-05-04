@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.04.0060'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.04.0061'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -245,6 +245,15 @@ button.free-slot{appearance:none;text-align:left}
 .avatar-btn{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#a37a4d);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:none;padding:0;cursor:pointer;letter-spacing:.04em;position:relative}
 .avatar-btn:hover{box-shadow:0 0 0 3px rgba(214,168,122,.18)}
 .avatar-btn .dot{position:absolute;top:1px;right:1px;width:9px;height:9px;border-radius:50%;background:var(--red);border:2px solid var(--bg)}
+/* Phase 3 (design handoff): collapse the standalone sync-pill into a 6px
+   sync-dot at the avatar's bottom-right corner. Color reflects sync state
+   (green = synced, amber = pushing/pulling, red = offline). Replaces ~140px
+   of always-visible chrome with a single dot — version + last-sync time
+   move into the avatar tooltip and dropdown's "System" section. */
+.avatar-btn .sync-dot{position:absolute;bottom:0;right:0;width:10px;height:10px;border-radius:50%;background:var(--text3);border:2px solid var(--bg);transition:background .18s}
+.avatar-btn .sync-dot.fresh{background:var(--green);box-shadow:0 0 4px var(--green)}
+.avatar-btn .sync-dot.warn{background:var(--amber);animation:pulse 1.4s ease-in-out infinite}
+.avatar-btn .sync-dot.bad{background:var(--red)}
 .avatar-menu{position:fixed;z-index:1500;min-width:204px;background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:6px;box-shadow:0 16px 48px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.02)}
 .avatar-menu .am-name{padding:10px 12px 8px;border-bottom:1px solid var(--border);margin-bottom:4px}
 .avatar-menu .am-name .n{font-size:13px;font-weight:800;color:#f1f5f9;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -408,7 +417,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.04.0060';
+window.APP_VERSION='2026.05.04.0061';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -14684,7 +14693,12 @@ function App() {
       fontSize: 10,
       padding: '2px 7px'
     }
-  }, "LIVE ", fmtTime(elapsed)), (() => {
+  }, "LIVE ", fmtTime(elapsed)), false && (() => {
+    // Phase 3 (design handoff): the standalone sync-pill is gated by
+    // `false &&` because it has been collapsed into a 6px sync-dot at
+    // the bottom-right of the avatar (see avatar IIFE below). The IIFE
+    // body is preserved untouched in case we need to revert; React
+    // sees `false` and skips it. Same for the cloud Syncing pill below.
     var _ago = lastSyncAt ? Math.floor((Date.now() - lastSyncAt) / 1000) : null;
     var _fresh = _ago !== null && _ago < 8;
     var _color = syncStatus === 'offline' ? 'var(--red)' : _fresh ? 'var(--green)' : syncStatus === 'pushing' || syncStatus === 'pulling' ? 'var(--amber)' : 'var(--text3)';
@@ -14715,7 +14729,7 @@ function App() {
         animation: syncStatus === 'pushing' || syncStatus === 'pulling' ? 'pulse 1s infinite' : undefined
       }
     }), _label, React.createElement("span", { className: "sp-icon" }, "↻"));
-  })(), syncing && React.createElement("span", {
+  })(), false && syncing && React.createElement("span", {
     className: "pill",
     style: {
       background: 'var(--adim)',
@@ -14756,11 +14770,31 @@ function App() {
     // now reflects only action-activity (undo timers, etc.).
     var _hasNotice = hasActionActivity;
     var _initials = (userName || 'U').split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase()).join('') || 'U';
+    // Phase 3 (design handoff): collapse standalone sync-pill into the
+    // avatar. Compute the same state the pill used to show \u2014 color +
+    // textual label \u2014 and render it as a single 6px sync-dot at the
+    // avatar's bottom-right + a tooltip line. Force-pull moves into the
+    // dropdown menu (next to "Activity").
+    var _sAgo = lastSyncAt ? Math.floor((Date.now() - lastSyncAt) / 1000) : null;
+    var _sFresh = _sAgo !== null && _sAgo < 8;
+    var _syncCls = syncStatus === 'offline' ? 'bad'
+                : (syncStatus === 'pushing' || syncStatus === 'pulling' || syncing) ? 'warn'
+                : _sFresh ? 'fresh'
+                : '';
+    var _syncWord = syncStatus === 'offline' ? 'Offline'
+                 : (syncStatus === 'pushing' || syncing) ? 'Pushing\u2026'
+                 : syncStatus === 'pulling' ? 'Pulling\u2026'
+                 : _sFresh ? 'Synced'
+                 : (_sAgo !== null ? _sAgo + 's ago' : 'Idle');
+    var _ver = (typeof window !== 'undefined' && window.APP_VERSION) || '';
+    var _tip = (userName || 'User') + '  \u00B7  v' + _ver
+             + '\nSync: ' + _syncWord
+             + (lastSyncAt ? '  \u00B7  ' + new Date(lastSyncAt).toLocaleTimeString() : '');
     return React.createElement("button", {
       ref: avatarBtnRef,
       type: "button",
       className: "avatar-btn",
-      title: userName + ' \u2014 account menu',
+      title: _tip,
       onClick: () => {
         if (avatarMenuOpen) {
           setAvatarMenuOpen(false);
@@ -14776,9 +14810,13 @@ function App() {
         }
         setAvatarMenuOpen(true);
       }
-    }, _initials, _hasNotice && React.createElement("span", {
-      className: "dot"
-    }));
+    },
+      _initials,
+      // Sync-dot bottom-right, replaces the standalone sync-pill chip
+      React.createElement("span", { className: 'sync-dot ' + _syncCls }),
+      // Notice dot top-right (action-activity / undo timers)
+      _hasNotice && React.createElement("span", { className: "dot" })
+    );
   })()), isCallMode && React.createElement("div", {
     className: "hdr-row2"
   }, _showRank ? (() => {
