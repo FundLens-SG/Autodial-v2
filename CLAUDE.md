@@ -49,8 +49,24 @@ Open `http://localhost:5173/tools/autodial/`, sign in via the hub Google account
 
 ## Phase 8 follow-ups (deferred from 7B2)
 
-- `usersList` / `pendingUsers` state vars are still declared but always empty after the UM strip. Remove the declarations + the `_acfgScrubbedRef`-style scrub effects in a tidy-up pass.
+- ~~`usersList` / `pendingUsers` state vars are still declared but always empty after the UM strip.~~ **Done in `f04dd87`** — only inline comments remain to document the removal. The `_acfgScrubbedRef` scrub effect (Main-only, runs once on boot to drop non-email-keyed garbage from `user_settings.admin_config`) is intentionally kept; it's defensive cleanup for stragglers that pre-date the schema lock-down, not dead code.
 - Pay-tab admin sessions effect is now an empty no-op — wire it to query `autodial.sessions` directly when the pay tab opens.
 - `pullAssignedLeads`/`pullLeads`/`pullAppts`/`pullLive` are no-ops. The realtime channel via `DB.subscribeLive` covers most cases; if you need pre-realtime initial state, add a one-time fetch on the appropriate effect (e.g. `DB.getLeads(uid)` on mount).
 - `leaderboard` is now derived inline from `autodial.sessions` for today. Consider extracting into a dedicated `DB.getTodayLeaderboard()` helper.
 - `[repairTabHeaders] a1Col is not defined` — pre-existing template-detection issue on linked Google Sheets. Not migration-related; investigate when convenient.
+
+## Cross-Main admin tethering (added 2026.05.03.0027–0029)
+
+Each admin in `shared_admin_configs.data` carries three tether-marker fields stamped by the Main who hired them:
+
+- `tethered_main_email` — lowercase email of the owning Main
+- `tethered_main_id` — auth UID of the owning Main
+- `tethered_at` — ISO timestamp of when the tether was set
+
+These markers live INSIDE the per-admin config blob (alongside `payRates`, `sessionDur`, `bizName`, etc.) so every subsequent `publishAdminConfigs` / WA-share / script-share / Drive-share write that re-stamps the blob preserves them automatically. The fuzzy picker in Settings → Team → Admin Pay reads these markers to:
+
+1. Hide admins tethered to other Mains from the search results
+2. Block typed-email submits that try to steal a tethered admin
+3. Show "ADDED" pill on admins tethered to the current Main
+
+**Untether (Remove button)** is a soft-clear: it strips the three tether markers and stamps `_untetheredAt` + `_untetheredBy` but PRESERVES the rest of the data blob (pay rates, sheet IDs, share state, etc.). The "rightful next-Main configures from scratch" guarantee is enforced at hire time in the Add handler, which always wipes-and-replaces the blob — never at untether time.

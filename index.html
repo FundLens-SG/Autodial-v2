@@ -388,7 +388,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0028';
+window.APP_VERSION='2026.05.03.0029';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -2770,6 +2770,11 @@ function _normalizeSharedAdminCfg(raw) {
   return clean;
 }
 function _adminLeadAccessLinked(ac) {
+  // Treat soft-untethered admins as "no leads access" even if the data
+  // blob still carries timesheetId / sheetTab. The Main's Untether action
+  // preserves those fields in the row (so a future re-tether can recover
+  // them) but the admin shouldn't keep dialing on a Main who fired them.
+  if (ac && ac._untetheredAt && !ac.tethered_main_email) return false;
   return !!(ac && !ac._revoked && ac.timesheetId && ac.sheetTab);
 }
 function _sanitizeAdminCfgs(raw) {
@@ -23634,42 +23639,51 @@ function App() {
         var proceed = await confirmAsync(em + ' hasn\'t signed in to CKGtools yet, so the cross-Main tether will only register once they do.\n\nAdd locally now anyway?', { title: 'User not in CKGtools', confirmLabel: 'Add anyway', danger: false });
         if (!proceed) return;
       }
+      // Bake tether fields INTO the per-admin config object so any
+      // subsequent publishAdminConfigs / shareScript / shareWA write
+      // re-stamps them onto shared_admin_configs.data instead of
+      // wiping them. Other Mains' fuzzy picker reads tethered_main_email
+      // off that row, so durable preservation here is what makes
+      // tethering survive the admin's full lifecycle (pay edits,
+      // script shares, WA template shares, calendar shares, etc.).
+      var _tetherStamp = {
+        tethered_main_email: meLower,
+        tethered_main_id: _user?.id || null,
+        tethered_at: new Date().toISOString()
+      };
+      var _newAdminCfg = {
+        payRates: [...(cfg.payRates || DEF_PAY_RATES)],
+        sessionDur: cfg.sessionDur || 5,
+        mThresh: cfg.mThresh || 2,
+        nThresh: cfg.nThresh || 4,
+        bonusMult: cfg.bonusMult || 1.5,
+        tierMins: [...(cfg.tierMins || DEF_TIER_MINS)],
+        metIncentive: cfg.metIncentive || 10,
+        apptTravelBefore: slotBeforeMin,
+        apptDur: apptCoreMin,
+        apptTravelAfter: slotAfterMin,
+        preferredApptTimes: effectivePreferredApptTimes,
+        rankEnabled: true,
+        bizName: '',
+        payNow: '',
+        timesheetId: '',
+        ..._tetherStamp
+      };
       setAdminConfigs(p => ({
         ...p,
-        [em]: {
-          payRates: [...(cfg.payRates || DEF_PAY_RATES)],
-          sessionDur: cfg.sessionDur || 5,
-          mThresh: cfg.mThresh || 2,
-          nThresh: cfg.nThresh || 4,
-          bonusMult: cfg.bonusMult || 1.5,
-          tierMins: [...(cfg.tierMins || DEF_TIER_MINS)],
-          metIncentive: cfg.metIncentive || 10,
-          apptTravelBefore: slotBeforeMin,
-          apptDur: apptCoreMin,
-          apptTravelAfter: slotAfterMin,
-          preferredApptTimes: effectivePreferredApptTimes,
-          rankEnabled: true,
-          bizName: '',
-          payNow: '',
-          timesheetId: ''
-        }
+        [em]: _newAdminCfg
       }));
       if (_SB) {
         try {
-          // Phase 7B2: revoked_ remote sentinel eliminated (hub handles
-          // revocation). Reset shared admin config blob and stamp the
-          // tethered_main_email so other Mains' fuzzy search filters this
-          // admin out of their available pool. Untether (Remove button)
-          // clears these fields so the admin becomes hireable again.
           var aid = await window._uidByEmail(em);
           if (aid) {
+            // Initial cloud write — full config + tether stamp. The
+            // adminConfigs effect (publishAdminConfigs) will overwrite
+            // shortly, but doing it here too means the tether takes
+            // effect immediately even if publish lags by a frame.
             await _SB.schema('autodial').from('shared_admin_configs').upsert({
               admin_id: aid,
-              data: {
-                tethered_main_email: (myEmail || '').toLowerCase(),
-                tethered_main_id: _user?.id || null,
-                tethered_at: new Date().toISOString()
-              },
+              data: _newAdminCfg,
               updated_at: new Date().toISOString()
             }, {
               onConflict: 'admin_id'
@@ -23680,8 +23694,6 @@ function App() {
         }
       }
       setNewAdminEmail('');
-      // Refresh the hub pool so the just-added admin shows as ADDED in
-      // any subsequent search and gets filtered for other Mains.
       fetchHubAdminPool(true);
       toast('Tethered ' + em);
     },
@@ -23874,13 +23886,29 @@ function App() {
           var _now = Date.now();
           var raid = await window._uidByEmail(em);
           if (raid) {
-            // Untether (do NOT lock out). The admin's CKGtools account
-            // stays active — this just clears the per-admin shared config
-            // blob and the tethered_main_email pointer so the admin shows
-            // up again as available in other Mains' fuzzy search.
+            // Soft untether: preserve the existing data blob (pay rates,
+            // sheet assignments, script/WA share state, drive file IDs,
+            // etc.) so re-tethering — by this Main or another — can
+            // recover where the admin left off if desired. We only clear
+            // the tether-marker fields (tethered_main_email +
+            // tethered_main_id + tethered_at) and stamp _untetheredAt /
+            // _untetheredBy so the fuzzy picker treats this admin as
+            // available again. The Add handler still wipes-and-replaces
+            // when a NEW Main hires, so cross-Main data leakage stays
+            // impossible. This is the "rightful next-Main configures
+            // from scratch" guarantee, just done at hire time instead
+            // of at untether time.
+            var existingRow = await _SB.schema('autodial').from('shared_admin_configs').select('data').eq('admin_id', raid).maybeSingle();
+            var existingData = existingRow && existingRow.data && existingRow.data.data || {};
+            var nextData = { ...existingData };
+            delete nextData.tethered_main_email;
+            delete nextData.tethered_main_id;
+            delete nextData.tethered_at;
+            nextData._untetheredAt = _now;
+            nextData._untetheredBy = myEmail;
             await _SB.schema('autodial').from('shared_admin_configs').upsert({
               admin_id: raid,
-              data: { _untetheredAt: _now, _untetheredBy: myEmail },
+              data: nextData,
               updated_at: new Date().toISOString()
             }, {
               onConflict: 'admin_id'
