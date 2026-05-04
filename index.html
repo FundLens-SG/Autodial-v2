@@ -160,7 +160,10 @@ button.free-slot{appearance:none;text-align:left}
   .script-toggle:hover{background:var(--adim);border-color:var(--accent)}
   .script-toggle.open{background:var(--adim);border-color:var(--accent);box-shadow:0 0 12px rgba(99,102,241,.2)}
 }
-@media(min-width:960px) and (max-width:1280px){
+@media(min-width:960px) and (max-width:1100px){
+  /* Lowered from 1280px so common 1280×800 / 1366×768 laptops at 100% zoom
+     keep both the script and reference-notes columns visible side-by-side.
+     Below 1100px the notes column auto-collapses to give the script room. */
   .script-panel .sp-ref-col{display:none}
   .script-panel .sp-col{width:100%;max-width:760px;margin:0 auto}
 }
@@ -388,7 +391,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0029';
+window.APP_VERSION='2026.05.03.0030';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -1626,29 +1629,67 @@ window.gDrive={
 // ═══ Helper to load and save scripts to a Drive-hosted sheet. Each row is
 // ═══ one script version: Name · Content (HTML) · Description · Updated · UpdatedBy · ShareWithAdmins.
 window.gScripts={
+  // Style a tab's header row with the canonical purple banner used by all
+  // gScripts-managed tabs. Best-effort, silent on failure.
+  async _styleHeader(sheetId,tabSheetId,colCount){
+    try{
+      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+':batchUpdate',{method:'POST',body:JSON.stringify({requests:[
+        {repeatCell:{range:{sheetId:tabSheetId,startRowIndex:0,endRowIndex:1,startColumnIndex:0,endColumnIndex:colCount},cell:{userEnteredFormat:{backgroundColor:{red:0.224,green:0.094,blue:0.337},textFormat:{foregroundColor:{red:1,green:1,blue:1},bold:true,fontSize:11}}},fields:'userEnteredFormat(backgroundColor,textFormat)'}},
+        {updateSheetProperties:{properties:{sheetId:tabSheetId,gridProperties:{frozenRowCount:1}},fields:'gridProperties.frozenRowCount'}}
+      ]})});
+    }catch(_e){}
+  },
+  // Idempotently ensure a named tab exists in the workbook. Returns its
+  // numeric sheetId so we can target it for header styling.
+  async _ensureTab(sheetId,title){
+    try{
+      var meta=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'?fields=sheets.properties')).json();
+      var existing=(meta.sheets||[]).find(s=>s.properties&&s.properties.title===title);
+      if(existing)return existing.properties.sheetId;
+      var add=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+':batchUpdate',{method:'POST',body:JSON.stringify({requests:[{addSheet:{properties:{title:title}}}]})})).json();
+      var newSid=add&&add.replies&&add.replies[0]&&add.replies[0].addSheet&&add.replies[0].addSheet.properties&&add.replies[0].addSheet.properties.sheetId;
+      return newSid==null?null:newSid;
+    }catch(e){console.warn('[gScripts._ensureTab]',title,e?.message||e);return null}
+  },
+  // Write a header row to a named tab. valueInputOption USER_ENTERED so
+  // pasted formulas / dates render the way Sheets does for hand entry.
+  async _writeHeader(sheetId,title,headers){
+    try{
+      var range=encodeURIComponent(title+'!A1:'+String.fromCharCode(64+headers.length)+'1');
+      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+range+'?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[headers]})});
+    }catch(_e){}
+  },
   async ensureFile(){
     var folderId=await gDrive.ensureFolder('AutoDial');
     if(!folderId)return'';
     var sheetId=await gDrive.ensureSheetFile(folderId,'AutoDial Scripts');
     if(!sheetId)return'';
-    // Make sure the header row is in place
+    // Sheet1 = canonical script versions tab. Header set + styled.
     try{
       var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/Sheet1!A1:F1')).json();
       var headers=vals.values&&vals.values[0]?vals.values[0]:[];
       var canon=['Name','Content','Description','Updated','Updated By','Share With Admins'];
       if(headers.join('|')!==canon.join('|')){
         await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/Sheet1!A1:F1?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[canon]})});
-        // Style the header
         try{
           var meta=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'?fields=sheets.properties')).json();
           var sid=meta.sheets&&meta.sheets[0]?meta.sheets[0].properties.sheetId:0;
-          await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+':batchUpdate',{method:'POST',body:JSON.stringify({requests:[
-            {repeatCell:{range:{sheetId:sid,startRowIndex:0,endRowIndex:1,startColumnIndex:0,endColumnIndex:6},cell:{userEnteredFormat:{backgroundColor:{red:0.224,green:0.094,blue:0.337},textFormat:{foregroundColor:{red:1,green:1,blue:1},bold:true,fontSize:11}}},fields:'userEnteredFormat(backgroundColor,textFormat)'}},
-            {updateSheetProperties:{properties:{sheetId:sid,gridProperties:{frozenRowCount:1}},fields:'gridProperties.frozenRowCount'}}
-          ]})});
+          await this._styleHeader(sheetId,sid,6);
         }catch(_e){}
       }
     }catch(e){console.warn('[gScripts.ensureFile header]',e?.message||e)}
+    // Reference Notes tab — single row carrying the latest snapshot.
+    var refSid=await this._ensureTab(sheetId,'Reference Notes');
+    if(refSid!=null){
+      await this._writeHeader(sheetId,'Reference Notes',['Updated','Updated By','Content (HTML)']);
+      await this._styleHeader(sheetId,refSid,3);
+    }
+    // Objections tab — one row per objection, plain-readable layout.
+    var objSid=await this._ensureTab(sheetId,'Objections');
+    if(objSid!=null){
+      await this._writeHeader(sheetId,'Objections',['ID','Title','Category','Answer (HTML)','Updated','Updated By']);
+      await this._styleHeader(sheetId,objSid,6);
+    }
     return sheetId;
   },
   async save(sheetId,versions,actor){
@@ -1690,6 +1731,69 @@ window.gScripts={
         };
       }).filter(Boolean);
     }catch(e){console.warn('[gScripts.load]',e?.message||e);return[]}
+  },
+  // Reference Notes — single-row tab. Save replaces, load returns the
+  // most recent (only) row's HTML content.
+  async saveRefNotes(sheetId,html,actor){
+    if(!sheetId)return false;
+    try{
+      await this._ensureTab(sheetId,'Reference Notes');
+      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+encodeURIComponent('Reference Notes')+'!A2:C:clear',{method:'POST',body:JSON.stringify({})});
+      var row=[new Date().toLocaleString('en-SG'),actor||'',String(html||'')];
+      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+encodeURIComponent('Reference Notes')+'!A2?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[row]})});
+      return true;
+    }catch(e){console.warn('[gScripts.saveRefNotes]',e?.message||e);return false}
+  },
+  async loadRefNotes(sheetId){
+    if(!sheetId)return null;
+    try{
+      var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+encodeURIComponent('Reference Notes')+'!A2:C')).json();
+      var rows=vals.values||[];
+      if(!rows.length)return null;
+      var r=rows[0];
+      return{updatedAt:r[0]||'',updatedBy:r[1]||'',content:r[2]||''};
+    }catch(e){console.warn('[gScripts.loadRefNotes]',e?.message||e);return null}
+  },
+  // Objections — multi-row tab. One row per objection. Schema mirrors the
+  // local cfg.objections shape so round-tripping is lossless.
+  async saveObjections(sheetId,objections,actor){
+    if(!sheetId||!Array.isArray(objections))return false;
+    try{
+      await this._ensureTab(sheetId,'Objections');
+      var ts=new Date().toLocaleString('en-SG');
+      var rows=objections.map(function(o){return[
+        String(o.id||''),
+        String(o.title||''),
+        String(o.category||'common'),
+        String(o.answer||''),
+        ts,
+        actor||''
+      ]});
+      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+encodeURIComponent('Objections')+'!A2:F:clear',{method:'POST',body:JSON.stringify({})});
+      if(rows.length){
+        await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+encodeURIComponent('Objections')+'!A2?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:rows})});
+      }
+      return true;
+    }catch(e){console.warn('[gScripts.saveObjections]',e?.message||e);return false}
+  },
+  async loadObjections(sheetId){
+    if(!sheetId)return[];
+    try{
+      var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/'+encodeURIComponent('Objections')+'!A2:F')).json();
+      var rows=vals.values||[];
+      return rows.map(function(r){
+        var id=r[0]||'';
+        var title=r[1]||'';
+        if(!id&&!title)return null;
+        return{
+          id:id||('obj_'+Date.now()+'_'+Math.random().toString(36).slice(2,7)),
+          title:title,
+          category:(r[2]||'common').toLowerCase(),
+          answer:r[3]||'',
+          _fromDrive:true
+        };
+      }).filter(Boolean);
+    }catch(e){console.warn('[gScripts.loadObjections]',e?.message||e);return[]}
   }
 };
 
@@ -11467,6 +11571,15 @@ function App() {
       if (!quiet) toast('Drive save failed — check console', 'err');
       return false;
     }
+    // Also push reference notes + objections to the same workbook so the
+    // full "script bank" lives in one Drive file. Both are best-effort —
+    // failures here log but don't block the main script backup.
+    try {
+      await window.gScripts.saveRefNotes(fileId, cfg.refNotes || '', userName);
+    } catch (_e) { console.warn('[Drive refNotes save]', _e?.message || _e); }
+    try {
+      await window.gScripts.saveObjections(fileId, cfg.objections || [], userName);
+    } catch (_e) { console.warn('[Drive objections save]', _e?.message || _e); }
     // ═══ Auto-share the scripts file (and folder) with every configured
     // ═══ admin so their app can pull scripts directly from Drive. Also
     // ═══ propagate the file ID into each admin's shared config row so the
@@ -11499,9 +11612,9 @@ function App() {
         }));
       }
     } catch (e) { console.warn('[Drive admin share batch]', e?.message || e); }
-    if (!quiet) toast('✓ ' + scriptVersions.length + ' script version(s) backed up to Drive' + (Object.keys(adminConfigs || {}).filter(em => em.includes('@')).length ? ' & shared with admins' : ''));
+    if (!quiet) toast('✓ ' + scriptVersions.length + ' script version(s) + ref notes + objections backed up to Drive' + (Object.keys(adminConfigs || {}).filter(em => em.includes('@')).length ? ' & shared with admins' : ''));
     return fileId;
-  }, [role, cfg.scriptsDriveFileId, scriptVersions, userName, adminConfigs]);
+  }, [role, cfg.scriptsDriveFileId, scriptVersions, cfg.refNotes, cfg.objections, userName, adminConfigs]);
   // ═══ Auto-backup scripts to Drive whenever scriptVersions changes — debounced
   // ═══ 3s so a flurry of edits coalesces into one write. Quiet mode (no toast)
   // ═══ since this happens in the background. Only fires for Main users with a
@@ -11542,7 +11655,11 @@ function App() {
       }
     }, 3000);
     return () => clearTimeout(t);
-  }, [role, scriptVersions, cfg.scriptsDriveFileId, backupScriptsToDrive, compareScriptsWithDrive]);
+    // refNotes + objections in the dep list so editing them also fires
+    // the 3s-debounced auto-backup. The backupScriptsToDrive callback
+    // already snapshots the latest cfg.refNotes / cfg.objections via
+    // its own dep list, so the closure picks up fresh values.
+  }, [role, scriptVersions, cfg.refNotes, cfg.objections, cfg.scriptsDriveFileId, backupScriptsToDrive, compareScriptsWithDrive]);
   // ═══ Auto-restore scripts from Drive on first boot — ONLY when local
   // ═══ scriptVersions array is empty AND a Drive file ID is configured. Avoids
   // ═══ ever clobbering local edits the user hasn't pushed yet (manual restore
@@ -11558,11 +11675,25 @@ function App() {
     (async () => {
       try {
         var fromDrive = await window.gScripts.load(cfg.scriptsDriveFileId);
+        // Also pull ref notes + objections so first-boot restore brings
+        // back the full script bank, not just the script versions.
+        var refDrive = await window.gScripts.loadRefNotes(cfg.scriptsDriveFileId).catch(() => null);
+        var objDrive = await window.gScripts.loadObjections(cfg.scriptsDriveFileId).catch(() => []);
+        var bits = [];
         if (fromDrive && fromDrive.length) {
           setScriptVersions(fromDrive);
           setCfg(p => ({ ...p, scriptVersions: fromDrive }));
-          toast('Restored ' + fromDrive.length + ' script version(s) from Drive', 'info');
+          bits.push(fromDrive.length + ' script version(s)');
         }
+        if (refDrive && refDrive.content && !cfg.refNotes) {
+          setCfg(p => ({ ...p, refNotes: refDrive.content }));
+          bits.push('reference notes');
+        }
+        if (objDrive && objDrive.length && !(cfg.objections || []).length) {
+          setCfg(p => ({ ...p, objections: objDrive }));
+          bits.push(objDrive.length + ' objection(s)');
+        }
+        if (bits.length) toast('Restored ' + bits.join(' + ') + ' from Drive', 'info');
       } catch (e) {
         console.warn('[Auto Drive restore]', e?.message || e);
       }
@@ -11588,14 +11719,29 @@ function App() {
       setCfg(p => ({ ...p, scriptsDriveFileId: fileId }));
     }
     var fromDrive = await window.gScripts.load(fileId);
-    if (!fromDrive || !fromDrive.length) {
-      toast('No scripts found in Drive (or sheet is empty)', 'info');
+    var refDrive = await window.gScripts.loadRefNotes(fileId).catch(() => null);
+    var objDrive = await window.gScripts.loadObjections(fileId).catch(() => []);
+    var hasAnything = (fromDrive && fromDrive.length) || (refDrive && refDrive.content) || (objDrive && objDrive.length);
+    if (!hasAnything) {
+      toast('No scripts / notes / objections found in Drive', 'info');
       return false;
     }
-    if (!(await confirmAsync('Replace your local script versions with ' + fromDrive.length + ' from Drive? Local copies are saved in cloud and can be restored.', { title: 'Restore scripts', confirmLabel: 'Replace' }))) return false;
-    setScriptVersions(fromDrive);
-    setCfg(p => ({ ...p, scriptVersions: fromDrive }));
-    toast('✓ Restored ' + fromDrive.length + ' script versions from Drive');
+    var summary = [];
+    if (fromDrive && fromDrive.length) summary.push(fromDrive.length + ' script version(s)');
+    if (refDrive && refDrive.content) summary.push('reference notes');
+    if (objDrive && objDrive.length) summary.push(objDrive.length + ' objection(s)');
+    if (!(await confirmAsync('Replace your local copy with ' + summary.join(' + ') + ' from Drive? Local copies are saved in cloud and can be restored.', { title: 'Restore from Drive', confirmLabel: 'Replace' }))) return false;
+    if (fromDrive && fromDrive.length) {
+      setScriptVersions(fromDrive);
+      setCfg(p => ({ ...p, scriptVersions: fromDrive }));
+    }
+    if (refDrive && refDrive.content) {
+      setCfg(p => ({ ...p, refNotes: refDrive.content }));
+    }
+    if (objDrive && objDrive.length) {
+      setCfg(p => ({ ...p, objections: objDrive }));
+    }
+    toast('✓ Restored ' + summary.join(' + ') + ' from Drive');
     return true;
   }, [role, cfg.scriptsDriveFileId, confirmAsync]);
   // ═══ Drive vs local divergence check. Loads the Drive copy and compares
