@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0064'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0065'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -135,6 +135,24 @@ button.free-slot{appearance:none;text-align:left}
 @keyframes slideDown{from{opacity:0;transform:translateY(-10px);max-height:0}to{opacity:1;transform:translateY(0);max-height:200px}}
 @keyframes firePulse{0%,100%{text-shadow:0 0 10px rgba(240,180,41,.5)}50%{text-shadow:0 0 30px rgba(240,180,41,.8)}}
 @keyframes borderGlow{0%,100%{border-color:rgba(214,168,122,.3)}50%{border-color:rgba(214,168,122,.6)}}
+/* Phase 7 (design handoff): tier-up animation. Soft 600ms scale-pulse
+   on the .tier-up-flash element + brass-glow flash. Triggered by toggling
+   the .tier-up class on the gamification card when the team crosses a
+   tier boundary (handled in JS). prefers-reduced-motion users get an
+   instant state change, no animation. */
+@keyframes tierUpPulse{0%{transform:scale(1);box-shadow:0 0 0 0 rgba(214,168,122,0)}30%{transform:scale(1.04);box-shadow:0 0 0 8px rgba(214,168,122,.35)}100%{transform:scale(1);box-shadow:0 0 0 0 rgba(214,168,122,0)}}
+.tier-up-flash{animation:tierUpPulse 600ms cubic-bezier(0.2,0,0,1) 1}
+@media (prefers-reduced-motion: reduce){
+  /* Per FORBIDDEN_PATTERNS §13 + design README §interactions: respect
+     prefers-reduced-motion. Strip every infinite/loop animation; allow
+     fades but cap them at 0.01ms so they're effectively instant. */
+  *,*::before,*::after{
+    animation-duration:0.01ms !important;
+    animation-iteration-count:1 !important;
+    transition-duration:0.01ms !important;
+    scroll-behavior:auto !important;
+  }
+}
 /* Phase 4 (design handoff): mobile sticky outcome dock + uniform outcome
    button system. Per FORBIDDEN_PATTERNS §5: outcome buttons must be ≥64px
    tall on mobile, ≥56px on desktop, and live in a 2×2 grid on mobile and
@@ -395,7 +413,8 @@ body { padding-top: var(--ckg-strip-h) !important; }
   font-size: 11px; font-weight: 500;
   letter-spacing: 0.06em;
   line-height: 1;
-  transition: all 150ms ease-out;
+  /* Phase 7 polish: replaced `transition: all` per FORBIDDEN_PATTERNS §13 */
+  transition: background 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out;
   min-height: 28px;
 }
 .ckg-suite-strip-back:hover {
@@ -464,7 +483,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0064';
+window.APP_VERSION='2026.05.05.0065';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
