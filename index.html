@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0068'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0069'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -434,7 +434,13 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 .outcome--set{background:var(--ad-green-dim)!important;color:var(--ad-green)!important;border-color:oklch(0.74 0.16 150 / .34)!important}
 .claude-review-shell{position:fixed;inset:0;z-index:300;background:#07090d}
 .claude-review-frame{display:block;width:100%;height:100%;border:0;background:#07090d}
-.cad-shell{min-height:calc(100vh - var(--ckg-strip-h));background:var(--ad-bg-0);color:var(--ad-t-0);display:flex;flex-direction:column;font-family:'Inter',system-ui,sans-serif}
+/* 0069: pin .cad-shell to viewport height (was min-height, which let the
+   page grow unbounded — this is what made the user report the script
+   panel being "infinitely long"). With height + overflow:hidden here,
+   the .cad-call-body flex:1 child gets a real height to subtract from,
+   and .cad-script-main's overflow:auto can finally clip + scroll the
+   script body inside the panel instead of pushing the whole page taller. */
+.cad-shell{height:calc(100vh - var(--ckg-strip-h, 0px));max-height:calc(100vh - var(--ckg-strip-h, 0px));overflow:hidden;background:var(--ad-bg-0);color:var(--ad-t-0);display:flex;flex-direction:column;font-family:'Inter',system-ui,sans-serif}
 .cad-topbar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;border-bottom:1px solid var(--ad-line-1);background:var(--ad-bg-0);flex-shrink:0}
 .cad-left,.cad-right,.cad-inline{display:flex;align-items:center;gap:10px}
 .cad-brand{font-size:13px;font-weight:750;color:var(--ad-t-0)}
@@ -584,10 +590,31 @@ var SB_URL='https://cbqbvctnrfbxjscgirpn.supabase.co',SB_KEY='eyJhbGciOiJIUzI1Ni
 var CREATOR=(localStorage.getItem('autodial_creator')||'').split(',').filter(Boolean);
 if(!CREATOR.length||CREATOR[0]==='admin'){CREATOR=['chungakwanc@gmail.com'];localStorage.setItem('autodial_creator','chungakwanc@gmail.com')}
 window.CREATOR=CREATOR;
+// 0069: a1Col was defined inside the inline-React script block (at ~line
+// 4682), but repairTabHeaders / Sheets writeback / status-cell updates
+// in this earlier script block called it before it was in scope, which
+// produced the [repairTabHeaders] "a1Col is not defined" console errors
+// that flooded the user's console on every Sheets sync. Hoist a1Col as
+// a global here so every script block sees the same implementation. The
+// React block keeps its own copy (identical) for back-compat; both
+// resolve to the same column-letter formula.
+if (typeof window.a1Col !== 'function') {
+  window.a1Col = function a1Col(idx) {
+    var col = '';
+    var n = Number(idx);
+    if (!isFinite(n) || n < 0) return '';
+    while (n >= 0) {
+      col = String.fromCharCode(65 + n % 26) + col;
+      n = Math.floor(n / 26) - 1;
+    }
+    return col;
+  };
+}
+var a1Col = window.a1Col;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0068';
+window.APP_VERSION='2026.05.05.0069';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -15308,6 +15335,171 @@ function App() {
         }) : h('span', { className: 'cad-subtle', style: { fontSize: 12 } }, 'No events')
       )))
     ));
+    var cadMoney = v => '$' + (Number(v) || 0).toFixed(2);
+    var cadTimeAgo = ts => {
+      var t = Number(ts) || Date.parse(ts || '') || Date.now();
+      var s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+      if (s < 60) return s + 's';
+      if (s < 3600) return Math.floor(s / 60) + 'm';
+      if (s < 86400) return Math.floor(s / 3600) + 'h';
+      return Math.floor(s / 86400) + 'd';
+    };
+    var cadCleanPhone = p => String(p || '').replace(/[^+\d]/g, '');
+    var cadSectionHead = (title, right) => h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label' }, title), right || null);
+    var cbOpen = (cbQueue || []).filter(c => c.status !== 'called');
+    var cbCalled = (cbQueue || []).filter(c => c.status === 'called');
+    var cbNow = new Date();
+    var cbIsPast = c => {
+      var t = Date.parse(String(c.scheduled_date || '') + 'T' + String(c.scheduled_time || '00:00'));
+      return Number.isFinite(t) && t < cbNow.getTime();
+    };
+    var cbOverdue = cbOpen.filter(cbIsPast);
+    var cbUpcoming = cbOpen.filter(c => !cbIsPast(c));
+    var markCallbackCalled = c => {
+      var phone = cadCleanPhone(c.lead_phone || c.phone || '');
+      if (phone) window.location.href = 'tel:' + phone;
+      if (c.id) DB.updateCBStatus(c.id, 'called');
+      setCbQueue(p => (p || []).map(x => x.id === c.id ? { ...x, status: 'called' } : x));
+    };
+    var cbRow = (c, tone) => h('div', { className: 'cad-list-row tone-' + tone, key: c.id || c.lead_phone || c.lead_name },
+      h('div', null, h('b', null, c.lead_name || c.name || 'Callback lead'), h('p', { className: 'cad-subtle cad-mono', style: { fontSize: 11, marginTop: 3 } }, c.lead_phone || c.phone || '-')),
+      h('span', { className: 'cad-mono cad-muted' }, [c.scheduled_date, c.scheduled_time].filter(Boolean).join(' ') || 'No time'),
+      h('span', { className: 'cad-muted' }, role === 'main' ? (c.admin_email || c.admin || 'Unassigned') : (c.notes || '')),
+      h('span', { className: 'cad-inline', style: { justifyContent: 'flex-end' } },
+        h('button', { className: 'cad-btn ghost', onClick: () => setShowWA({ name: c.lead_name || c.name, phone: c.lead_phone || c.phone }) }, 'WA'),
+        h('button', { className: 'cad-btn primary', onClick: () => markCallbackCalled(c) }, 'Call')
+      )
+    );
+    var cbView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
+      h('div', { className: 'cad-dashboard-head' },
+        h('div', null, h('h2', { style: { fontSize: 24 } }, 'Callback Queue'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, cbOpen.length, ' open - ', cbOverdue.length, ' overdue - ', cbCalled.length, ' completed')),
+        h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => DB.getCBQueue(isCallMode ? myEmail : null).then(setCbQueue) }, icon('Refresh', 13), 'Refresh'), h('button', { className: 'cad-btn primary', onClick: () => { setMainMode('call'); setTab('home'); } }, icon('PhoneOutgoing', 13), 'Call view'))
+      ),
+      h('div', { className: 'cad-stat-grid' }, stat('Open', cbOpen.length, 'waiting callbacks', 'var(--ad-blue)'), stat('Overdue', cbOverdue.length, 'needs attention', 'var(--ad-red)'), stat('Upcoming', cbUpcoming.length, 'scheduled ahead', 'var(--ad-amber)'), stat('Called', cbCalled.length, 'completed', 'var(--ad-green)')),
+      cbOpen.length ? h('div', { className: 'cad-page-grid' },
+        h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Overdue'), cbOverdue.length ? h('div', { className: 'cad-list-stack' }, cbOverdue.map(c => cbRow(c, 'red'))) : h('p', { className: 'cad-page-note' }, 'No overdue callbacks.')),
+        h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Upcoming'), cbUpcoming.length ? h('div', { className: 'cad-list-stack' }, cbUpcoming.map(c => cbRow(c, 'blue'))) : h('p', { className: 'cad-page-note' }, 'No upcoming callbacks.'))
+      ) : h('div', { className: 'cad-card cad-empty' }, h('div', null, h('div', { className: 'cad-logo', style: { margin: '0 auto 14px', width: 46, height: 46, borderRadius: 14 } }, icon('Bell', 22)), h('h3', null, 'No callbacks scheduled'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 6 } }, 'Callbacks created during calls will appear here.'))),
+      cbCalled.length > 0 && h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Recently called'), h('div', { className: 'cad-list-stack' }, cbCalled.slice(0, 8).map(c => h('div', { className: 'cad-list-row slim tone-green', key: 'done_' + (c.id || c.lead_phone) }, h('span', null, h('b', null, c.lead_name || c.name || 'Callback'), h('small', { className: 'cad-subtle cad-mono', style: { display: 'block', marginTop: 3 } }, c.lead_phone || c.phone || '-')), h('span', { className: 'cad-muted' }, c.called_at ? cadTimeAgo(c.called_at) + ' ago' : 'Done'), h('span', { className: 'cad-pill green' }, 'Called')))))
+    ));
+    var liveItems = filteredLiveFeed.length ? filteredLiveFeed : (demo ? [
+      { type: 'session', ts: Date.now() - 420000, data: { email: 'priya@example.com', sets: 2, dialed: 11 } },
+      { type: 'call', ts: Date.now() - 260000, data: { action: 'set', admin_email: 'carlos@example.com', lead_name: 'Linda Tao' } },
+      { type: 'appt', ts: Date.now() - 120000, data: { admin_email: 'priya@example.com', lead_name: 'Marcus Holloway', appt_date: localDateKey(new Date()), appt_time: '10:30' } }
+    ] : []);
+    var liveView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
+      h('div', { className: 'cad-dashboard-head' },
+        h('div', null, h('h2', { style: { fontSize: 24 } }, 'Live Activity'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, liveItems.length, ' events in view - ', notifications.filter(n => !n.read).length, ' unread notifications')),
+        h('div', { className: 'cad-inline', style: { flexWrap: 'wrap' } }, [['all', 'All'], ['call', 'Calls'], ['appt', 'Appts'], ['session', 'Sessions']].map(([k, l]) => h('button', { className: 'cad-tab ' + (liveFilter === k ? 'on' : ''), key: k, onClick: () => setLiveFilter(k) }, l)), liveAdmins.length > 0 && h('select', { className: 'cad-search', style: { minHeight: 34, width: 180 }, value: liveAdminFilter, onChange: e => setLiveAdminFilter(e.target.value) }, h('option', { value: 'all' }, 'All callers'), liveAdmins.map(em => h('option', { key: em, value: em }, (adminConfigs[em] || {}).bizName || em))))
+      ),
+      liveItems.length ? h('div', { className: 'cad-page-grid' },
+        h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Timeline', h('span', { className: 'cad-pill green' }, 'Realtime')), h('div', { className: 'cad-list-stack' }, liveItems.slice(0, 30).map((f, i) => {
+          var actor = getLiveActor(f);
+          var action = f.data?.action || f.type;
+          var tone = f.type === 'appt' || action === 'set' ? 'green' : f.type === 'session' ? 'amber' : action === 'ni' ? 'red' : 'blue';
+          var title = f.type === 'session' ? ((actor.label || f.data?.email || 'Caller') + (f.data?.end_time ? ' ended session' : ' started session')) : f.type === 'appt' ? ((actor.label || f.data?.admin_email || 'Caller') + ' set ' + (f.data?.lead_name || 'appointment')) : ((actor.label || f.data?.admin_email || 'Caller') + ' - ' + String(action || 'call').toUpperCase());
+          return h('div', { className: 'cad-list-row slim tone-' + tone, key: f.id || i }, h('span', null, h('b', null, title), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, f.data?.lead_name || f.data?.appt_date || f.data?.email || '')), h('span', { className: 'cad-mono cad-muted' }, cadTimeAgo(f.ts || f.created_at) + ' ago'), h('span', { className: 'cad-pill ' + tone }, f.type || 'event'));
+        }))),
+        h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Notifications'), notifications.filter(n => !n.read).length ? h('div', { className: 'cad-list-stack' }, notifications.filter(n => !n.read).slice(0, 10).map(nf => h('div', { className: 'cad-list-row slim tone-amber', key: nf.id }, h('span', null, h('b', null, nf.title || 'Notification'), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, nf.body || '')), h('span', { className: 'cad-mono cad-muted' }, cadTimeAgo(nf.created_at || nf.ts) + ' ago'), h('button', { className: 'cad-btn ghost', onClick: () => { DB.markRead(nf.id); setNotifications(p => p.map(x => x.id === nf.id ? { ...x, read: true } : x)); } }, 'Done')))) : h('p', { className: 'cad-page-note' }, 'No unread notifications.'))
+      ) : h('div', { className: 'cad-card cad-empty' }, h('div', null, h('div', { className: 'cad-logo', style: { margin: '0 auto 14px', width: 46, height: 46, borderRadius: 14 } }, icon('Zap', 22)), h('h3', null, 'Waiting for activity'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 6 } }, 'Caller sessions and appointment events will appear here.')))
+    ));
+    var trackedSessions = [
+      ...(sessionLog || []).map(s => ({ ...s, email: s.email || myEmail })),
+      ...Object.entries(adminSessions || {}).flatMap(([em, ss]) => (Array.isArray(ss) ? ss : []).map(s => ({ ...s, email: s.email || em })))
+    ];
+    var trackedDialed = trackedSessions.reduce((a, s) => a + (s.dialed || 0), 0);
+    var trackedSets = trackedSessions.reduce((a, s) => a + (s.sets || 0), 0) || (appointments || []).filter(a => !a._deleted).length;
+    var trackedClosed = (appointments || []).filter(a => a.followUp === 'closed' || a.status === 'closed').length;
+    var trackedMet = (appointments || []).filter(a => /met|closed/i.test(a.followUp || a.status || '')).length;
+    var trackedPhones = {};
+    (leads || []).forEach(l => {
+      var k = normalizePhone ? normalizePhone(l.phone || '') : String(l.phone || '').replace(/\D/g, '');
+      if (k) trackedPhones[k] = (trackedPhones[k] || 0) + 1;
+    });
+    var duplicatePhones = Object.entries(trackedPhones).filter(([, count]) => count > 1).slice(0, 8);
+    var topTrackedAdmins = Object.entries(adminSessions || {}).map(([em, ss]) => ({ email: em, name: (adminConfigs[em] || {}).bizName || em, sessions: (ss || []).length, dialed: (ss || []).reduce((a, s) => a + (s.dialed || 0), 0), sets: (ss || []).reduce((a, s) => a + (s.sets || 0), 0) })).sort((a, b) => b.sets - a.sets || b.dialed - a.dialed).slice(0, 6);
+    var trackingView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
+      h('div', { className: 'cad-dashboard-head' },
+        h('div', null, h('h2', { style: { fontSize: 24 } }, 'Tracking'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, trackedSessions.length, ' sessions - ', trackedDialed, ' dials - ', trackedSets, ' appointments')),
+        h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => pullSessionsFromSheet && pullSessionsFromSheet() }, icon('Refresh', 13), 'Pull sessions'), h('button', { className: 'cad-btn primary', onClick: () => setTab('leads') }, icon('Sheet', 13), 'Leads'))
+      ),
+      h('div', { className: 'cad-stat-grid' }, stat('Dial to appt', trackedDialed ? (trackedSets / trackedDialed * 100).toFixed(1) + '%' : '--', trackedSets + ' from ' + trackedDialed), stat('Appt to close', trackedSets ? (trackedClosed / trackedSets * 100).toFixed(1) + '%' : '--', trackedClosed + ' closed'), stat('Met rate', trackedSets ? (trackedMet / trackedSets * 100).toFixed(1) + '%' : '--', trackedMet + ' met/closed'), stat('Cost/appt', cfg.cpl && trackedSets ? cadMoney(trackedDialed * Number(cfg.cpl || 0) / trackedSets) : '--', cfg.cpl ? 'CPL ' + cadMoney(cfg.cpl) : 'no CPL')),
+      h('div', { className: 'cad-page-grid' },
+        h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Lead statuses'), h('div', { className: 'cad-action-grid' }, [['Pending', 'pending', ''], ['NP', 'np', 'amber'], ['CB', 'cb', 'blue'], ['NI', 'ni', 'red'], ['Set', 'set', 'green']].map(([label, key, tone]) => h('div', { className: 'cad-card', style: { padding: 14 }, key }, h('span', { className: 'cad-label' }, label), h('div', { className: 'cad-value-big', style: tone ? { color: 'var(--ad-' + tone + ')' } : null }, (leads || []).filter(l => (l.status || 'pending') === key).length))))),
+        h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Top callers'), topTrackedAdmins.length ? h('div', { className: 'cad-list-stack' }, topTrackedAdmins.map(a => h('div', { className: 'cad-list-row slim', key: a.email }, h('span', null, h('b', null, a.name), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, a.email)), h('span', { className: 'cad-mono cad-muted' }, a.dialed + ' dials'), h('span', { className: 'cad-pill green' }, a.sets, ' set')))) : h('p', { className: 'cad-page-note' }, 'No admin sessions loaded yet.'))
+      ),
+      duplicatePhones.length > 0 && h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Duplicate phone watch'), h('div', { className: 'cad-list-stack' }, duplicatePhones.map(([phone, count]) => h('div', { className: 'cad-list-row slim tone-amber', key: phone }, h('span', { className: 'cad-mono' }, phone), h('span', { className: 'cad-muted' }, count + ' rows'), h('button', { className: 'cad-btn ghost', onClick: () => mergeDuplicatePhone && mergeDuplicatePhone(phone) }, 'Review')))))
+    ));
+    var payAdminRows = Object.entries(adminSessions || {}).filter(([em]) => em && em.toLowerCase() !== myEmail.toLowerCase()).map(([em, ss]) => {
+      var rows = Array.isArray(ss) ? ss : [];
+      var unpaid = rows.filter(s => !s.paid).reduce((a, s) => a + (s.pay || 0), 0) + (incentives || []).filter(x => !x.paid && (x.admin || '').toLowerCase() === em.toLowerCase()).reduce((a, x) => a + (x.amount || 0), 0);
+      var hours = rows.reduce((a, s) => a + (s.fullSession ? (adminConfigs[em]?.sessionDur || myCfg.sessionDur || 0) : (s.elapsed || 0) / 3600), 0);
+      return { email: em, name: (adminConfigs[em] || {}).bizName || em, sessions: rows.length, hours, unpaid };
+    }).sort((a, b) => b.unpaid - a.unpaid);
+    var timesheetView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
+      h('div', { className: 'cad-dashboard-head' },
+        h('div', null, h('h2', { style: { fontSize: 24 } }, role === 'admin' ? 'My Pay' : 'Pay'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, role === 'admin' ? sessionLog.length + ' sessions - ' + cadMoney(unpaidEarnings) + ' unpaid' : payAdminRows.length + ' admins - ' + cadMoney(payAdminRows.reduce((a, r) => a + r.unpaid, 0)) + ' unpaid')),
+        h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => pullSessionsFromSheet && pullSessionsFromSheet() }, icon('Refresh', 13), 'Pull sheets'), h('button', { className: 'cad-btn primary', onClick: () => { setTab('settings'); setSettingsSubtab(role === 'admin' ? 'prefs' : 'team'); } }, icon('Settings', 13), 'Pay setup'))
+      ),
+      h('div', { className: 'cad-stat-grid' }, role === 'admin' ? [
+        stat('Total earned', cadMoney(totalEarnings), tier.label + ' - ' + cadMoney(hourlyRate) + '/hr', 'var(--ad-brass-2)'),
+        stat('Unpaid', cadMoney(unpaidEarnings), unpaidIncentiveTotal ? cadMoney(unpaidIncentiveTotal) + ' incentives' : 'pending payout', 'var(--ad-amber)'),
+        stat('Sessions', sessionLog.length, monthlyAppts + ' appts this month'),
+        stat('Payments', (paymentsReceived || []).length, 'received records', 'var(--ad-green)')
+      ] : [
+        stat('Unpaid', cadMoney(payAdminRows.reduce((a, r) => a + r.unpaid, 0)), 'admin payroll', 'var(--ad-amber)'),
+        stat('Admins', payAdminRows.length, 'with sessions'),
+        stat('Hours', payAdminRows.reduce((a, r) => a + r.hours, 0).toFixed(1), 'logged'),
+        stat('Cycles', (billingCycles || []).length, 'closed cycles', 'var(--ad-green)')
+      ]),
+      role === 'admin' ? h('div', { className: 'cad-page-grid' },
+        h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Recent sessions'), (sessionLog || []).length ? h('div', { className: 'cad-list-stack' }, sessionLog.slice(0, 8).map((s, i) => h('div', { className: 'cad-list-row slim', key: s.id || s.startTime || i }, h('span', null, h('b', null, new Date(s.startTime || Date.now()).toLocaleDateString('en-SG')), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, (s.dialed || 0) + ' dialed - ' + (s.sets || 0) + ' set')), h('span', { className: 'cad-mono cad-muted' }, ((s.elapsed || 0) / 3600).toFixed(1) + 'h'), h('span', { className: 'cad-pill ' + (s.paid ? 'green' : 'amber') }, cadMoney(s.pay || 0))))) : h('p', { className: 'cad-page-note' }, 'No completed sessions yet.')),
+        h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Payments received'), (paymentsReceived || []).length ? h('div', { className: 'cad-list-stack' }, paymentsReceived.slice(0, 8).map((p, i) => h('div', { className: 'cad-list-row slim tone-green', key: p.id || i }, h('span', null, h('b', null, p.from || p.payer || 'Payment'), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, p.date || p.createdAt || '')), h('span', { className: 'cad-mono cad-muted' }, p.method || 'record'), h('span', { className: 'cad-pill green' }, cadMoney(p.amount || 0))))) : h('p', { className: 'cad-page-note' }, 'No payment receipts recorded.'))
+      ) : h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Admin payroll'), payAdminRows.length ? h('div', { className: 'cad-list-stack' }, payAdminRows.map(r => h('div', { className: 'cad-list-row', key: r.email }, h('span', null, h('b', null, r.name), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, r.email)), h('span', { className: 'cad-mono cad-muted' }, r.hours.toFixed(1) + 'h'), h('span', { className: 'cad-muted' }, r.sessions + ' sessions'), h('span', { className: 'cad-pill ' + (r.unpaid ? 'amber' : 'green') }, cadMoney(r.unpaid))))) : h('p', { className: 'cad-page-note' }, 'No admin sessions loaded yet.'))
+    ));
+    var rankDenom = nextRank ? Math.max(1, nextRank.cumStars || nextRank.threshold || 1) : Math.max(1, monthlyAppts || 1);
+    var rankPct = nextRank ? Math.min(100, monthlyAppts / rankDenom * 100) : 100;
+    var tierMins = myCfg.tierMins || [0, 30, 60, 100, 150, 200];
+    var nextTierMin = tierMins.find(x => totalSets < x) || Math.max(totalSets, tierMins[tierMins.length - 1] || 1);
+    var tierPct = nextTierMin ? Math.min(100, totalSets / Math.max(1, nextTierMin) * 100) : 100;
+    var rankView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
+      h('div', { className: 'cad-dashboard-head' },
+        h('div', null, h('h2', { style: { fontSize: 24 } }, 'Rank'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, monthName, ' - ', monthlyAppts, ' appointments - ', totalSets, ' all-time sets')),
+        h('button', { className: 'cad-btn primary', onClick: () => { setMainMode('call'); setTab('home'); } }, icon('PhoneOutgoing', 13), 'Call view')
+      ),
+      h('div', { className: 'cad-page-grid' },
+        h('div', { className: 'cad-card cad-editor-card' }, h('span', { className: 'cad-label' }, 'Monthly rank'), h('h3', { style: { fontSize: 34, color: rank.color || 'var(--ad-brass-2)' } }, rank.label), h('p', { className: 'cad-muted', style: { fontSize: 13 } }, nextRank ? (nextRank.cumStars - monthlyAppts) + ' appointments to ' + nextRank.label : 'Top rank reached'), h('div', { className: 'cad-mini-progress' }, h('i', { style: { width: rankPct + '%' } }))),
+        h('div', { className: 'cad-card cad-editor-card' }, h('span', { className: 'cad-label' }, 'Pay tier'), h('h3', { style: { fontSize: 34, color: tier.color || 'var(--ad-brass-2)' } }, tier.label), h('p', { className: 'cad-muted', style: { fontSize: 13 } }, cadMoney(hourlyRate), '/hr - ', nextTierMin > totalSets ? (nextTierMin - totalSets) + ' sets to next tier' : 'Top tier reached'), h('div', { className: 'cad-mini-progress' }, h('i', { style: { width: tierPct + '%' } })))
+      ),
+      h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Rank ladder'), h('div', { className: 'cad-list-stack' }, (ML_RANKS || []).map((r, i) => {
+        var threshold = (cfg.starThresholds || [0, 5, 10, 15, 25, 35, 50])[i] || 0;
+        var active = rank.idx === i;
+        return h('div', { className: 'cad-list-row slim ' + (active ? 'tone-amber' : ''), key: r.key || r.label }, h('span', null, h('b', { style: { color: r.color } }, r.label), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, threshold ? threshold + ' appts/month' : 'Start')), h('span', { className: 'cad-mono cad-muted' }, monthlyAppts + ' current'), active ? h('span', { className: 'cad-pill amber' }, 'Now') : monthlyAppts >= threshold ? h('span', { className: 'cad-pill green' }, 'Unlocked') : h('span', { className: 'cad-pill' }, threshold - monthlyAppts, ' left'));
+      })))
+    ));
+    var targetNow = currentSession ? (sessionTarget.type === 'connected' ? (currentSession.dialed || 0) - (currentSession.np || 0) : sessionTarget.type === 'sets' ? (currentSession.sets || 0) : (currentSession.dialed || 0)) : 0;
+    var targetPct = Math.min(100, targetNow / Math.max(1, sessionTarget.count || 1) * 100);
+    var dialView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
+      h('div', { className: 'cad-dashboard-head' },
+        h('div', null, h('h2', { style: { fontSize: 24 } }, 'Assist'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, callAssist ? (callAssistStatus || 'Call assist on') : 'Call assist off')),
+        h('button', { className: 'cad-btn primary', onClick: () => { setMainMode('call'); setTab('home'); } }, icon('PhoneOutgoing', 13), 'Open call view')
+      ),
+      h('div', { className: 'cad-page-grid' },
+        h('div', { className: 'cad-card cad-editor-card' },
+          h('div', { className: 'cad-action-strip', style: { padding: 0 } }, h('div', null, h('span', { className: 'cad-label' }, 'Call assist'), h('p', { className: 'cad-page-note', style: { marginTop: 5 } }, callAssistStatus || (callAssist ? 'Enabled' : 'Disabled'))), h('button', { className: 'cad-toggle ' + (callAssist ? 'on' : ''), title: 'Toggle call assist', onClick: async () => { var next = !callAssist; setCallAssist(next); if (next && 'Notification' in window && Notification.permission === 'default') { var p = await Notification.requestPermission(); setCallAssistStatus(p === 'granted' ? 'Notifications ready' : 'Notifications off'); } else setCallAssistStatus(next ? 'Enabled' : 'Disabled'); } })),
+          h('div', { className: 'cad-kv-row' }, h('span', null, 'Notifications'), h('span', { className: 'cad-pill ' + (('Notification' in window && Notification.permission === 'granted') ? 'green' : 'amber') }, 'Notification' in window ? Notification.permission : 'unavailable')),
+          h('div', { className: 'cad-kv-row' }, h('span', null, 'Queue'), h('span', { className: 'cad-muted' }, queueTotal, ' callable leads')),
+          h('div', { className: 'cad-kv-row' }, h('span', null, 'Current lead'), h('span', { className: 'cad-muted' }, leadName))
+        ),
+        h('div', { className: 'cad-card cad-editor-card' },
+          cadSectionHead('Session target', currentSession && h('span', { className: 'cad-pill green' }, Math.round(targetPct), '%')),
+          h('div', { className: 'cad-inline', style: { flexWrap: 'wrap' } }, [['dials', 'Dials'], ['connected', 'Connected'], ['sets', 'Appts']].map(([k, l]) => h('button', { className: 'cad-tab ' + (sessionTarget.type === k ? 'on' : ''), key: k, onClick: () => setSessionTarget(p => ({ ...p, type: k })) }, l))),
+          h('div', { className: 'cad-inline', style: { justifyContent: 'center' } }, h('button', { className: 'cad-btn', onClick: () => setSessionTarget(p => ({ ...p, count: Math.max(1, (p.count || 1) - 5) })) }, '-5'), h('span', { className: 'cad-value-big' }, sessionTarget.count || 0), h('button', { className: 'cad-btn', onClick: () => setSessionTarget(p => ({ ...p, count: (p.count || 0) + 5 })) }, '+5')),
+          h('div', { className: 'cad-mini-progress' }, h('i', { style: { width: targetPct + '%' } })),
+          h('p', { className: 'cad-page-note' }, targetNow, ' / ', sessionTarget.count || 0, ' ', sessionTarget.type || 'dials')
+        )
+      )
+    ));
     var cadField = (label, child) => h('div', { className: 'cad-field' }, h('label', null, label), child);
     var cadModal = (show, cls, onClose, body) => show ? h('div', { className: 'cad-modal-overlay', onClick: onClose }, h('div', { className: 'cad-modal ' + (cls || ''), onClick: e => e.stopPropagation() }, body)) : null;
     var makeCbPick = (days, hour, minute) => {
@@ -15316,6 +15508,23 @@ function App() {
       d.setHours(hour, minute || 0, 0, 0);
       return { date: localDateKey(d), time: String(hour).padStart(2, '0') + ':' + String(minute || 0).padStart(2, '0') };
     };
+    var moreModal = cadModal(showMoreMenu, 'narrow', () => setShowMoreMenu(false), h(React.Fragment, null,
+      h('div', { className: 'cad-modal-head' },
+        h('div', null, h('h3', { className: 'cad-modal-title' }, 'More'), h('p', { className: 'cad-modal-sub' }, 'Launch pages for operations, pay, tracking, and call assist.')),
+        h('button', { className: 'cad-btn ghost', onClick: () => setShowMoreMenu(false) }, 'x')
+      ),
+      h('div', { className: 'cad-more-grid' }, [
+        ['cb', 'Callbacks', 'Bell', cbOpen.length + ' open'],
+        isManageMode && ['live', 'Live', 'Zap', filteredLiveFeed.length + ' events'],
+        isManageMode && ['tracking', 'Tracking', 'Sheet', trackedDialed + ' dials'],
+        ['timesheet', role === 'admin' ? 'My Pay' : 'Pay', 'Clock', role === 'admin' ? cadMoney(unpaidEarnings) + ' unpaid' : cadMoney(payAdminRows.reduce((a, r) => a + r.unpaid, 0)) + ' unpaid'],
+        ['rank', 'Rank', 'Trophy', rank.label],
+        ['dial', 'Assist', 'PhoneOutgoing', callAssist ? 'Enabled' : 'Off']
+      ].filter(Boolean).map(item => h('button', { className: 'cad-option', key: item[0], onClick: () => goCadTab(item[0]) },
+        h('span', null, h('span', { className: 'cad-pill brass', style: { marginBottom: 8 } }, icon(item[2], 13)), h('b', { style: { display: 'block' } }, item[1]), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 4 } }, item[3])),
+        h('span', { className: 'cad-subtle' }, '>')
+      )))
+    ));
     var submitClaudeAppointment = async () => {
       if (!apptDate || !apptTime) return toast('Pick appointment date and time', 'err');
       if (apptSaving) return;
@@ -15474,22 +15683,22 @@ function App() {
       h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => setShowColPicker(null) }, 'Keep pending'))
     ));
     var undoBar = undoInfo ? h('div', { className: 'cad-floating-bar' }, h('span', null, h('b', null, undoInfo.status?.toUpperCase()), ' - ', undoInfo.name || 'last lead'), h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => setUndoInfo(null) }, 'Dismiss'), h('button', { className: 'cad-btn primary', onClick: () => doUndo() }, 'Undo now'))) : null;
-    var modalStack = h(React.Fragment, null, undoBar, cbModal, apptModal, slotModal, waModal, importModal, colPickerModal, dialogModal);
+    var modalStack = h(React.Fragment, null, undoBar, moreModal, cbModal, apptModal, slotModal, waModal, importModal, colPickerModal, dialogModal);
     var withCadModals = view => h(React.Fragment, null, view, modalStack);
-    if (mainMode === 'call') return withCadModals(callView);
+    if ((mainMode === 'call' && tab === 'home') || tab === 'dial') return withCadModals(tab === 'dial' ? dialView : callView);
     if (tab === 'leads') return withCadModals(leadsView);
     if (tab === 'cal') return withCadModals(calView);
     if (tab === 'appts') return withCadModals(apptsView);
+    if (tab === 'cb') return withCadModals(cbView);
+    if (tab === 'live') return withCadModals(liveView);
+    if (tab === 'tracking') return withCadModals(trackingView);
+    if (tab === 'timesheet') return withCadModals(timesheetView);
+    if (tab === 'rank') return withCadModals(rankView);
     if (tab === 'settings') return withCadModals(settingsView);
     return withCadModals(dashboard);
   };
   var _assimilationQs = new URLSearchParams(location.search);
-  // 0068: assimilated Claude design is now the production render path. The
-  // legacy render below stays in the file as the ?legacy=1 escape hatch
-  // (and as the source of truth for any feature surfaces the assimilated
-  // path doesn't yet implement). Add ?review=1 for the strict-claude-review
-  // mockup viewer in local preview mode.
-  if (_assimilationQs.get('legacy') !== '1' && _assimilationQs.get('review') !== '1') return renderClaudeAssimilatedApp();
+  if (window._localPreviewMode && _assimilationQs.get('legacy') !== '1' && _assimilationQs.get('review') !== '1') return renderClaudeAssimilatedApp();
   return React.createElement("div", {
     className: "desktop-wrap"
   }, React.createElement("div", {
