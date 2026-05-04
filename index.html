@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0062'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0063'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -196,10 +196,23 @@ button.free-slot{appearance:none;text-align:left}
 @media(min-width:960px){
   :root{--left-pane-w:clamp(420px,32vw,680px);--app-side-margin:max(calc((100vw - 1920px)/2),0px)}
   .desktop-wrap{gap:0;align-items:stretch}
-  .desktop-wrap .app-shell{margin:0 auto;border-radius:0;flex:1 1 auto;width:100%;max-width:min(1920px,100vw);height:100vh;height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;display:grid;grid-template-columns:minmax(0,var(--left-pane-w)) minmax(0,1fr);grid-auto-rows:max-content;align-items:start;align-content:start;scrollbar-width:none}
+  /* Phase 5 (design handoff): right column uses --script-w (set inline
+     by the App on the .app-shell, default 380px). Min 280, max 520. */
+  .desktop-wrap .app-shell{margin:0 auto;border-radius:0;flex:1 1 auto;width:100%;max-width:min(1920px,100vw);height:100vh;height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,var(--script-w,380px));grid-auto-rows:max-content;align-items:start;align-content:start;scrollbar-width:none}
   .desktop-wrap .app-shell::-webkit-scrollbar{display:none}
   .desktop-wrap .app-shell>:not(.script-panel):not(.script-toggle){grid-column:1;min-width:0}
   .script-panel{grid-column:2;grid-row:1 / span 999;align-self:start;width:100%;min-width:0;max-width:100%;min-height:100vh;min-height:100dvh;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden}
+  /* Phase 5 (design handoff): drag handle on the script panel's left
+     edge. 6px wide hit-area centred on the column boundary, 32px-tall
+     visual pill that brightens on hover. cursor:col-resize signals the
+     interaction. While dragging, .sp-resizing on body locks selection
+     + cursor across the whole window so text-selection highlight
+     doesn't streak as the pointer moves. */
+  .sp-resize{position:absolute;left:-3px;top:0;bottom:0;width:6px;cursor:col-resize;z-index:5;background:transparent;transition:background .12s}
+  .sp-resize::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:32px;border-radius:2px;background:var(--border2);transition:background .12s, height .12s}
+  .sp-resize:hover::after,.sp-resize.dragging::after{background:var(--accent);height:48px}
+  body.sp-resizing{cursor:col-resize !important;user-select:none !important}
+  body.sp-resizing *{cursor:col-resize !important;user-select:none !important}
   .script-panel .sp-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;flex-shrink:0;min-width:0}
   .script-panel .sp-header h3{flex:0 0 auto;min-width:0}
   .script-panel .sp-header>div{min-width:0;flex:1 1 360px}
@@ -451,7 +464,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0062';
+window.APP_VERSION='2026.05.05.0063';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -7366,6 +7379,16 @@ function App() {
     };
   }, [role]);
   var [scriptOpen, setScriptOpen] = useState(load('scriptOpen') ?? true);
+  // Phase 5 (design handoff): resizable script panel width, persisted to
+  // localStorage. Default 380, clamp 280–520. The .sp-resize handle on
+  // the panel's left edge updates this state via pointermove → rAF →
+  // setScriptPanelWidth (debounced via rAF so re-renders coalesce). The
+  // app-shell exposes the value as a CSS variable --script-w on the
+  // grid container so grid-template-columns can size the right column.
+  var [scriptPanelWidth, setScriptPanelWidth] = useState(() => {
+    var raw = parseInt(localStorage.getItem('scriptPanelWidth') || '', 10);
+    return Number.isFinite(raw) && raw >= 280 && raw <= 520 ? raw : 380;
+  });
   var [scriptContent, setScriptContent] = useState(_sanitizeRichHtml(cfg.callingScript || ''));
   var [scriptEditing, setScriptEditing] = useState(false);
   var [refNotes, setRefNotes] = useState(_sanitizeRichHtml(cfg.refNotes || ''));
@@ -14685,7 +14708,12 @@ function App() {
   return React.createElement("div", {
     className: "desktop-wrap"
   }, React.createElement("div", {
-    className: "app-shell"
+    className: "app-shell",
+    // Phase 5 (design handoff): expose scriptPanelWidth as --script-w on
+    // the desktop grid container so grid-template-columns can size the
+    // right column. The CSS uses var(--script-w, 380px) as fallback so
+    // SSR/initial paint defaults cleanly.
+    style: { '--script-w': scriptPanelWidth + 'px' }
   }, React.createElement(Confetti, {
     show: confetti
   }), React.createElement(MilestonePopup, _extends({
@@ -33639,8 +33667,62 @@ function App() {
       fontSize: 13
     }
   }, "Close")))), scriptOpen && React.createElement("div", {
-    className: 'script-panel ' + (showRefNotes ? '' : 'ref-collapsed')
-  }, React.createElement("div", {
+    className: 'script-panel ' + (showRefNotes ? '' : 'ref-collapsed'),
+    // Phase 5: position:relative so the absolutely-positioned drag
+    // handle anchors to the panel's left edge.
+    style: { position: 'relative' }
+  },
+    React.createElement("div", {
+      // Phase 5 (design handoff): 6px drag handle on the panel's left
+      // edge. Captures pointerdown, locks the body cursor + selection
+      // while dragging via .sp-resizing, listens for pointermove on
+      // document, persists final width on pointerup. Width clamped
+      // 280–520 per design spec; updates coalesced through rAF so
+      // re-renders don't fire on every mousemove tick.
+      className: "sp-resize",
+      title: "Drag to resize the script panel",
+      onPointerDown: e => {
+        e.preventDefault();
+        var startX = e.clientX;
+        var startW = scriptPanelWidth;
+        var moved = false;
+        var lastW = startW;
+        var rafPending = false;
+        document.body.classList.add('sp-resizing');
+        e.currentTarget.classList.add('dragging');
+        var handleEl = e.currentTarget;
+        var onMove = ev => {
+          var dx = ev.clientX - startX;
+          // Drag right (positive dx) shrinks panel, drag left widens.
+          // The panel is on the right side of the viewport so widening
+          // means the left edge moves left → smaller dx.
+          var nextW = Math.max(280, Math.min(520, startW - dx));
+          if (nextW !== lastW) {
+            lastW = nextW;
+            moved = true;
+            if (!rafPending) {
+              rafPending = true;
+              window.requestAnimationFrame(() => {
+                rafPending = false;
+                setScriptPanelWidth(lastW);
+              });
+            }
+          }
+        };
+        var onUp = () => {
+          document.removeEventListener('pointermove', onMove);
+          document.removeEventListener('pointerup', onUp);
+          document.body.classList.remove('sp-resizing');
+          if (handleEl) handleEl.classList.remove('dragging');
+          if (moved) {
+            try { localStorage.setItem('scriptPanelWidth', String(lastW)); } catch (_e) {}
+          }
+        };
+        document.addEventListener('pointermove', onMove);
+        document.addEventListener('pointerup', onUp);
+      }
+    }),
+    React.createElement("div", {
     className: "sp-header"
   }, React.createElement("h3", {
     style: {
