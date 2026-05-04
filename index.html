@@ -391,7 +391,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0031';
+window.APP_VERSION='2026.05.03.0032';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -13940,12 +13940,26 @@ function App() {
   var _showRank = true;
   var _baseTabs = [['dial', '📞 Dial'], ['appts', '📅 Appts'], ['leads', '📋 Leads'], ['settings', '⚙️ Set']];
   var cbDue = cbQueue.filter(cb => cb.status !== 'called').length;
-  var isCallMode = role === 'admin' || role === 'main' && mainMode === 'call';
-  var isManageMode = role === 'main' && mainMode === 'manage';
+  // ─── Mode model (revised 2026.05.03.0032) ──────────────────────────
+  // Mains no longer flip between "Call" and "Mgmt" modes — they always
+  // have manage powers (Settings, Team panel, live feed, owner controls
+  // etc. are always reachable). The Home tab itself doubles as the
+  // operator workspace when the user toggles its inline Home/Call
+  // switch. `mainMode` is reused as the per-Home-tab view selector
+  // ('home' = manager dashboard, 'call' = operator pane). All other
+  // tabs treat Main as fully manage-capable.
+  var isCallMode = role === 'admin' || role === 'main' && tab === 'home' && mainMode === 'call' || role === 'main' && tab === 'dial';
+  var isManageMode = role === 'main';
   // ═══ Unified bottom nav: same 5 tabs in both modes. Mode determines what
   // ═══ renders inside the Home tab (manager dashboard vs Dial workspace).
   // ═══ Live / Rank / Pay / Settings live in the More menu.
-  var unifiedTabs = [['home', (isCallMode ? '📞 Home' : '🏠 Home') + (isCallMode && cbDue ? ' 🔔' + cbDue : '')], ['leads', '📋 Leads'], ['cal', '📆 Cal'], ['appts', '📅 Appts'], ['more', '⋯ More']];
+  // Home tab label is special — for Mains it doubles as a Home/Call
+  // switch (rendered with custom JSX below). For Admins it's just the
+  // operator's Home (always the call workspace).
+  var _homeTabLabel = role === 'admin'
+    ? '📞 Home' + (cbDue ? ' 🔔' + cbDue : '')
+    : '__HOME_SWITCH__';
+  var unifiedTabs = [['home', _homeTabLabel], ['leads', '📋 Leads'], ['cal', '📆 Cal'], ['appts', '📅 Appts'], ['more', '⋯ More']];
   var moreTabKeys = ['timesheet', 'tracking', 'settings', 'live', 'rank', 'dial'];
   // ═══ `cal` is now a top-level tab; keep apptsSubtabKeys for the inner List/CB
   // ═══ sub-nav on the Appts tab only, so the Appts pill doesn't light up when the
@@ -14041,7 +14055,7 @@ function App() {
           ? Object.values(adminConfigs || {}).filter(ac => ac?.shareScript).length + ' of ' + realAdminCount + ' admin(s) receiving a script'
           : 'Choose a saved script for each admin (' + realAdminCount + ' configured)',
         done: anyAdminScriptShared,
-        action: () => isManageMode ? setSettingsSubtab('team') : setMainMode('manage')
+        action: () => { setTab('settings'); setSettingsSubtab('team'); }
       });
       mainItems.push({
         key: 'wa',
@@ -14050,7 +14064,7 @@ function App() {
           ? Object.values(adminConfigs || {}).filter(ac => ac?.shareWaTemplates).length + ' of ' + realAdminCount + ' admin(s) receiving a template'
           : 'Choose a WhatsApp template for each admin (' + realAdminCount + ' configured)',
         done: anyAdminWAShared,
-        action: () => isManageMode ? setSettingsSubtab('team') : setMainMode('manage')
+        action: () => { setTab('settings'); setSettingsSubtab('team'); }
       });
     }
     return mainItems;
@@ -14058,10 +14072,23 @@ function App() {
   var guidedSetupItems = buildGuidedSetupItems();
   var guidedDoneCount = guidedSetupItems.filter(x => x.done).length;
   var guidedSetupComplete = guidedDoneCount === guidedSetupItems.length;
-  var _prefsTabLabel = 'Calling';
-  var _integrTabLabel = role === 'admin' ? 'AI & Sheets' : 'Integrations';
-  var settingsAllTabs = [['setup', 'Setup'], ['prefs', _prefsTabLabel], ['integr', _integrTabLabel], ['data', 'Sync'], ...(isManageMode ? [['team', 'Team']] : []), ...(isCreatorUser ? [['owner', 'Owner']] : [])];
-  var settingsRoleTabs = settingsShowAll ? settingsAllTabs : role === 'admin' ? [['setup', 'Setup'], ['integr', _integrTabLabel], ['prefs', _prefsTabLabel]] : isManageMode ? [['setup', 'Setup'], ['team', 'Team'], ['prefs', _prefsTabLabel], ['integr', _integrTabLabel], ['data', 'Sync'], ...(isCreatorUser ? [['owner', 'Owner']] : [])] : [['setup', 'Setup'], ['prefs', _prefsTabLabel], ['integr', _integrTabLabel], ['data', 'Sync']];
+  // ─── Settings tabs (rebuilt 2026.05.03.0032) ───────────────────────
+  // No more manage-vs-call subdivision. Mains see EVERY tab they have
+  // access to, sorted by goal: Setup → Calling → Workspace → Team →
+  // Sync → Owner. Admins see the same goal-sorted list minus Team
+  // (they don't manage other admins) and Owner (creator-only).
+  var _prefsTabLabel = '📞 Calling';
+  var _integrTabLabel = role === 'admin' ? '🔌 Workspace' : '🔌 Workspace';
+  var _allTabs = [
+    ['setup', '🚀 Setup'],
+    [_prefsTabLabel.split(' ')[1] === 'Calling' ? 'prefs' : 'prefs', _prefsTabLabel],
+    ['integr', _integrTabLabel],
+    ...(isManageMode ? [['team', '👥 Team']] : []),
+    ['data', '🔄 Sync'],
+    ...(isCreatorUser ? [['owner', '👑 Owner']] : [])
+  ];
+  var settingsAllTabs = _allTabs;
+  var settingsRoleTabs = _allTabs;
   useEffect(() => {
     if (tab !== 'settings') return;
     if (settingsRoleTabs.some(([k]) => k === settingsSubtab)) return;
@@ -14497,31 +14524,87 @@ function App() {
     y1: "17",
     x2: "12",
     y2: "21"
-  })), React.createElement("span", null, "Management")), role === 'main' && React.createElement("div", {
-    className: "mode-switch"
-  }, React.createElement("span", {
-    className: 'sw-label ' + (mainMode === 'call' ? 'active' : 'dim'),
-    style: {
-      color: mainMode === 'call' ? '#22c55e' : 'var(--text3)'
-    }
-  }, "Call"), React.createElement("button", {
-    className: 'mode-toggle ' + (mainMode === 'call' ? 'call' : 'manage'),
-    onClick: () => {
-      var m = mainMode === 'call' ? 'manage' : 'call';
-      setMainMode(m);
-      setTab(m === 'call' ? 'dial' : 'live');
-    }
-  }, React.createElement("div", {
-    className: "knob"
-  })), React.createElement("span", {
-    className: 'sw-label ' + (mainMode === 'manage' ? 'active' : 'dim'),
-    style: {
-      color: mainMode === 'manage' ? '#ef4444' : 'var(--text3)'
-    }
-  }, "Mgmt"))), React.createElement("div", {
+  })), React.createElement("span", null, "Management"))), React.createElement("div", {
     className: "app-tabs"
   }, tabs.map(([k, v]) => {
     var _isActive = k === 'appts' && isManageMode ? apptsSubtabKeys.includes(tab) : k === 'more' ? moreTabKeys.includes(tab) : tab === k;
+    // ─── Home/Call switch (Main only) ────────────────────────────
+    // Mains see a single button that doubles as the Home tab AND a
+    // toggle between the manager dashboard view ('home') and the
+    // operator workspace view ('call'). The two icons are stacked
+    // diagonally with the active one bright, the dim one ghosted.
+    // Tap on the bright icon = stay on Home tab.
+    // Tap on the dim icon = jump to Home + flip the view in one go.
+    if (k === 'home' && v === '__HOME_SWITCH__') {
+      var _onHomeTab = tab === 'home';
+      var _isCallView = mainMode === 'call';
+      var sideStyle = active => ({
+        flex: 1,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 4,
+        padding: '4px 6px',
+        opacity: active ? 1 : .42,
+        color: active ? (_isCallView ? '#22c55e' : '#a78bfa') : 'var(--text3)',
+        fontSize: 11,
+        fontWeight: active ? 800 : 600,
+        cursor: 'pointer',
+        transition: 'opacity .15s ease'
+      });
+      return React.createElement("button", {
+        key: k,
+        className: _onHomeTab ? 'active' : '',
+        onClick: () => setTab('home'),
+        style: { padding: 0, position: 'relative' }
+      },
+        React.createElement("span", {
+          // Diagonal divider line — pure CSS, no SVG.
+          style: {
+            position: 'absolute',
+            top: '50%', left: '50%',
+            width: '120%', height: 1,
+            background: 'var(--border2)',
+            transform: 'translate(-50%, -50%) rotate(-22deg)',
+            pointerEvents: 'none',
+            opacity: .55
+          }
+        }),
+        React.createElement("div", {
+          style: { display: 'flex', alignItems: 'stretch', width: '100%', height: '100%' }
+        },
+          React.createElement("div", {
+            onClick: e => {
+              e.stopPropagation();
+              if (_onHomeTab && _isCallView) {
+                setMainMode('home');
+                save('mainMode', 'home');
+              } else if (!_onHomeTab) {
+                setTab('home');
+                if (_isCallView) { setMainMode('home'); save('mainMode', 'home'); }
+              }
+            },
+            style: sideStyle(_onHomeTab && !_isCallView)
+          }, '🏠'),
+          React.createElement("div", {
+            onClick: e => {
+              e.stopPropagation();
+              if (_onHomeTab && !_isCallView) {
+                setMainMode('call');
+                save('mainMode', 'call');
+              } else if (!_onHomeTab) {
+                setTab('home');
+                setMainMode('call');
+                save('mainMode', 'call');
+              }
+            },
+            style: sideStyle(_onHomeTab && _isCallView)
+          }, '📞', cbDue ? React.createElement("span", {
+            style: { fontSize: 9, fontWeight: 800, color: 'var(--amber)' }
+          }, cbDue) : null)
+        )
+      );
+    }
     return React.createElement("button", {
       key: k,
       className: _isActive ? 'active' : '',
@@ -23291,10 +23374,12 @@ function App() {
   }, React.createElement("input", {
     value: settingsSearch,
     onChange: e => setSettingsSearch(e.target.value),
-    placeholder: "Search settings...",
+    placeholder: "\uD83D\uDD0D Search settings \u2014 try 'script', 'calendar', 'pay', 'objection'\u2026",
     style: {
       marginBottom: 10,
-      fontSize: 13
+      fontSize: 13,
+      padding: '11px 14px',
+      fontWeight: 600
     }
   }), settingsSearch && React.createElement("div", {
     className: "card",
@@ -23309,59 +23394,39 @@ function App() {
       fontSize: 11,
       color: 'var(--text3)'
     }
-  }, "Quick jump"), [['setup', 'Setup checklist'], ['integr', role === 'admin' ? 'Synced workspace' : 'Google, sheets, calendar'], ['data', 'Sync diagnostics'], ['team', 'Admins and pay'], ['prefs', 'Calling preferences'], ['owner', 'Owner controls']].filter(([k, label]) => label.toLowerCase().includes(settingsSearch.toLowerCase()) && settingsAllTabs.some(([tabKey]) => tabKey === k)).map(([k, label]) => React.createElement("button", {
-    key: k,
-    onClick: () => {
-      setSettingsSubtab(k);
-      setSettingsSearch('');
-    },
-    style: {
-      margin: '0 6px 6px 0',
-      padding: '7px 10px',
-      borderRadius: 8,
-      background: 'var(--bg3)',
-      color: 'var(--accent2)',
-      fontSize: 10,
-      fontWeight: 800,
-      border: '1px solid var(--border)'
-    }
-  }, label))), React.createElement("div", {
-    className: "card",
-    style: {
-      marginBottom: 10,
-      padding: 10,
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      gap: 10,
-      borderColor: settingsShowAll ? 'var(--border)' : 'rgba(99,102,241,.24)'
-    }
-  }, React.createElement("div", null, React.createElement("p", {
-    style: {
-      margin: 0,
-      fontSize: 12,
-      fontWeight: 900,
-      color: '#f1f5f9'
-    }
-  }, settingsShowAll ? 'All settings' : role === 'admin' ? 'Admin settings' : isManageMode ? 'Main management settings' : 'Main calling settings'), React.createElement("p", {
-    style: {
-      margin: '2px 0 0',
-      fontSize: 10,
-      color: 'var(--text3)'
-    }
-  }, settingsShowAll ? 'Full settings list visible' : 'Role view hides panels you usually do not need')), React.createElement("button", {
-    onClick: () => setSettingsShowAll(p => !p),
-    style: {
-      flexShrink: 0,
-      padding: '8px 11px',
-      borderRadius: 10,
-      background: settingsShowAll ? 'var(--bg3)' : 'var(--adim)',
-      color: settingsShowAll ? 'var(--text2)' : 'var(--accent2)',
-      fontSize: 11,
-      fontWeight: 900,
-      border: '1px solid ' + (settingsShowAll ? 'var(--border)' : 'rgba(99,102,241,.3)')
-    }
-  }, settingsShowAll ? 'Role View' : 'Show All')), React.createElement("div", {
+  }, "Quick jump"), (() => {
+    // \u2500\u2500\u2500 Search index \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    // Each row = [tab key, display label, keywords]. Keywords let
+    // search find a tab by what's INSIDE it (e.g. searching "WhatsApp"
+    // finds Calling, "calendar" finds Workspace, "pay" finds Team).
+    var searchIndex = [
+      ['setup',  '\uD83D\uDE80 Setup',     'setup checklist first-time onboarding guide google connect lead sheet'],
+      ['prefs',  '\uD83D\uDCDE Calling',   'calling script reference notes objection objections handling whatsapp templates ai claude gemini'],
+      ['integr', '\uD83D\uDD0C Workspace', 'workspace google sheets drive calendar oauth integration api keys'],
+      ['team',   '\uD83D\uDC65 Team',      'team admins pay rates share script share template hire untether session slot bonus'],
+      ['data',   '\uD83D\uDD04 Sync',      'sync data backup restore diagnostics cloud supabase realtime nuke'],
+      ['owner',  '\uD83D\uDC51 Owner',     'owner global rules stars ranks billing creator nuclear reset reset thresholds milestone']
+    ];
+    var q = settingsSearch.toLowerCase();
+    var allowedKeys = new Set(settingsAllTabs.map(([k]) => k));
+    return searchIndex.filter(([k, , kw]) => allowedKeys.has(k) && (kw.includes(q) || k.includes(q))).map(([k, label]) => React.createElement("button", {
+      key: k,
+      onClick: () => {
+        setSettingsSubtab(k);
+        setSettingsSearch('');
+      },
+      style: {
+        margin: '0 6px 6px 0',
+        padding: '7px 10px',
+        borderRadius: 8,
+        background: 'var(--bg3)',
+        color: 'var(--accent2)',
+        fontSize: 10,
+        fontWeight: 800,
+        border: '1px solid var(--border)'
+      }
+    }, label));
+  })()), React.createElement("div", {
     style: {
       display: 'flex',
       flexWrap: 'wrap',
