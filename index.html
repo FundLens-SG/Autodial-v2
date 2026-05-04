@@ -388,7 +388,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0024';
+window.APP_VERSION='2026.05.03.0025';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -2409,8 +2409,19 @@ window.DEFAULT_WA_TEMPLATES=[{
   name:'Self Call Template',
   category:'appointment',
   isDefault:true,
+  // mainOnly: this template is reserved for the Main/Owner \u2014 used when the
+  // Main makes a self-call instead of an admin closing for them. Filtered
+  // out of admin-shared payloads + admin-side WA template list.
+  mainOnly:true,
   template:'Hello {{name}}, FC here from Manulife \u{1F44B}\nGreat catching up with you earlier.\n\nLook forward to meeting you and share with you what she has mentioned in the conversation.\n\nSee you {{day}}, {{date}}, {{time}} at {{location}}. Any changes let\u2019s keep each other updated okay?'
 }];
+window.isMainOnlyWATemplate=function(t){
+  if(!t)return false;
+  if(t.mainOnly===true)return true;
+  if(String(t.id||'')==='default_self_call_template')return true;
+  if(String(t.name||'').trim().toLowerCase()==='self call template')return true;
+  return false;
+};
 window.ensureDefaultWATemplates=function(list){
   var arr=Array.isArray(list)?list.slice():[];
   var hasSelfCall=arr.some(t=>String(t?.name||'').trim().toLowerCase()==='self call template');
@@ -2812,6 +2823,44 @@ function _escapeHtml(v) {
     })[ch];
   });
 }
+// ─── Dark-text auto-lighten ─────────────────────────────────────────
+// The script editor renders on a near-black surface, so any text the
+// user pastes from a light-mode document (e.g. Word, Google Docs,
+// websites) comes in with explicit dark colors and becomes invisible.
+// Detect any color whose relative luminance is below ~0.35 (sRGB) and
+// rewrite it to the editor's foreground color.
+var _SCRIPT_FG_LIGHT = '#f1f5f9';
+function _relativeLuminance(r, g, b) {
+  var conv = function (c) {
+    c /= 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * conv(r) + 0.7152 * conv(g) + 0.0722 * conv(b);
+}
+function _isDarkColorValue(value) {
+  var v = String(value || '').trim().toLowerCase();
+  if (!v) return false;
+  if (/^(black|navy|maroon|darkblue|darkgreen|darkred|midnightblue|dimgray|dimgrey|darkgray|darkgrey|darkslategray|darkslategrey|darkslateblue|saddlebrown|brown|indigo|purple|darkmagenta|darkorchid)$/.test(v)) return true;
+  var m = v.match(/^#([0-9a-f]{3,4})$/);
+  if (m) {
+    var s = m[1];
+    var r1 = parseInt(s[0] + s[0], 16);
+    var g1 = parseInt(s[1] + s[1], 16);
+    var b1 = parseInt(s[2] + s[2], 16);
+    return _relativeLuminance(r1, g1, b1) < 0.35;
+  }
+  m = v.match(/^#([0-9a-f]{6,8})$/);
+  if (m) {
+    var s2 = m[1];
+    var r2 = parseInt(s2.slice(0, 2), 16);
+    var g2 = parseInt(s2.slice(2, 4), 16);
+    var b2 = parseInt(s2.slice(4, 6), 16);
+    return _relativeLuminance(r2, g2, b2) < 0.35;
+  }
+  var rgbMatch = v.match(/^rgba?\s*\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (rgbMatch) return _relativeLuminance(+rgbMatch[1], +rgbMatch[2], +rgbMatch[3]) < 0.35;
+  return false;
+}
 function _sanitizeRichHtml(html) {
   if (typeof html !== 'string' || !html) return '';
   var template = document.createElement('template');
@@ -2868,6 +2917,11 @@ function _sanitizeRichHtml(html) {
       var prop = part.slice(0, idx).trim().toLowerCase();
       var value = part.slice(idx + 1).trim();
       if (!allowedStyles[prop] || !isSafeValue(value)) return '';
+      // Auto-lighten dark text colors so pasted-from-light-mode content
+      // stays readable on the editor's near-black background. Background
+      // colors are left alone — the user might intentionally want a dark
+      // highlight.
+      if (prop === 'color' && _isDarkColorValue(value)) value = _SCRIPT_FG_LIGHT;
       return prop + ':' + value;
     }).filter(Boolean).join(';');
   };
@@ -2904,7 +2958,11 @@ function _sanitizeRichHtml(html) {
           if (cleanStyle) node.setAttribute('style', cleanStyle);else node.removeAttribute('style');
           return;
         }
-        if (tag === 'font' && (name === 'color' || name === 'size')) return;
+        if (tag === 'font' && name === 'size') return;
+        if (tag === 'font' && name === 'color') {
+          if (_isDarkColorValue(attr.value)) node.setAttribute('color', _SCRIPT_FG_LIGHT);
+          return;
+        }
         node.removeAttribute(attr.name);
       });
       walk(node);
@@ -7007,6 +7065,12 @@ function App() {
   var [avatarMenuOpen, setAvatarMenuOpen] = useState(false);
   var [avatarMenuPos, setAvatarMenuPos] = useState({ top: 54, right: 14 });
   var [opPreviewOffset, setOpPreviewOffset] = useState(0);
+  // Expanded "all leads" modal launched by tapping the Next 3 panel.
+  // Lets the operator browse the full lead list (any status, ignoring
+  // dial filters) and tap any row to immediately call that lead. After
+  // the ad-hoc call's outcome, normal getNextDialable + filter resume.
+  var [showAllLeadsModal, setShowAllLeadsModal] = useState(false);
+  var [allLeadsSearch, setAllLeadsSearch] = useState('');
   var avatarBtnRef = useRef(null);
   var headerTapGuardRef = useRef({
     action: '',
@@ -7273,6 +7337,43 @@ function App() {
     if (!info) return;
     var u = overrideUndo || appStateRef.current._lastUndo;
     if (!u) return;
+    // ─── Skip undo (no status mutation, just jump back) ────────────
+    // skipCurrentLead never wrote a status. Undo just re-positions
+    // curIdx on the skipped lead, fires the dialer, and clears the
+    // undo banner.
+    if (u.status === 'skip') {
+      try {
+        if (autoAdvanceTimerRef.current) {
+          clearTimeout(autoAdvanceTimerRef.current);
+          autoAdvanceTimerRef.current = null;
+        }
+        var curLeads2 = leadsRef.current || [];
+        var targetIdx = u.leadIdx;
+        if (!(targetIdx >= 0 && curLeads2[targetIdx]) && u.leadPhone) {
+          var p2 = normalizePhone(u.leadPhone);
+          targetIdx = curLeads2.findIndex(l => normalizePhone(l.phone || '') === p2);
+        }
+        if (targetIdx < 0 || !curLeads2[targetIdx]) {
+          toast('Skipped lead is no longer in the queue', 'err');
+          setUndoInfo(null);
+          appStateRef.current._lastUndo = null;
+          return;
+        }
+        setCurIdx(targetIdx);
+        setRunning(true);
+        setPhase('calling');
+        setShowNextPreview(false);
+        setShowPostCall(null);
+        toast('↩️ Back to ' + (u.leadName || curLeads2[targetIdx].name || 'lead'));
+        setTimeout(() => {
+          var l = leadsRef.current[targetIdx];
+          if (l?.phone) dial(l.phone);
+        }, 200);
+      } catch (_e) {}
+      setUndoInfo(null);
+      appStateRef.current._lastUndo = null;
+      return;
+    }
     var steps = [];
     var step = (label, ok, detail) => steps.push({
       label,
@@ -7970,7 +8071,9 @@ function App() {
   } : null;
   var _selectedWATemplates = useCallback(ids => {
     var wanted = new Set((ids || []).map(x => String(x || '')).filter(Boolean));
-    return (waTemplates || []).filter(t => wanted.has(_waTplKey(t))).map(_cleanWATemplate).filter(t => t && t.template);
+    // Strip mainOnly templates (e.g. Self Call Template) so they can never
+    // be propagated to admin accounts via the share-to-admins flow.
+    return (waTemplates || []).filter(t => wanted.has(_waTplKey(t)) && !window.isMainOnlyWATemplate(t)).map(_cleanWATemplate).filter(t => t && t.template);
   }, [waTemplates]);
   var shareWATemplatesToAdmins = useCallback(async (emails, templateIds) => {
     var targets = (emails || []).map(e => (e || '').toLowerCase()).filter(e => e && e.includes('@'));
@@ -9188,7 +9291,10 @@ function App() {
             return true;
           });
         };
-        var finalWA = arr => role === 'admin' ? dedup(arr) : window.ensureDefaultWATemplates(dedup(arr));
+        // Admins never see mainOnly templates (e.g. Self Call Template) even
+        // if a stale shared payload still includes one.
+        var stripMainOnly = arr => (arr || []).filter(t => !window.isMainOnlyWATemplate(t));
+        var finalWA = arr => role === 'admin' ? stripMainOnly(dedup(arr)) : window.ensureDefaultWATemplates(dedup(arr));
         try {
           if (_SB && _user) {
             var r = await _SB.schema('autodial').from('wa_templates').select('*').eq('created_by', _user.id);
@@ -12312,6 +12418,35 @@ function App() {
     } catch (e) {}
     return null;
   }, [leads, myEmail]);
+  // Ad-hoc dial — used by the "All leads" modal. Unlike proceedToLead
+  // this skips the ni/set guard (the operator explicitly tapped the
+  // row, so they want to call it regardless of status) and skips the
+  // dialFilters() screen. After the outcome lands, the normal queue
+  // logic resumes from the new curIdx, so filters reapply for whatever
+  // comes next.
+  var adHocDialLead = useCallback(idx => {
+    var curLeads = leadsRef.current || [];
+    if (idx < 0 || idx >= curLeads.length) return;
+    var lead = curLeads[idx];
+    if (!lead || !lead.phone) {
+      toast('No phone for this lead', 'err');
+      return;
+    }
+    setShowAllLeadsModal(false);
+    if (!session || session.ended) {
+      var slots = (myCfg.sessionSlots || []).filter(sl => n(sl.hours, 0) > 0);
+      startSession(slots[0] || null);
+    }
+    setCurIdx(idx);
+    setRunning(true);
+    setPhase('calling');
+    setShowNextPreview(false);
+    setTimeout(() => {
+      var l = leadsRef.current[idx];
+      if (l?.phone) dial(l.phone);
+    }, 200);
+    toast('📞 Dialing ' + (lead.name || lead.phone));
+  }, [session, myCfg.sessionSlots, startSession, dial]);
   var proceedToLead = useCallback(async idx => {
     var curLeads = leadsRef.current;
     if (idx >= 0 && idx < curLeads.length && (curLeads[idx].status === 'ni' || curLeads[idx].status === 'set')) {
@@ -12363,6 +12498,7 @@ function App() {
     var curLeads = leadsRef.current || [];
     if (!running || curIdx < 0 || curIdx >= curLeads.length) return;
     var skipped = curLeads[curIdx];
+    var skippedIdx = curIdx;
     callbackReturnIdxRef.current = -1;
     setCallbackBookmark(null);
     var nextIdx = getNextDialable(curLeads, curIdx, {
@@ -12377,7 +12513,24 @@ function App() {
       toast('No more leads', 'info');
       return;
     }
-    toast('Skipped ' + (skipped?.name || skipped?.phone || 'lead'));
+    // Record an undo entry so a mistaken skip can be reversed within
+    // the standard 10s window. Skip doesn't mutate lead status — undo
+    // just jumps the operator back to that lead and re-dials.
+    appStateRef.current._lastUndo = {
+      leadIdx: skippedIdx,
+      leadId: skipped?.id || '',
+      leadName: skipped?.name || '',
+      leadPhone: skipped?.phone || '',
+      status: 'skip',
+      ts: Date.now()
+    };
+    setUndoInfo({
+      leadIdx: skippedIdx,
+      name: skipped?.name || skipped?.phone || 'lead',
+      status: 'skip',
+      ts: Date.now()
+    });
+    toast('Skipped ' + (skipped?.name || skipped?.phone || 'lead') + ' — undo within 10s');
     proceedToLead(nextIdx);
   }, [running, curIdx, dialFilters, releaseClaim, proceedToLead]);
   var ensureCallbackLookupOpen = useCallback(reset => {
@@ -13522,10 +13675,20 @@ function App() {
   var buildGuidedSetupItems = () => {
     var adminLeadReady = !!((myCfg.timesheetId || cfg.sheetId) && (myCfg.sheetTab || cfg.sheetTab || adminOwnedCfg?.sheetTab));
     var adminCalendarReady = !!(myCfg.targetCalendarId || adminOwnedCfg?.targetCalendarId || calShares.length || weekEvents.length);
-    var adminScriptReady = !!(adminOwnedCfg?.shareScript || scriptContent || cfg.callingScript || scriptVersions.length);
-    var adminWAReady = !!(adminOwnedCfg?.shareWaTemplates || waTemplates.length);
+    // Admin's "ready" considers BOTH a script the Main shared AND any
+    // script the admin authored locally. Same for WhatsApp templates.
+    var adminHasOwnScript = !!(scriptContent || cfg.callingScript || (scriptVersions || []).length);
+    var adminHasSharedScript = !!(adminOwnedCfg?.shareScript || cfg.scriptShareName || cfg.scriptVersionName);
+    var adminScriptReady = adminHasOwnScript || adminHasSharedScript;
+    var adminHasOwnWA = !!(waTemplates || []).filter(t => !window.isMainOnlyWATemplate(t)).length;
+    var adminHasSharedWA = !!adminOwnedCfg?.shareWaTemplates;
+    var adminWAReady = adminHasOwnWA || adminHasSharedWA;
     var anyAdminScriptShared = Object.values(adminConfigs || {}).some(ac => ac?.shareScript);
     var anyAdminWAShared = Object.values(adminConfigs || {}).some(ac => ac?.shareWaTemplates);
+    // Number of admin accounts the Main has configured. Used to decide
+    // whether the "share with admins" guided items are even applicable —
+    // solo Mains shouldn't be nagged to share anything.
+    var realAdminCount = Object.keys(adminConfigs || {}).filter(em => em && em.includes('@')).length;
     var mainLeadReady = !!((cfg.sheetId || myCfg.timesheetId) && (cfg.sheetTab || myCfg.sheetTab));
     var mainCalendarReady = !!(gOk && (calList.length || myCfg.targetCalendarId || weekEvents.length || Object.values(adminConfigs || {}).some(ac => (ac?.sharedCals || []).length || ac?.targetCalendarId)));
     if (role === 'admin') return [{
@@ -13547,18 +13710,26 @@ function App() {
       action: () => setTab('cal')
     }, {
       key: 'script',
-      label: 'Script shared',
-      detail: adminOwnedCfg?.scriptShareName || cfg.scriptShareName || cfg.scriptVersionName || 'Calling script from Main',
+      label: 'Calling script ready',
+      detail: adminHasOwnScript
+        ? 'Using your own script' + ((scriptVersions || []).length > 1 ? ' (' + scriptVersions.length + ' versions saved)' : '')
+        : adminHasSharedScript
+          ? 'Shared by Main: ' + (adminOwnedCfg?.scriptShareName || cfg.scriptShareName || cfg.scriptVersionName || 'script')
+          : 'Write your own or wait for Main to share',
       done: adminScriptReady,
       action: () => setSettingsSubtab('prefs')
     }, {
       key: 'wa',
-      label: 'WA template shared',
-      detail: adminOwnedCfg?.waTemplateShareNames || (waTemplates.length ? waTemplates.length + ' template(s) available' : 'Waiting for Main to share'),
+      label: 'WhatsApp template ready',
+      detail: adminHasOwnWA
+        ? (waTemplates.filter(t => !window.isMainOnlyWATemplate(t)).length) + ' template(s) saved'
+        : adminHasSharedWA
+          ? 'Shared by Main: ' + (adminOwnedCfg?.waTemplateShareNames || 'template')
+          : 'Add your own or wait for Main to share',
       done: adminWAReady,
       action: () => setSettingsSubtab('prefs')
     }];
-    return [{
+    var mainItems = [{
       key: 'google',
       label: 'Google connected',
       detail: 'Sheets, Drive, and Calendar access',
@@ -13576,19 +13747,30 @@ function App() {
       detail: myCfg.targetCalendarId || (calList.length ? calList.length + ' calendars loaded' : 'Load calendars and share access'),
       done: mainCalendarReady,
       action: () => setTab('cal')
-    }, {
-      key: 'script',
-      label: 'Script shared',
-      detail: anyAdminScriptShared ? Object.values(adminConfigs || {}).filter(ac => ac?.shareScript).length + ' admin(s) receiving a saved script' : 'Choose a saved script per admin',
-      done: anyAdminScriptShared,
-      action: () => isManageMode ? setSettingsSubtab('team') : setMainMode('manage')
-    }, {
-      key: 'wa',
-      label: 'WA template shared',
-      detail: anyAdminWAShared ? Object.values(adminConfigs || {}).filter(ac => ac?.shareWaTemplates).length + ' admin(s) receiving a WhatsApp template' : 'Choose a WhatsApp template per admin',
-      done: anyAdminWAShared,
-      action: () => isManageMode ? setSettingsSubtab('team') : setMainMode('manage')
     }];
+    // Only surface "share with admins" items once the Main has admins
+    // configured. Solo Mains get a 3-item checklist; teams get 5.
+    if (realAdminCount > 0) {
+      mainItems.push({
+        key: 'script',
+        label: 'Script shared with admins',
+        detail: anyAdminScriptShared
+          ? Object.values(adminConfigs || {}).filter(ac => ac?.shareScript).length + ' of ' + realAdminCount + ' admin(s) receiving a script'
+          : 'Choose a saved script for each admin (' + realAdminCount + ' configured)',
+        done: anyAdminScriptShared,
+        action: () => isManageMode ? setSettingsSubtab('team') : setMainMode('manage')
+      });
+      mainItems.push({
+        key: 'wa',
+        label: 'WA template shared with admins',
+        detail: anyAdminWAShared
+          ? Object.values(adminConfigs || {}).filter(ac => ac?.shareWaTemplates).length + ' of ' + realAdminCount + ' admin(s) receiving a template'
+          : 'Choose a WhatsApp template for each admin (' + realAdminCount + ' configured)',
+        done: anyAdminWAShared,
+        action: () => isManageMode ? setSettingsSubtab('team') : setMainMode('manage')
+      });
+    }
+    return mainItems;
   };
   var guidedSetupItems = buildGuidedSetupItems();
   var guidedDoneCount = guidedSetupItems.filter(x => x.done).length;
@@ -14863,24 +15045,23 @@ function App() {
     }
   }, label))), cur && running && phase === 'calling' && React.createElement("button", {
     onClick: skipCurrentLead,
-    title: "Skip without recording an outcome \u2014 only use if you didn't actually dial",
+    title: "Skip without recording an outcome \u2014 useful if you didn't actually dial. Has 10s undo.",
     style: {
-      // Toned down: previously a full-width bright-blue button that competed
-      // with the primary outcome row and was easy to misclick. Now a subtle
-      // ghost link, narrower and centered, that stays discoverable but no
-      // longer feels like a primary action.
+      // Mid-tier prominence: half-width pill, soft blue tint with visible
+      // border + icon. Discoverable at a glance but visually distinct from
+      // the primary outcome row. Has 10s undo so a misclick is recoverable.
       display: 'block',
       margin: '0 auto 8px',
-      padding: '6px 14px',
-      borderRadius: 8,
-      background: 'transparent',
-      color: 'var(--text3)',
-      fontSize: 11,
-      fontWeight: 600,
-      border: '1px solid var(--border)',
-      opacity: .8
+      padding: '8px 18px',
+      borderRadius: 10,
+      background: 'rgba(88,166,255,.12)',
+      color: 'var(--blue)',
+      fontSize: 12,
+      fontWeight: 800,
+      border: '1px solid rgba(88,166,255,.40)',
+      letterSpacing: '.02em'
     }
-  }, "Skip without outcome \u2192"), session && !session.ended && React.createElement("div", {
+  }, "\u23ed Skip lead"), session && !session.ended && React.createElement("div", {
     style: {
       display: 'grid',
       gridTemplateColumns: callbackLookupOpen ? '1fr auto' : '1fr',
@@ -15149,7 +15330,18 @@ function App() {
       letterSpacing: '.08em'
     }
   }, React.createElement("span", { style: { display: 'inline-flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, width: '100%' } },
-    React.createElement("span", null, "Next 3", operatorQueueFull.length > 3 ? React.createElement("span", { style: { opacity: .55, fontWeight: 600, marginLeft: 4 } }, "(", _opPageStart + 1, "–", Math.min(_opPageStart + 3, operatorQueueFull.length), " of ", operatorQueueFull.length, ")") : null),
+    React.createElement("button", {
+      onClick: () => { setAllLeadsSearch(''); setShowAllLeadsModal(true); },
+      title: "Browse the full leads list and dial any lead (ignores filter once)",
+      style: {
+        background: 'transparent', border: 0, padding: 0, color: 'inherit', cursor: 'pointer',
+        font: 'inherit', textTransform: 'inherit', letterSpacing: 'inherit', fontWeight: 'inherit'
+      }
+    },
+      "Next 3",
+      operatorQueueFull.length > 3 ? React.createElement("span", { style: { opacity: .55, fontWeight: 600, marginLeft: 4 } }, "(", _opPageStart + 1, "–", Math.min(_opPageStart + 3, operatorQueueFull.length), " of ", operatorQueueFull.length, ")") : null,
+      React.createElement("span", { style: { marginLeft: 6, opacity: .65, fontWeight: 700 } }, "↗")
+    ),
     operatorQueueFull.length > 3 && React.createElement("span", { style: { display: 'inline-flex', gap: 4 } },
       React.createElement("button", {
         onClick: e => { e.stopPropagation(); setOpPreviewOffset(o => Math.max(0, o - 3)); },
@@ -33707,6 +33899,111 @@ function App() {
         border: '1px solid rgba(37,211,102,.22)'
       }
     }, "Open templates")));
+  })()), React.createElement(Modal, {
+    // ─── All Leads modal — opened by tapping Next 3 header ─────────
+    // Shows the FULL leads list ignoring dial filters, with status
+    // badges and search. Tap any row to dial that lead via
+    // adHocDialLead, which bypasses the ni/set guard. After the
+    // outcome lands, normal filters resume for whatever comes next.
+    show: showAllLeadsModal,
+    onClose: () => setShowAllLeadsModal(false),
+    align: "center",
+    bg: ".82",
+    zIndex: 170
+  }, (() => {
+    var q = String(allLeadsSearch || '').trim().toLowerCase();
+    var filtered = (leads || []).map((l, i) => ({ idx: i, lead: l })).filter(({ lead }) => {
+      if (!q) return true;
+      var hay = ((lead.name || '') + ' ' + (lead.phone || '') + ' ' + (lead.notes || '') + ' ' + (lead.status || '')).toLowerCase();
+      return q.split(/\s+/).filter(Boolean).every(tok => hay.includes(tok));
+    });
+    var statusColor = s => {
+      if (s === 'set') return 'var(--green)';
+      if (s === 'cb') return 'var(--blue)';
+      if (s === 'np') return 'var(--amber)';
+      if (s === 'ni') return 'var(--red)';
+      return 'var(--text3)';
+    };
+    var statusBg = s => {
+      if (s === 'set') return 'var(--gdim)';
+      if (s === 'cb') return 'var(--bdim)';
+      if (s === 'np') return 'var(--amdim)';
+      if (s === 'ni') return 'var(--rdim)';
+      return 'var(--bg3)';
+    };
+    return React.createElement("div", {
+      style: {
+        width: '100%',
+        maxWidth: 520,
+        maxHeight: '85vh',
+        display: 'flex',
+        flexDirection: 'column',
+        background: 'var(--bg2)',
+        borderRadius: 18,
+        border: '1px solid var(--border2)',
+        overflow: 'hidden'
+      }
+    },
+      React.createElement("div", {
+        style: { padding: '16px 18px 10px', borderBottom: '1px solid var(--border)' }
+      },
+        React.createElement("div", {
+          style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }
+        },
+          React.createElement("h3", { style: { margin: 0, fontSize: 16, fontWeight: 800, color: '#f1f5f9' } }, "📋 All leads ", React.createElement("span", { style: { fontSize: 11, fontWeight: 600, color: 'var(--text3)' } }, "(", filtered.length, " of ", (leads || []).length, ")")),
+          React.createElement("button", {
+            onClick: () => setShowAllLeadsModal(false),
+            style: { width: 30, height: 30, borderRadius: 8, background: 'var(--bg3)', color: 'var(--text3)', padding: 0, fontSize: 16, fontWeight: 800 }
+          }, "×")
+        ),
+        React.createElement("input", {
+          type: 'search',
+          value: allLeadsSearch,
+          onChange: e => setAllLeadsSearch(e.target.value),
+          placeholder: '🔍 Search name, phone, notes, status…',
+          autoFocus: true,
+          style: { width: '100%', padding: '9px 12px', borderRadius: 10, background: 'var(--bg)', border: '1px solid var(--border)', color: '#f1f5f9', fontSize: 12 }
+        }),
+        React.createElement("p", {
+          style: { margin: '8px 0 0', fontSize: 10, color: 'var(--text3)', lineHeight: 1.4 }
+        }, "Tap any lead to call it now — even if status is NI / Set / CB. Normal filter and order resume after the outcome.")
+      ),
+      React.createElement("div", {
+        style: { flex: 1, overflowY: 'auto', padding: '6px 10px 14px' }
+      },
+        filtered.length === 0
+          ? React.createElement("p", { style: { textAlign: 'center', color: 'var(--text3)', fontSize: 12, padding: 20 } }, q ? 'No matches for "' + allLeadsSearch + '"' : 'No leads loaded')
+          : filtered.map(({ idx, lead }) => React.createElement("button", {
+              key: idx,
+              onClick: () => adHocDialLead(idx),
+              disabled: !lead.phone,
+              style: {
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                padding: '10px 10px',
+                marginBottom: 4,
+                borderRadius: 10,
+                background: idx === curIdx ? 'rgba(99,102,241,.12)' : 'var(--bg3)',
+                border: '1px solid ' + (idx === curIdx ? 'rgba(99,102,241,.45)' : 'var(--border)'),
+                textAlign: 'left',
+                cursor: lead.phone ? 'pointer' : 'not-allowed',
+                opacity: lead.phone ? 1 : .45
+              }
+            },
+              React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+                React.createElement("p", { style: { margin: 0, fontSize: 13, fontWeight: 700, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, lead.name || '(no name)'),
+                React.createElement("p", { className: 'mono', style: { margin: '2px 0 0', fontSize: 11, color: 'var(--text3)' } }, lead.phone || 'no phone', lead.age ? '   · age ' + lead.age : '')
+              ),
+              React.createElement("span", {
+                className: 'pill',
+                style: { background: statusBg(lead.status), color: statusColor(lead.status), fontSize: 10, fontWeight: 800 }
+              }, (lead.status || 'pending').toUpperCase()),
+              React.createElement("span", { style: { color: 'var(--green)', fontSize: 16, fontWeight: 800 } }, "📞")
+            ))
+      )
+    );
   })()), React.createElement(Modal, {
     show: showSetupWizard && !guidedSetupComplete,
     onClose: () => setShowSetupWizard(false),
