@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0065'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0068'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -135,58 +135,6 @@ button.free-slot{appearance:none;text-align:left}
 @keyframes slideDown{from{opacity:0;transform:translateY(-10px);max-height:0}to{opacity:1;transform:translateY(0);max-height:200px}}
 @keyframes firePulse{0%,100%{text-shadow:0 0 10px rgba(240,180,41,.5)}50%{text-shadow:0 0 30px rgba(240,180,41,.8)}}
 @keyframes borderGlow{0%,100%{border-color:rgba(214,168,122,.3)}50%{border-color:rgba(214,168,122,.6)}}
-/* Phase 7 (design handoff): tier-up animation. Soft 600ms scale-pulse
-   on the .tier-up-flash element + brass-glow flash. Triggered by toggling
-   the .tier-up class on the gamification card when the team crosses a
-   tier boundary (handled in JS). prefers-reduced-motion users get an
-   instant state change, no animation. */
-@keyframes tierUpPulse{0%{transform:scale(1);box-shadow:0 0 0 0 rgba(214,168,122,0)}30%{transform:scale(1.04);box-shadow:0 0 0 8px rgba(214,168,122,.35)}100%{transform:scale(1);box-shadow:0 0 0 0 rgba(214,168,122,0)}}
-.tier-up-flash{animation:tierUpPulse 600ms cubic-bezier(0.2,0,0,1) 1}
-@media (prefers-reduced-motion: reduce){
-  /* Per FORBIDDEN_PATTERNS §13 + design README §interactions: respect
-     prefers-reduced-motion. Strip every infinite/loop animation; allow
-     fades but cap them at 0.01ms so they're effectively instant. */
-  *,*::before,*::after{
-    animation-duration:0.01ms !important;
-    animation-iteration-count:1 !important;
-    transition-duration:0.01ms !important;
-    scroll-behavior:auto !important;
-  }
-}
-/* Phase 4 (design handoff): mobile sticky outcome dock + uniform outcome
-   button system. Per FORBIDDEN_PATTERNS §5: outcome buttons must be ≥64px
-   tall on mobile, ≥56px on desktop, and live in a 2×2 grid on mobile and
-   a 1×4 row on desktop. Each button carries its semantic status color as
-   a TINTED bg + saturated glyph (NP=amber, CB=blue, NI=red, Set=green).
-   The dock pins to the viewport bottom on mobile, above the 5-up nav.
-   End-session never shares a row with outcome buttons (handled in JSX). */
-.outcome-dock{position:sticky;bottom:0;z-index:30;background:var(--bg);border-top:1px solid var(--border);padding:10px 12px 8px;display:flex;flex-direction:column;gap:8px;margin:0 -14px}
-.outcome-dock .dial-cta{min-height:52px;padding:0 18px;border-radius:14px;background:linear-gradient(135deg,var(--accent),#a37a4d);color:#1a1306;font-size:14px;font-weight:800;letter-spacing:.01em;display:flex;align-items:center;justify-content:center;gap:10px;border:1px solid rgba(214,168,122,.55);box-shadow:0 6px 18px -8px rgba(214,168,122,.55), inset 0 1px 0 rgba(255,255,255,.18);transition:transform .18s, box-shadow .18s, opacity .18s}
-.outcome-dock .dial-cta:active{transform:scale(.98)}
-.outcome-dock .dial-cta:disabled{opacity:.45;cursor:not-allowed}
-.outcome-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.outcome-grid .outcome{position:relative;min-height:64px;padding:10px 12px;border-radius:14px;background:var(--bg2);border:1px solid var(--border2);font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;transition:transform .12s, background-color .18s, border-color .18s}
-.outcome-grid .outcome:active{transform:scale(.97)}
-.outcome-grid .outcome[disabled]{opacity:.45;cursor:not-allowed}
-.outcome-grid .outcome .glyph{font-size:20px;font-weight:800;letter-spacing:0;line-height:1}
-.outcome-grid .outcome .lbl{font-size:10.5px;font-weight:700;color:var(--text2);letter-spacing:.06em}
-.outcome-grid .outcome .hint{position:absolute;top:6px;right:8px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:700;opacity:.55}
-.outcome-grid .outcome.np{background:var(--amdim);border-color:rgba(210,153,34,.32);color:var(--amber)}
-.outcome-grid .outcome.np .lbl{color:var(--amber);opacity:.8}
-.outcome-grid .outcome.cb{background:var(--bdim);border-color:rgba(88,166,255,.32);color:var(--blue)}
-.outcome-grid .outcome.cb .lbl{color:var(--blue);opacity:.8}
-.outcome-grid .outcome.ni{background:var(--rdim);border-color:rgba(248,81,73,.32);color:var(--red)}
-.outcome-grid .outcome.ni .lbl{color:var(--red);opacity:.8}
-.outcome-grid .outcome.set{background:var(--gdim);border-color:rgba(63,185,80,.32);color:var(--green)}
-.outcome-grid .outcome.set .lbl{color:var(--green);opacity:.8}
-@media(min-width:960px){
-  /* Desktop: 1×4 row, 56px tall (still readable but tighter than mobile).
-     Dock loses the sticky behavior and just sits inline above the
-     bottom nav — script panel covers the right side anyway. */
-  .outcome-grid{grid-template-columns:repeat(4,1fr)}
-  .outcome-grid .outcome{min-height:56px}
-  .outcome-dock{position:static;border-top:none;padding:0;margin:0}
-}
 .card{background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:16px;backdrop-filter:blur(20px);transition:border-color .18s,background-color .18s,box-shadow .18s}
 .card:hover{border-color:var(--border2)}
 .pill{display:inline-block;padding:3px 10px;border-radius:8px;font-size:10px;font-weight:700;white-space:nowrap;letter-spacing:.3px}
@@ -214,23 +162,10 @@ button.free-slot{appearance:none;text-align:left}
 @media(min-width:960px){
   :root{--left-pane-w:clamp(420px,32vw,680px);--app-side-margin:max(calc((100vw - 1920px)/2),0px)}
   .desktop-wrap{gap:0;align-items:stretch}
-  /* Phase 5 (design handoff): right column uses --script-w (set inline
-     by the App on the .app-shell, default 380px). Min 280, max 520. */
-  .desktop-wrap .app-shell{margin:0 auto;border-radius:0;flex:1 1 auto;width:100%;max-width:min(1920px,100vw);height:100vh;height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,var(--script-w,380px));grid-auto-rows:max-content;align-items:start;align-content:start;scrollbar-width:none}
+  .desktop-wrap .app-shell{margin:0 auto;border-radius:0;flex:1 1 auto;width:100%;max-width:min(1920px,100vw);height:100vh;height:100dvh;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;display:grid;grid-template-columns:minmax(0,var(--left-pane-w)) minmax(0,1fr);grid-auto-rows:max-content;align-items:start;align-content:start;scrollbar-width:none}
   .desktop-wrap .app-shell::-webkit-scrollbar{display:none}
   .desktop-wrap .app-shell>:not(.script-panel):not(.script-toggle){grid-column:1;min-width:0}
   .script-panel{grid-column:2;grid-row:1 / span 999;align-self:start;width:100%;min-width:0;max-width:100%;min-height:100vh;min-height:100dvh;background:var(--bg2);border-left:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;overflow:hidden}
-  /* Phase 5 (design handoff): drag handle on the script panel's left
-     edge. 6px wide hit-area centred on the column boundary, 32px-tall
-     visual pill that brightens on hover. cursor:col-resize signals the
-     interaction. While dragging, .sp-resizing on body locks selection
-     + cursor across the whole window so text-selection highlight
-     doesn't streak as the pointer moves. */
-  .sp-resize{position:absolute;left:-3px;top:0;bottom:0;width:6px;cursor:col-resize;z-index:5;background:transparent;transition:background .12s}
-  .sp-resize::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:32px;border-radius:2px;background:var(--border2);transition:background .12s, height .12s}
-  .sp-resize:hover::after,.sp-resize.dragging::after{background:var(--accent);height:48px}
-  body.sp-resizing{cursor:col-resize !important;user-select:none !important}
-  body.sp-resizing *{cursor:col-resize !important;user-select:none !important}
   .script-panel .sp-header{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;flex-shrink:0;min-width:0}
   .script-panel .sp-header h3{flex:0 0 auto;min-width:0}
   .script-panel .sp-header>div{min-width:0;flex:1 1 360px}
@@ -310,15 +245,6 @@ button.free-slot{appearance:none;text-align:left}
 .avatar-btn{width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#a37a4d);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:none;padding:0;cursor:pointer;letter-spacing:.04em;position:relative}
 .avatar-btn:hover{box-shadow:0 0 0 3px rgba(214,168,122,.18)}
 .avatar-btn .dot{position:absolute;top:1px;right:1px;width:9px;height:9px;border-radius:50%;background:var(--red);border:2px solid var(--bg)}
-/* Phase 3 (design handoff): collapse the standalone sync-pill into a 6px
-   sync-dot at the avatar's bottom-right corner. Color reflects sync state
-   (green = synced, amber = pushing/pulling, red = offline). Replaces ~140px
-   of always-visible chrome with a single dot — version + last-sync time
-   move into the avatar tooltip and dropdown's "System" section. */
-.avatar-btn .sync-dot{position:absolute;bottom:0;right:0;width:10px;height:10px;border-radius:50%;background:var(--text3);border:2px solid var(--bg);transition:background .18s}
-.avatar-btn .sync-dot.fresh{background:var(--green);box-shadow:0 0 4px var(--green)}
-.avatar-btn .sync-dot.warn{background:var(--amber);animation:pulse 1.4s ease-in-out infinite}
-.avatar-btn .sync-dot.bad{background:var(--red)}
 .avatar-menu{position:fixed;z-index:1500;min-width:204px;background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:6px;box-shadow:0 16px 48px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.02)}
 .avatar-menu .am-name{padding:10px 12px 8px;border-bottom:1px solid var(--border);margin-bottom:4px}
 .avatar-menu .am-name .n{font-size:13px;font-weight:800;color:#f1f5f9;line-height:1.2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -347,7 +273,7 @@ button.free-slot{appearance:none;text-align:left}
 
 /* Auth */
 #auth-gate{position:fixed;inset:0;z-index:10000;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:20px;
-  background-image:radial-gradient(ellipse at 30% 20%,rgba(214,168,122,.08) 0%,transparent 50%),radial-gradient(ellipse at 70% 80%,rgba(139,92,246,.06) 0%,transparent 50%)}
+  background-image:radial-gradient(ellipse at 30% 20%,rgba(214,168,122,.08) 0%,transparent 50%),radial-gradient(ellipse at 70% 80%,rgba(214,168,122,.04) 0%,transparent 50%)}
 .ac{background:var(--bg2);border:1px solid var(--border2);border-radius:24px;max-width:400px;width:100%;padding:36px;box-shadow:0 24px 80px rgba(0,0,0,.5),var(--glow)}
 .bp{width:100%;padding:14px;background:linear-gradient(135deg,var(--accent),#a37a4d);color:#fff;font-size:15px;font-weight:700;box-shadow:0 8px 24px rgba(214,168,122,.3)}
 .bp:hover{box-shadow:0 12px 32px rgba(214,168,122,.4);transform:translateY(-1px)}
@@ -413,8 +339,7 @@ body { padding-top: var(--ckg-strip-h) !important; }
   font-size: 11px; font-weight: 500;
   letter-spacing: 0.06em;
   line-height: 1;
-  /* Phase 7 polish: replaced `transition: all` per FORBIDDEN_PATTERNS §13 */
-  transition: background 150ms ease-out, color 150ms ease-out, border-color 150ms ease-out;
+  transition: background 150ms ease-out, border-color 150ms ease-out, color 150ms ease-out, transform 150ms ease-out;
   min-height: 28px;
 }
 .ckg-suite-strip-back:hover {
@@ -440,6 +365,185 @@ body { padding-top: var(--ckg-strip-h) !important; }
   .ckg-suite-strip { padding: 0 10px; }
   .ckg-suite-strip-crumb { display: none; }
   .ckg-suite-strip-back { min-height: 32px; padding: 8px 14px; font-size: 12px; }
+}
+
+/* ===== Claude Design local preview polish (cosmetic only) ===== */
+:root{
+  --ad-bg-0:#07090d;--ad-bg-1:#0d1015;--ad-bg-2:#13171e;--ad-bg-3:#1a1f28;--ad-bg-4:#232936;
+  --ad-line-1:#1f2530;--ad-line-2:#2a3140;--ad-line-3:#3a4254;
+  --ad-t-0:#f4f6fa;--ad-t-1:#d6dbe5;--ad-t-2:#9aa3b3;--ad-t-3:#6c7585;
+  --ad-green:oklch(0.74 0.16 150);--ad-green-dim:oklch(0.74 0.16 150 / .14);
+  --ad-amber:oklch(0.80 0.13 75);--ad-amber-dim:oklch(0.80 0.13 75 / .14);
+  --ad-red:oklch(0.68 0.18 25);--ad-red-dim:oklch(0.68 0.18 25 / .14);
+  --ad-blue:oklch(0.72 0.12 240);--ad-blue-dim:oklch(0.72 0.12 240 / .14);
+  --ad-space-1:4px;--ad-space-2:8px;--ad-space-3:12px;--ad-space-4:16px;--ad-space-5:20px;--ad-space-6:24px;--ad-space-8:32px;
+  --ad-r-sm:8px;--ad-r-md:12px;--ad-r-lg:16px;--ad-r-xl:22px;
+  --ad-shadow-1:0 1px 0 rgba(255,255,255,.03) inset,0 1px 2px rgba(0,0,0,.4);
+  --ad-shadow-2:0 18px 50px -20px rgba(0,0,0,.7);
+  --bg:var(--ad-bg-0);--bg2:var(--ad-bg-1);--bg3:var(--ad-bg-2);--bg4:var(--ad-bg-3);
+  --text:var(--ad-t-0);--text2:var(--ad-t-2);--text3:var(--ad-t-3);
+  --border:var(--ad-line-1);--border2:var(--ad-line-2);
+  --accent:var(--ad-brass);--accent2:var(--ad-brass-2);--accent3:#f3d894;--adim:var(--ad-brass-dim);
+  --green:var(--ad-green);--gdim:var(--ad-green-dim);
+  --amber:var(--ad-amber);--amdim:var(--ad-amber-dim);
+  --red:var(--ad-red);--rdim:var(--ad-red-dim);
+  --blue:var(--ad-blue);--bdim:var(--ad-blue-dim);
+}
+html,body{background:var(--ad-bg-0)!important;color:var(--ad-t-0)!important}
+.app-shell{background:var(--ad-bg-0)!important;background-image:none!important}
+@media(min-width:960px){.desktop-wrap .app-shell{grid-template-columns:minmax(420px,36vw) minmax(420px,1fr)!important}}
+.hdr-row1{padding:10px 16px!important;min-height:56px!important;gap:10px!important;flex-wrap:nowrap!important;background:rgba(7,9,13,.9)!important;border-bottom:1px solid var(--ad-line-1)!important;backdrop-filter:blur(18px)!important}
+.hdr-row2{padding:10px 16px!important;background:var(--ad-bg-0)!important;border-bottom:1px solid var(--ad-line-1)!important}
+.hdr-brand{gap:9px!important}
+.hdr-brand h1{font-size:15px!important;font-weight:650!important;letter-spacing:0!important;color:var(--ad-t-0)!important}
+.hdr-logo{width:28px!important;height:28px!important;border-radius:8px!important;background:linear-gradient(135deg,var(--ad-brass-2),#9f7244)!important;color:#1a1306!important;box-shadow:var(--ad-shadow-brass)!important}
+.hdr-row1>.pill{min-width:auto!important;max-width:none!important;border-radius:999px!important;padding:4px 10px!important;font-size:11px!important;letter-spacing:.04em!important}
+.sync-pill{display:none!important}
+.end-session-top{min-height:32px!important;padding:0 12px!important;border-radius:999px!important;background:transparent!important;color:var(--ad-t-2)!important;border:1px solid var(--ad-line-2)!important;font-size:12px!important;font-weight:650!important;white-space:nowrap!important}
+.end-session-top:hover{color:var(--ad-red)!important;border-color:oklch(0.68 0.18 25 / .55)!important;background:var(--ad-red-dim)!important}
+.avatar-btn{width:34px!important;height:34px!important;background:linear-gradient(135deg,#2a2218,var(--ad-brass))!important;color:#1a1306!important;border:1px solid var(--ad-brass-line)!important}
+.avatar-btn .dot.sync-dot{top:auto!important;right:-1px!important;bottom:-1px!important;width:10px!important;height:10px!important;border:2px solid var(--ad-bg-0)!important}
+.avatar-btn .dot.notice-dot{top:-1px!important;right:-1px!important;width:9px!important;height:9px!important;background:var(--ad-amber)!important}
+.avatar-menu{min-width:236px!important;border-radius:16px!important;background:var(--ad-bg-1)!important;border-color:var(--ad-line-2)!important;box-shadow:var(--ad-shadow-2)!important}
+.avatar-menu .am-system{margin:5px 4px 4px;padding:9px 10px;border-top:1px solid var(--ad-line-1);color:var(--ad-t-3);font-size:11px;line-height:1.5}
+.avatar-menu .am-system b{display:block;margin-bottom:2px;color:var(--ad-t-2);font-size:10px;text-transform:uppercase;letter-spacing:.08em}
+.app-tabs{position:sticky!important;top:var(--ckg-strip-h)!important;z-index:45!important;margin:0!important;padding:8px 14px!important;min-height:54px!important;background:rgba(7,9,13,.94)!important;border-bottom:1px solid var(--ad-line-1)!important;backdrop-filter:blur(16px)!important}
+.app-tabs button{min-height:38px!important;border-radius:999px!important;padding:8px 10px!important;color:var(--ad-t-3)!important;font-size:12px!important;font-weight:650!important;letter-spacing:0!important}
+.app-tabs button.active{background:var(--ad-brass-dim)!important;color:var(--ad-brass-2)!important;border:1px solid var(--ad-brass-line)!important;box-shadow:var(--ad-shadow-1)!important}
+.content-pad{padding-left:16px!important;padding-right:16px!important}
+.card{background:var(--ad-bg-1)!important;border:1px solid var(--ad-line-1)!important;border-radius:16px!important;box-shadow:var(--ad-shadow-1)!important}
+.card:hover{border-color:var(--ad-line-2)!important}
+.pill{border-radius:999px!important;font-size:11px!important;font-weight:650!important;letter-spacing:.04em!important}
+.rank-chip{border-radius:999px!important;padding:5px 10px!important;background:var(--ad-brass-dim)!important;color:var(--ad-brass-2)!important;border:1px solid var(--ad-brass-line)!important}
+input,select,textarea{background:var(--ad-bg-2)!important;border-color:var(--ad-line-2)!important;color:var(--ad-t-0)!important;border-radius:12px!important}
+input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!important;box-shadow:0 0 0 3px var(--ad-brass-dim)!important}
+#auth-gate{background:var(--ad-bg-0)!important;background-image:radial-gradient(ellipse at 32% 18%,rgba(214,168,122,.10),transparent 48%)!important}
+.ac{background:var(--ad-bg-1)!important;border-color:var(--ad-line-2)!important;border-radius:22px!important;box-shadow:var(--ad-shadow-2),var(--ad-shadow-brass)!important}
+.script-panel{background:var(--ad-bg-1)!important;border-left:1px solid var(--ad-line-1)!important}
+.script-panel .sp-header,.script-panel .sp-lead,.sp-toolbar{border-color:var(--ad-line-1)!important}
+.script-read{font-size:14px!important;line-height:1.65!important}
+.outcome-grid--call{gap:10px!important;margin:12px 0!important}
+.outcome-grid--call .outcome{position:relative!important;min-height:68px!important;padding:14px 10px!important;border-radius:14px!important;border:1px solid var(--ad-line-2)!important;background:var(--ad-bg-2)!important;display:flex!important;flex-direction:column!important;align-items:flex-start!important;justify-content:center!important;gap:4px!important;text-align:left!important;transition:background .12s,border-color .12s,transform .08s!important}
+.outcome-grid--call .outcome:active{transform:scale(.97)!important}
+.outcome__hint{position:absolute;top:8px;right:9px;font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:800;opacity:.55}
+.outcome__glyph{font-size:21px;font-weight:800;line-height:1}
+.outcome__label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:750;color:var(--ad-t-2)}
+.outcome--np{background:var(--ad-amber-dim)!important;color:var(--ad-amber)!important;border-color:oklch(0.80 0.13 75 / .34)!important}
+.outcome--cb{background:var(--ad-blue-dim)!important;color:var(--ad-blue)!important;border-color:oklch(0.72 0.12 240 / .34)!important}
+.outcome--ni{background:var(--ad-red-dim)!important;color:var(--ad-red)!important;border-color:oklch(0.68 0.18 25 / .34)!important}
+.outcome--set{background:var(--ad-green-dim)!important;color:var(--ad-green)!important;border-color:oklch(0.74 0.16 150 / .34)!important}
+.claude-review-shell{position:fixed;inset:0;z-index:300;background:#07090d}
+.claude-review-frame{display:block;width:100%;height:100%;border:0;background:#07090d}
+.cad-shell{min-height:calc(100vh - var(--ckg-strip-h));background:var(--ad-bg-0);color:var(--ad-t-0);display:flex;flex-direction:column;font-family:'Inter',system-ui,sans-serif}
+.cad-topbar{height:52px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;border-bottom:1px solid var(--ad-line-1);background:var(--ad-bg-0);flex-shrink:0}
+.cad-left,.cad-right,.cad-inline{display:flex;align-items:center;gap:10px}
+.cad-brand{font-size:13px;font-weight:750;color:var(--ad-t-0)}
+.cad-logo{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;background:var(--ad-brass);color:#1a1306;box-shadow:var(--ad-shadow-brass)}
+.cad-pill{display:inline-flex;align-items:center;gap:6px;min-height:22px;padding:3px 9px;border-radius:999px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-1);font-size:11px;font-weight:650;white-space:nowrap}
+.cad-pill.brass{background:var(--ad-brass-dim);border-color:var(--ad-brass-line);color:var(--ad-brass-2)}
+.cad-pill.green{background:var(--ad-green-dim);border-color:oklch(0.74 0.16 150 / .34);color:var(--ad-green)}
+.cad-pill.amber{background:var(--ad-amber-dim);border-color:oklch(0.80 0.13 75 / .34);color:var(--ad-amber)}
+.cad-pill.blue{background:var(--ad-blue-dim);border-color:oklch(0.72 0.12 240 / .34);color:var(--ad-blue)}
+.cad-pill.red{background:var(--ad-red-dim);border-color:oklch(0.68 0.18 25 / .34);color:var(--ad-red)}
+.cad-dot{width:6px;height:6px;border-radius:999px;background:currentColor;display:inline-block;box-shadow:0 0 0 3px color-mix(in oklab,currentColor 20%,transparent)}
+.cad-switch{display:flex;gap:2px;height:34px;padding:4px;border-radius:999px;background:var(--ad-bg-2);border:1px solid var(--ad-line-2)}
+.cad-switch button,.cad-tab{height:26px;border-radius:999px;background:transparent;color:var(--ad-t-2);border:0;display:inline-flex;align-items:center;justify-content:center;gap:7px;font-size:12px;font-weight:650;padding:0 11px}
+.cad-switch button{width:38px;padding:0}
+.cad-switch button.on,.cad-tab.on{background:var(--ad-brass);color:#1a1306}
+.cad-tab.on:not(.cad-icon-tab){background:#f5f7fb;color:#555f6d}
+.cad-avatar{width:28px;height:28px;border-radius:999px;background:linear-gradient(140deg,var(--ad-brass),#9b702a);color:#1a1306;display:grid;place-items:center;font-size:11px;font-weight:850;position:relative}
+.cad-avatar:after{content:"";position:absolute;right:-2px;bottom:-2px;width:9px;height:9px;border-radius:999px;background:var(--ad-green);border:2px solid var(--ad-bg-0)}
+.cad-btn{min-height:36px;padding:0 14px;border-radius:10px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);display:inline-flex;align-items:center;justify-content:center;gap:8px;font-size:12px;font-weight:700}
+.cad-btn.primary{background:linear-gradient(180deg,#f1c35f,#dfad42);border-color:#f1c35f;color:#1a1306;box-shadow:0 10px 24px rgba(226,173,67,.26)}
+.cad-btn.ghost{background:transparent;border-color:transparent;color:var(--ad-t-2)}
+.cad-btn.ghost.danger:hover{color:var(--ad-red)}
+.cad-main{flex:1;min-height:0;overflow:auto;padding:26px 32px;display:flex;flex-direction:column;gap:22px}
+.cad-card{background:var(--ad-bg-1);border:1px solid var(--ad-line-1);border-radius:14px;box-shadow:var(--ad-shadow-1)}
+.cad-label{color:var(--ad-t-3);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.cad-muted{color:var(--ad-t-2)}.cad-subtle{color:var(--ad-t-3)}.cad-mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
+.cad-dashboard-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
+.cad-title{font-size:28px;font-weight:650;letter-spacing:-.02em;margin:8px 0 0}
+.cad-stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.cad-stat{padding:16px 18px;display:flex;flex-direction:column;gap:6px}
+.cad-stat b{font:650 26px 'JetBrains Mono',ui-monospace,monospace;letter-spacing:-.02em}
+.cad-dashboard-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:22px}
+.cad-plan{display:flex;flex-direction:column;gap:12px}
+.cad-plan-row{padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+.cad-admin-card{padding:16px 18px}
+.cad-admin-row{display:grid;grid-template-columns:auto 1fr auto auto auto;gap:14px;align-items:center;padding:12px 4px;border-bottom:1px solid var(--ad-line-1)}
+.cad-mini-avatar{width:28px;height:28px;border-radius:999px;display:grid;place-items:center;background:var(--ad-brass);color:#1a1306;font-size:10px;font-weight:850}
+.cad-tier{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:999px;background:var(--ad-brass-dim);border:1px solid var(--ad-brass-line);color:var(--ad-brass-2);font-size:10px;text-transform:uppercase;font-weight:800}
+.cad-wide{padding:22px 26px;display:flex;align-items:center;justify-content:space-between;gap:28px}
+.cad-progress{height:4px;border-radius:999px;background:var(--ad-bg-3);overflow:hidden}
+.cad-progress i{display:block;height:100%;background:var(--ad-brass)}
+.cad-call-body{flex:1;min-height:0;display:flex}
+.cad-call-main{flex:1;min-width:0;padding:22px 28px;display:flex;flex-direction:column;gap:18px;overflow:auto}
+.cad-session-strip{display:flex;align-items:center;justify-content:space-between;gap:20px}
+.cad-session-stats{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.cad-session-stat{display:flex;flex-direction:column;gap:3px;min-width:52px}
+.cad-session-stat b{font:700 16px 'JetBrains Mono',ui-monospace,monospace}
+.cad-lead-card{padding:28px;display:flex;flex-direction:column;gap:18px}
+.cad-lead-name{font-size:38px;font-weight:650;letter-spacing:-.02em}
+.cad-phone-chip{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;background:var(--ad-bg-2);border:1px solid var(--ad-line-2);font:13px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-t-0)}
+.cad-note{padding:12px 14px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);border-radius:10px;color:var(--ad-t-1);font-size:13px;line-height:1.6}
+.cad-outcomes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.cad-outcome{min-height:82px;border-radius:14px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);padding:14px 16px;position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:5px}
+.cad-outcome .key{position:absolute;right:12px;top:10px;color:var(--ad-t-3);font:11px 'JetBrains Mono',ui-monospace,monospace}
+.cad-outcome .glyph{font-size:24px;font-weight:850;line-height:1}.cad-outcome .caption{color:var(--ad-t-2);font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.05em}
+.cad-outcome.np{color:var(--ad-amber);background:var(--ad-amber-dim);border-color:oklch(0.80 0.13 75 / .32)}
+.cad-outcome.cb{color:var(--ad-blue);background:var(--ad-blue-dim);border-color:oklch(0.72 0.12 240 / .32)}
+.cad-outcome.ni{color:var(--ad-red);background:var(--ad-red-dim);border-color:oklch(0.68 0.18 25 / .32)}
+.cad-outcome.set{color:var(--ad-green);background:var(--ad-green-dim);border-color:oklch(0.74 0.16 150 / .32)}
+.cad-script{width:380px;flex:0 0 auto;border-left:1px solid var(--ad-line-1);background:var(--ad-bg-1);display:flex;flex-direction:column;min-height:0}
+.cad-script-main{flex:1;min-height:0;overflow:auto;padding:20px 22px 12px}
+.cad-script-read{margin-top:14px;color:var(--ad-t-1);font-size:13px;line-height:1.65}.cad-script-read p{margin:0 0 12px}.cad-script-read em{color:var(--ad-brass-2);font-style:normal}.cad-rich ul,.cad-rich ol{padding-left:20px;margin:0 0 12px}.cad-rich li{margin:0 0 6px}.cad-rich strong,.cad-rich b{color:var(--ad-t-0);font-weight:750}.cad-rich a{color:var(--ad-brass-2)}
+.cad-script-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.cad-script-actions .cad-btn{min-height:30px;padding:0 10px}
+.cad-script-tabs{border-top:1px solid var(--ad-line-1)}.cad-script-tab-head{display:flex;gap:4px;padding:10px 14px 0;border-bottom:1px solid var(--ad-line-1)}
+.cad-script-tab{padding:8px 12px;color:var(--ad-t-3);border-bottom:2px solid transparent;font-size:12px}.cad-script-tab.on{color:var(--ad-t-0);border-bottom-color:var(--ad-brass)}
+.cad-objections{padding:12px 14px 16px;display:flex;flex-direction:column;gap:6px}.cad-objection{padding:9px 11px;border-radius:9px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:12px;display:flex;justify-content:space-between;gap:10px;text-align:left}.cad-objection.on{border-color:var(--ad-brass-line);background:var(--ad-brass-dim);color:var(--ad-brass-2)}.cad-objection-answer{margin-top:8px;padding:11px;border-radius:10px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:12px;line-height:1.55}
+.cad-table{border:1px solid var(--ad-line-1);border-radius:12px;overflow:hidden}.cad-tr{display:grid;grid-template-columns:120px 1.4fr 1fr 1fr .8fr 60px;gap:16px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--ad-line-1);font-size:12px}.cad-tr.head{background:var(--ad-bg-2);color:var(--ad-t-3);text-transform:uppercase;letter-spacing:.08em;font-size:10px;font-weight:800}
+.cad-settings{display:flex;flex:1;min-height:0}.cad-rail{width:240px;border-right:1px solid var(--ad-line-1);padding:22px 16px;display:flex;flex-direction:column;gap:4px}.cad-settings-main{flex:1;padding:26px 32px;display:flex;flex-direction:column;gap:22px;overflow:auto}
+.cad-settings-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}.cad-settings-card{padding:18px;display:flex;align-items:center;justify-content:space-between}.cad-input-like{min-height:42px;padding:0 12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-1);color:var(--ad-t-3);display:flex;align-items:center;gap:10px}
+.cad-editor-card{padding:18px;display:flex;flex-direction:column;gap:12px}.cad-editor-card textarea{width:100%;min-height:150px;resize:vertical;padding:12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font:13px/1.55 'Inter',system-ui,sans-serif}.cad-editor-card textarea.small{min-height:92px}.cad-settings-grid{display:grid;grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:14px}.cad-kv-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0;border-top:1px solid var(--ad-line-1);font-size:13px}.cad-kv-row:first-of-type{border-top:0}.cad-appt-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
+.cad-settings input,.cad-settings select{width:100%;min-height:40px;padding:9px 11px;border-radius:10px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font:13px 'Inter',system-ui,sans-serif}.cad-settings input::placeholder{color:var(--ad-t-3)}
+.cad-settings-stack{display:flex;flex-direction:column;gap:14px}.cad-settings-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px}.cad-setup-list{display:flex;flex-direction:column;gap:8px}.cad-setup-item{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2);color:var(--ad-t-1);display:flex;align-items:center;justify-content:space-between;gap:14px;text-align:left}.cad-setup-item.done{background:var(--ad-green-dim);border-color:oklch(0.74 0.16 150 / .28);color:var(--ad-green)}.cad-setup-item b{font-size:13px}.cad-setup-item small{display:block;margin-top:3px;color:var(--ad-t-3);font-size:11px;line-height:1.35}.cad-setup-item.done small{color:color-mix(in oklab,var(--ad-green) 74%,transparent)}
+.cad-admin-list{display:flex;flex-direction:column;gap:8px}.cad-admin-row2{display:grid;grid-template-columns:auto minmax(160px,1fr) auto;gap:12px;align-items:center;padding:12px;border-radius:12px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2)}.cad-admin-row2 .cad-mini-avatar{width:32px;height:32px}.cad-action-grid{display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));gap:10px}.cad-page-note{font-size:12px;color:var(--ad-t-2);line-height:1.55;margin:0}.cad-section-title{font-size:14px;font-weight:760;margin:0}
+.cad-page-grid{display:grid;grid-template-columns:repeat(2,minmax(280px,1fr));gap:14px}.cad-page-grid.three{grid-template-columns:repeat(3,minmax(220px,1fr))}.cad-list-stack{display:flex;flex-direction:column;gap:8px}.cad-list-row{display:grid;grid-template-columns:minmax(180px,1.2fr) minmax(110px,.7fr) minmax(160px,1fr) auto;gap:14px;align-items:center;padding:12px 14px;border-radius:12px;border:1px solid var(--ad-line-1);background:var(--ad-bg-1);font-size:12px}.cad-list-row.slim{grid-template-columns:minmax(180px,1.3fr) minmax(120px,.8fr) auto}.cad-list-row.tone-red{border-color:oklch(0.68 0.18 25 / .28);background:var(--ad-red-dim)}.cad-list-row.tone-amber{border-color:oklch(0.80 0.13 75 / .28);background:var(--ad-amber-dim)}.cad-list-row.tone-blue{border-color:oklch(0.72 0.12 240 / .28);background:var(--ad-blue-dim)}.cad-list-row.tone-green{border-color:oklch(0.74 0.16 150 / .28);background:var(--ad-green-dim)}.cad-action-strip{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px}.cad-toggle{width:48px;height:26px;border-radius:999px;border:1px solid var(--ad-line-2);background:var(--ad-bg-3);position:relative;padding:3px;transition:.18s}.cad-toggle:before{content:"";display:block;width:18px;height:18px;border-radius:999px;background:var(--ad-t-2);transition:.18s}.cad-toggle.on{background:var(--ad-brass-dim);border-color:var(--ad-brass-line)}.cad-toggle.on:before{transform:translateX(20px);background:var(--ad-brass)}.cad-mini-progress{height:8px;border-radius:999px;background:var(--ad-bg-3);overflow:hidden}.cad-mini-progress i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--ad-brass),var(--ad-green))}.cad-more-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.cad-more-grid .cad-option{min-height:68px;align-items:flex-start}.cad-value-big{font:750 28px 'JetBrains Mono',ui-monospace,monospace;letter-spacing:-.03em}.cad-tab-menu{position:relative}
+.cad-leads-head{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:18px;align-items:end}
+.cad-search{min-height:42px;width:100%;padding:0 14px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-1);color:var(--ad-t-0);font-size:13px}
+.cad-lead-list{display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--ad-line-1);border-radius:12px;background:var(--ad-bg-1)}
+.cad-lead-row{display:grid;grid-template-columns:minmax(180px,1.35fr) 130px 90px 1fr auto;gap:14px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--ad-line-1);font-size:12px}
+.cad-lead-row:last-child{border-bottom:0}.cad-lead-row.head{background:var(--ad-bg-2);color:var(--ad-t-3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+.cad-calendar{display:grid;grid-template-columns:repeat(7,minmax(110px,1fr));gap:10px}
+.cad-day{min-height:210px;padding:12px;border-radius:12px;border:1px solid var(--ad-line-1);background:var(--ad-bg-1);display:flex;flex-direction:column;gap:8px}
+.cad-day.today{border-color:var(--ad-brass-line);box-shadow:0 0 0 1px var(--ad-brass-dim) inset}
+.cad-event{padding:8px 9px;border-radius:9px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);font-size:11px;color:var(--ad-t-1)}
+.cad-empty{min-height:260px;display:grid;place-items:center;text-align:center;padding:32px;color:var(--ad-t-3)}
+.cad-modal-overlay{position:fixed;inset:0;z-index:500;background:rgba(3,5,8,.78);backdrop-filter:blur(12px);display:flex;align-items:center;justify-content:center;padding:22px}
+.cad-modal{width:min(520px,100%);max-height:88vh;overflow:auto;border-radius:18px;background:var(--ad-bg-1);border:1px solid var(--ad-line-2);box-shadow:var(--ad-shadow-2),var(--ad-shadow-brass);padding:24px}
+.cad-modal.wide{width:min(760px,100%)}.cad-modal.narrow{width:min(420px,100%)}
+.cad-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}
+.cad-modal-title{font-size:22px;font-weight:680;letter-spacing:-.02em;margin:0}.cad-modal-sub{margin:5px 0 0;color:var(--ad-t-2);font-size:13px;line-height:1.45}
+.cad-field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}.cad-field label{color:var(--ad-t-3);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.cad-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cad-modal input,.cad-modal select,.cad-modal textarea{width:100%;min-height:42px;padding:10px 12px;border-radius:11px;border:1px solid var(--ad-line-2)!important;background:var(--ad-bg-2)!important;color:var(--ad-t-0)!important;font:13px 'Inter',system-ui,sans-serif}
+.cad-modal textarea{min-height:92px;resize:vertical;line-height:1.45}
+.cad-modal-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}.cad-modal-actions .cad-btn{min-width:110px}
+.cad-option-list{display:flex;flex-direction:column;gap:8px}.cad-option{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2);color:var(--ad-t-0);display:flex;align-items:center;justify-content:space-between;gap:12px;text-align:left}
+.cad-floating-bar{position:fixed;left:50%;bottom:22px;z-index:460;transform:translateX(-50%);width:min(620px,calc(100vw - 32px));padding:12px 14px;border-radius:14px;border:1px solid var(--ad-line-2);background:rgba(13,16,21,.96);box-shadow:var(--ad-shadow-2);display:flex;align-items:center;justify-content:space-between;gap:12px}
+@media(max-width:900px){.cad-topbar{padding:0 14px}.cad-main{padding:18px 16px}.cad-dashboard-head,.cad-session-strip,.cad-leads-head,.cad-settings-head{align-items:flex-start;flex-direction:column}.cad-stat-grid,.cad-dashboard-grid,.cad-outcomes,.cad-settings-cards,.cad-settings-grid,.cad-calendar,.cad-form-grid,.cad-action-grid,.cad-page-grid,.cad-page-grid.three,.cad-more-grid{grid-template-columns:1fr}.cad-call-body{display:block;overflow:auto}.cad-call-main{padding:18px 16px}.cad-script{display:none}.cad-lead-name{font-size:30px}.cad-right .cad-tab:not(.cad-icon-tab){display:none}.cad-lead-row,.cad-list-row,.cad-list-row.slim{grid-template-columns:1fr;gap:6px}.cad-admin-row2{grid-template-columns:auto 1fr}.cad-modal-overlay{align-items:flex-end;padding:0}.cad-modal{border-radius:18px 18px 0 0;max-height:92vh}.cad-floating-bar{bottom:12px;align-items:flex-start;flex-direction:column}}
+@media(min-width:960px){
+  .desktop-wrap .app-shell.is-manage-mode{display:block!important;max-width:none!important;width:100%!important}
+  .desktop-wrap .app-shell.is-manage-mode>.script-panel{display:none!important}
+  .desktop-wrap .app-shell.is-call-mode{grid-template-columns:minmax(420px,1fr) minmax(320px,420px)!important}
+}
+@media(max-width:720px){
+  .hdr-row1{padding:10px 12px!important}
+  .hdr-brand h1{display:none!important}
+  .app-tabs{top:var(--ckg-strip-h)!important;padding:7px 10px!important;gap:5px!important}
+  .app-tabs button{min-height:42px!important;padding:7px 6px!important;font-size:11px!important}
+  .outcome-grid--call{grid-template-columns:1fr 1fr!important}
+  .outcome-grid--call .outcome{min-height:76px!important}
 }
 </style>
 </head>
@@ -483,7 +587,8 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0065';
+window.APP_VERSION='2026.05.05.0068';
+window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -657,10 +762,10 @@ function authGrant(){
   if(isCreator((_prof?.email||'').toLowerCase()))window._role='main';
   // ═══ HARD SYNC: Clear local data so cloud data takes priority ═══
   var _prevUser=localStorage.getItem('autodial_last_user');var _curUser=(_prof?.email||_user?.email||'').toLowerCase();
-  if(_prevUser&&_prevUser!==_curUser){console.log('[AutoDial] Different user detected — clearing local data for cloud sync');
+  if(!window._localPreviewMode&&_prevUser&&_prevUser!==_curUser){console.log('[AutoDial] Different user detected — clearing local data for cloud sync');
     var _keep=['autodial_role','autodial_last_user','autodial_seen_help'];
     Object.keys(localStorage).filter(function(k){return k.startsWith('autodial')||k.startsWith('ad_')}).forEach(function(k){if(_keep.indexOf(k)===-1)localStorage.removeItem(k)})}
-  localStorage.setItem('autodial_last_user',_curUser);localStorage.setItem('autodial_role',window._role);initSync();
+  if(!window._localPreviewMode){localStorage.setItem('autodial_last_user',_curUser);localStorage.setItem('autodial_role',window._role);initSync()}
   // Wait for Babel to compile initApp (defined in JSX section)
   var _mt=0;
   function tryMount(){
@@ -727,6 +832,14 @@ async function authCheck(){try{
 (function _bootAuth(){
   // Make sure the auth gate is visible while we wait for Supabase to download
   try{var _g=document.getElementById('auth-gate');if(_g)_g.style.display='flex'}catch(e){}
+  if(window._localPreviewMode){
+    console.info('[AutoDial] Local preview mode: bypassing hub auth on localhost only');
+    _user={id:'local-preview-user',email:'preview@local.autodial',user_metadata:{full_name:'Preview User'}};
+    _prof={email:_user.email,full_name:'Preview User',role:'main',autodial_role:'main',hub_role:'preview'};
+    window._role='main';
+    authGrant();
+    return;
+  }
   var _attempts=0;
   var _maxAttempts=200; // 200 × 50ms = 10s budget
   var _tick=function(){
@@ -7398,16 +7511,6 @@ function App() {
     };
   }, [role]);
   var [scriptOpen, setScriptOpen] = useState(load('scriptOpen') ?? true);
-  // Phase 5 (design handoff): resizable script panel width, persisted to
-  // localStorage. Default 380, clamp 280–520. The .sp-resize handle on
-  // the panel's left edge updates this state via pointermove → rAF →
-  // setScriptPanelWidth (debounced via rAF so re-renders coalesce). The
-  // app-shell exposes the value as a CSS variable --script-w on the
-  // grid container so grid-template-columns can size the right column.
-  var [scriptPanelWidth, setScriptPanelWidth] = useState(() => {
-    var raw = parseInt(localStorage.getItem('scriptPanelWidth') || '', 10);
-    return Number.isFinite(raw) && raw >= 280 && raw <= 520 ? raw : 380;
-  });
   var [scriptContent, setScriptContent] = useState(_sanitizeRichHtml(cfg.callingScript || ''));
   var [scriptEditing, setScriptEditing] = useState(false);
   var [refNotes, setRefNotes] = useState(_sanitizeRichHtml(cfg.refNotes || ''));
@@ -14724,15 +14827,673 @@ function App() {
     }
     return true;
   });
+  var renderClaudeAssimilatedApp = () => {
+    var h = React.createElement;
+    var icon = (name, size) => window.Icon && window.Icon[name] ? window.Icon[name]({ size: size || 16, sw: 1.8 }) : null;
+    var fmtClock = ms => {
+      var s = Math.max(0, Math.floor((ms || 0) / 1000));
+      var hh = String(Math.floor(s / 3600)).padStart(2, '0');
+      var mm = String(Math.floor(s % 3600 / 60)).padStart(2, '0');
+      var ss = String(s % 60).padStart(2, '0');
+      return hh + ':' + mm + ':' + ss;
+    };
+    var demo = window._localPreviewMode;
+    var demoLead = { name: 'Marcus Holloway', phone: '+1 415 555 0218', age: 54, notes: 'Referred by Diane K. Owns small auto-shop. 17-yo son starting college this fall - interested in education-bridge product.', sheetRow: 218, npCount: 1 };
+    var activeLead = cur || pending[0] || leads.find(l => l && l.status === 'pending' && l.phone) || (demo ? demoLead : null);
+    var leadName = activeLead?.name || 'No callable lead';
+    var leadPhone = activeLead?.phone || '';
+    var leadAge = activeLead?.age ? 'age ' + activeLead.age : '';
+    var leadNotes = activeLead?.notes || activeLead?.note || (demo ? demoLead.notes : 'Add notes to this lead so callers have context before dialing.');
+    var queueTotal = Math.max((leads || []).filter(l => l && l.phone && l.status !== 'ni' && l.status !== 'set').length, demo ? 124 : 0);
+    var queuePos = curIdx >= 0 ? curIdx + 1 : Math.min(Math.max((leads || []).length - (pending || []).length + 1, 1), queueTotal || 1);
+    var queuePct = queueTotal ? Math.min(100, Math.max(3, Math.round(queuePos / queueTotal * 100))) : 0;
+    var currentSession = session && !session.ended ? session : null;
+    var liveLabel = currentSession ? fmtClock(elapsed) : (demo ? '00:42:18' : '00:00:00');
+    var sessionDialed = currentSession?.dialed || (demo ? 14 : 0);
+    var sessionNp = currentSession?.np || (demo ? 6 : 0);
+    var sessionCb = currentSession?.cb || (demo ? 3 : 0);
+    var sessionNi = currentSession?.ni || (demo ? 2 : 0);
+    var sessionSets = currentSession?.sets || (demo ? 3 : 0);
+    var sessionPay = currentSession?.pay || (demo ? 24.10 : 0);
+    var todayKey = new Date().toDateString();
+    var adminEntries = Object.entries(adminSessions || {}).filter(([em]) => (em || '').toLowerCase() !== myEmail.toLowerCase()).map(([em, ss]) => [em, Array.isArray(ss) ? ss : []]);
+    var todaySessions = adminEntries.flatMap(([em, ss]) => ss.map(s => ({ ...s, email: em }))).filter(s => s.startTime && new Date(s.startTime).toDateString() === todayKey);
+    var todayAppts = (appointments || []).filter(a => a && !a._deleted && a.createdAt && new Date(a.createdAt).toDateString() === todayKey);
+    var todayClosed = todayAppts.filter(a => a.followUp === 'closed' || a.status === 'closed');
+    var demoStats = demo && !todaySessions.length && !todayAppts.length;
+    var sessionsToday = demoStats ? 6 : todaySessions.length;
+    var apptsToday = demoStats ? 11 : todayAppts.length;
+    var closedToday = demoStats ? 4 : todayClosed.length;
+    var efycToday = demoStats ? 2180 : todayClosed.reduce((a, x) => a + (+x.efyc || +x.value || 0), 0);
+    var knownAdmins = Object.keys(adminConfigs || {}).filter(em => em && em !== myEmail);
+    var liveRows = todaySessions.slice(0, 2).map(s => {
+      var em = (s.email || s.adminEmail || '').toLowerCase();
+      return { name: (adminConfigs[em] || {}).bizName || s.adminName || em || 'Admin', initials: ((adminConfigs[em] || {}).bizName || em || 'AD').slice(0, 2).toUpperCase(), dialed: s.dialed || 0, sets: s.sets || 0, time: fmtClock(Date.now() - (+s.startTime || Date.now())), tier: (adminConfigs[em] || {}).tier || 'Brass' };
+    });
+    if (demo && liveRows.length < 2) liveRows = [
+      { name: 'Priya Sharma', initials: 'PS', dialed: 11, sets: 2, time: '00:38:04', tier: 'Gold' },
+      { name: 'Carlos Rivera', initials: 'CR', dialed: 7, sets: 1, time: '00:21:50', tier: 'Brass' }
+    ];
+    var safeRich = html => _sanitizeRichHtml(html || '');
+    var plainRich = (html, max) => _htmlToPlain(safeRich(html), max || 120).trim();
+    var activeScriptVersion = scriptVersions.find(v => v.id === cfg.scriptVersionId);
+    var activeScriptName = activeScriptVersion?.name || (cfg.scriptVersionId ? 'Saved script' : (cfg.callingScript || scriptContent ? 'Draft script' : 'No script'));
+    var liveScriptHtml = safeRich(getCurrentScriptHtml());
+    var liveRefHtml = safeRich(getCurrentRefNotesHtml());
+    var fallbackScriptHtml = '<p>Hi <em>{name}</em>, this is your AutoDial caller. I am following up on the request you sent in. Is now a quick moment?</p><p><em>(pause - let them answer)</em></p><p>Great. I just want to ask three quick questions and set a clear next step if it makes sense.</p><p><b>1 - Coverage today</b></p><p>What are you currently using or comparing?</p><p><b>2 - Dependents</b></p><p>Who would need this decision to work for?</p><p><b>3 - Timing</b></p><p>What is a better time for a short appointment this week?</p>';
+    if (!liveScriptHtml && demo) liveScriptHtml = fallbackScriptHtml;
+    var fallbackObjections = [
+      { id: 'demo_obj_1', title: "I'm not interested", answer: 'Totally fair. Before I go, is it the timing, the product, or you already have something handled?', category: 'common' },
+      { id: 'demo_obj_2', title: 'I already have coverage', answer: 'Good, that means this can be a quick comparison instead of starting from zero. When was it last reviewed?', category: 'coverage' },
+      { id: 'demo_obj_3', title: 'Send me an email instead', answer: 'I can do that. To send the right thing, should I frame it around price, coverage amount, or appointment timing?', category: 'admin' },
+      { id: 'demo_obj_4', title: 'How did you get my number?', answer: 'You came through the lead sheet request. I can also mark this as no follow-up if you prefer.', category: 'trust' }
+    ];
+    var liveObjections = scriptObjections.length ? scriptObjections : (demo ? fallbackObjections : []);
+    var activeObj = liveObjections.find(o => o.id === activeObjectionId) || liveObjections[0] || null;
+    var selectedObjAnswer = activeObj ? safeRich(activeObj.answer || activeObj.response || activeObj.body || '') : '';
+    var waTemplateCount = Array.isArray(waTemplates) ? waTemplates.length : 0;
+    var maskKey = k => k ? (String(k).slice(0, 4) + '...' + String(k).slice(-4)) : '-';
+    var claudeConnected = !!(WORKER_URL && claudeKey && claudeKey());
+    var geminiConnected = !!(WORKER_URL && geminiKey && geminiKey());
+    var localClaudeKey = role === 'admin' ? '' : (claudeKeyVal || localStorage.getItem('autodial_claude_key') || '');
+    var localGeminiKey = geminiKeyVal || cfg.sharedGeminiKey || localStorage.getItem('autodial_gemini') || '';
+    var scriptMeta = activeScriptVersion ? (new Date(activeScriptVersion.ts || Date.now()).toLocaleDateString('en-SG') + ' - ' + activeScriptName) : activeScriptName;
+    var initials = (userName || _profEmail || 'User').split(/\s|@/).filter(Boolean).slice(0, 2).map(x => x[0]).join('').toUpperCase() || 'U';
+    var cadMoreKeys = ['cb', 'live', 'tracking', 'timesheet', 'rank', 'dial'];
+    var goCadTab = key => {
+      if (key === 'home') {
+        if (role === 'main') setMainMode('manage');
+        setTab('home');
+      } else if (key === 'dial') {
+        setMainMode('call');
+        setTab('dial');
+      } else {
+        if (role === 'main') setMainMode('manage');
+        setTab(key);
+      }
+      setShowMoreMenu(false);
+    };
+    var cadTopTab = (key, label, iconName, iconOnly) => h('button', { className: 'cad-tab ' + (tab === key ? 'on ' : '') + (iconOnly ? 'cad-icon-tab' : ''), title: label, onClick: () => goCadTab(key) }, iconName ? icon(iconName, 13) : null, iconOnly ? null : label);
+    var topbar = h('div', { className: 'cad-topbar' },
+      h('div', { className: 'cad-left' },
+        h('div', { className: 'cad-logo' }, icon('PhoneOutgoing', 14)),
+        h('span', { className: 'cad-brand' }, 'AutoDial'),
+        h('span', { className: 'cad-pill brass' }, h('span', { className: 'cad-dot' }), 'LIVE · ', h('span', { className: 'cad-mono' }, liveLabel))
+      ),
+      h('div', { className: 'cad-right' },
+        h('div', { className: 'cad-switch' },
+          h('button', { className: mainMode !== 'call' ? 'on' : '', title: 'Home', onClick: () => { setMainMode('manage'); setTab('home'); } }, icon('Home', 14)),
+          h('button', { className: mainMode === 'call' ? 'on' : '', title: 'Call', onClick: () => { setMainMode('call'); setTab('home'); } }, icon('PhoneOutgoing', 14))
+        ),
+        cadTopTab('leads', 'Leads'),
+        cadTopTab('cal', 'Cal'),
+        cadTopTab('appts', 'Appts'),
+        h('button', { className: 'cad-tab ' + (cadMoreKeys.includes(tab) ? 'on' : ''), onClick: () => setShowMoreMenu(true) }, icon('More', 13), 'More'),
+        h('button', { className: 'cad-tab cad-icon-tab ' + (tab === 'settings' ? 'on' : ''), title: 'Settings', onClick: () => { if (role === 'main') setMainMode('manage'); setTab('settings'); setSettingsSubtab('prefs'); } }, icon('Settings', 13)),
+        h('div', { className: 'cad-avatar', title: (syncStatus || 'sync') + ' · ' + (window.APP_VERSION || 'local') }, initials)
+      )
+    );
+    var stat = (k, v, sub, cls) => h('div', { className: 'cad-card cad-stat' }, h('span', { className: 'cad-label' }, k), h('b', { style: cls ? { color: cls } : null }, v), h('span', { className: 'cad-subtle', style: { fontSize: 11 } }, sub));
+    var planRow = (tone, title, sub, cta, click) => h('button', { className: 'cad-card cad-plan-row', onClick: click || (() => {}) },
+      h('div', { className: 'cad-inline' }, h('span', { className: 'cad-dot', style: { color: tone } }), h('div', { style: { textAlign: 'left' } }, h('b', { style: { fontSize: 13 } }, title), h('p', { className: 'cad-subtle', style: { fontSize: 11, marginTop: 2 } }, sub))),
+      h('span', { style: { color: tone, fontSize: 12, fontWeight: 700 } }, cta, ' →')
+    );
+    var dashboard = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
+      h('div', { className: 'cad-dashboard-head' },
+        h('div', null,
+          h('div', { className: 'cad-inline' }, h('span', { className: 'cad-label' }, new Date().toLocaleDateString('en-SG', { weekday: 'long', month: 'short', day: 'numeric' })), h('span', { className: 'cad-pill amber' }, h('span', { className: 'cad-mono' }, '12'), '-day streak')),
+          h('h1', { className: 'cad-title' }, (new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening'), ', ', (userName || 'Joel').split(' ')[0], '.'),
+          h('p', { className: 'cad-muted', style: { fontSize: 14, marginTop: 4 } }, knownAdmins.length || (demo ? 3 : 0), ' admins ready · ', liveRows.length, ' are on a call right now.')
+        ),
+        h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => setTab('leads') }, icon('Sheet', 13), 'Open sheet'), h('button', { className: 'cad-btn primary', onClick: () => { setMainMode('call'); setTab('home'); } }, icon('PhoneOutgoing', 13), 'Self-call mode'))
+      ),
+      h('div', { className: 'cad-stat-grid' }, stat('Sessions today', sessionsToday, (liveRows.length || 0) + ' live · ' + Math.max(0, sessionsToday - liveRows.length) + ' wrapped'), stat('Appts set', apptsToday, demoStats ? '+3 vs yesterday' : 'today', 'var(--ad-green)'), stat('Closed', closedToday, demoStats ? '36% close rate' : 'today'), stat('EFYC', '$' + efycToday.toLocaleString(), 'month · est.')),
+      h('div', { className: 'cad-dashboard-grid' },
+        h('div', { className: 'cad-plan' }, h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, "Today's plan"), h('span', { className: 'cad-subtle', style: { fontSize: 11 } }, '3 things')), planRow('var(--ad-amber)', (pending.length || (demo ? 14 : 0)) + ' leads ready for review', 'Review queue before assigning callers', 'Review', () => setTab('leads')), planRow('var(--ad-blue)', liveRows[0]?.name ? liveRows[0].name + ' is active' : 'No caller active yet', 'Open live calling or message the team', 'Message', () => setTab('settings')), planRow('var(--ad-brass-2)', (todayAppts.length || (demo ? 2 : 0)) + ' booked appts need follow-up', 'Resolve calendar and appointment status', 'Resolve', () => setTab('appts'))),
+        h('div', { className: 'cad-card cad-admin-card' }, h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 8 } }, h('span', { className: 'cad-label' }, 'Live now'), h('span', { className: 'cad-pill green' }, h('span', { className: 'cad-dot' }), liveRows.length, ' calling')), liveRows.map((r, i) => h('div', { className: 'cad-admin-row', key: r.name + i }, h('div', { className: 'cad-mini-avatar', style: i ? { background: 'var(--ad-blue)' } : null }, r.initials), h('div', null, h('div', { className: 'cad-inline' }, h('span', { style: { fontSize: 13 } }, r.name), h('span', { className: 'cad-tier' }, icon('Trophy', 9), r.tier)), h('p', { className: 'cad-subtle cad-mono', style: { fontSize: 11, marginTop: 3 } }, 'On call · ', r.time)), h('div', { style: { textAlign: 'right' } }, h('span', { className: 'cad-label' }, 'Dialed'), h('b', { className: 'cad-mono' }, r.dialed)), h('div', { style: { textAlign: 'right' } }, h('span', { className: 'cad-label' }, 'Set'), h('b', { className: 'cad-mono', style: { color: 'var(--ad-green)' } }, r.sets)), h('span', { className: 'cad-subtle' }, '›'))), h('div', { className: 'cad-inline cad-subtle', style: { justifyContent: 'space-between', padding: '12px 4px 4px', fontSize: 12 } }, h('span', null, demo ? 'Linda Tao · ready, not started' : 'Team standing by'), h('button', { className: 'cad-btn ghost', onClick: () => setTab('settings') }, 'Nudge')))
+      ),
+      h('div', { className: 'cad-card cad-wide' }, h('div', { className: 'cad-inline', style: { gap: 18 } }, h('div', { className: 'cad-logo', style: { width: 52, height: 52, borderRadius: 14 } }, icon('Trophy', 24)), h('div', null, h('div', { className: 'cad-inline' }, h('b', null, 'Team is ', demo ? 4 : Math.max(0, 60 - totalSets), ' sets from'), h('span', { className: 'cad-tier' }, 'Brass tier')), h('p', { className: 'cad-subtle', style: { fontSize: 12, marginTop: 6 } }, 'Reached at 60 sets this month · resets in 27 days'))), h('div', { style: { width: 280 } }, h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', fontSize: 11 } }, h('span', { className: 'cad-subtle' }, 'Bronze · 30'), h('b', { style: { color: 'var(--ad-brass-2)' } }, demo ? '56 / 60' : totalSets + ' / 60'), h('span', { className: 'cad-subtle' }, 'Gold · 90')), h('div', { className: 'cad-progress', style: { height: 8, marginTop: 8 } }, h('i', { style: { width: (demo ? 62 : Math.min(100, totalSets / 60 * 100)) + '%' } }))))
+    ));
+    var outcomeButton = (status, glyph, caption, keyHint) => h('button', { className: 'cad-outcome ' + status, onClick: () => status === 'cb' ? (setShowCb(true), setCbDate(''), setCbTime('')) : handleOutcome(status) }, h('span', { className: 'key' }, keyHint), h('span', { className: 'glyph' }, glyph), h('span', { className: 'caption' }, caption));
+    var callView = h('div', { className: 'cad-shell' }, topbar, h('div', { className: 'cad-call-body' },
+      h('main', { className: 'cad-call-main' },
+        h('div', { className: 'cad-session-strip' }, h('div', { className: 'cad-session-stats' }, h('div', null, h('span', { className: 'cad-label' }, 'Session'), h('p', { style: { fontSize: 13, marginTop: 4 } }, currentSession ? 'Started ' + new Date(currentSession.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ready to start', h('span', { className: 'cad-subtle' }, currentSession?.selectedSlot ? ' · Slot' : ''))), h('span', { style: { width: 1, height: 28, background: 'var(--ad-line-1)' } }), h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Dialed'), h('b', null, sessionDialed)), h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'No pickup'), h('b', { style: { color: 'var(--ad-amber)' } }, sessionNp)), h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Callback'), h('b', { style: { color: 'var(--ad-blue)' } }, sessionCb)), h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'No int.'), h('b', { style: { color: 'var(--ad-red)' } }, sessionNi)), h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Set'), h('b', { style: { color: 'var(--ad-green)' } }, sessionSets)), h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Pay'), h('b', null, '$' + sessionPay.toFixed(2)))), currentSession ? h('button', { className: 'cad-btn ghost danger', onClick: endSessionConfirm }, 'End session →') : h('button', { className: 'cad-btn primary', onClick: () => startDial() }, icon('PhoneOutgoing', 14), 'Start session')),
+        h('div', { className: 'cad-card cad-lead-card' }, h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('div', { className: 'cad-inline' }, h('span', { className: 'cad-label' }, 'Now calling'), h('span', { className: 'cad-mono cad-muted', style: { fontSize: 12 } }, queuePos, ' / ', queueTotal || 0), h('div', { className: 'cad-progress', style: { width: 120 } }, h('i', { style: { width: queuePct + '%' } }))), h('div', { className: 'cad-inline' }, h('span', { className: 'cad-pill amber' }, ((activeLead?.npCount || 0) + 1) + ' attempt'), h('span', { className: 'cad-pill' }, icon('Sheet', 10), 'Row ', activeLead?.sheetRow || (demo ? 218 : '-')))), h('div', { className: 'cad-inline', style: { alignItems: 'flex-end', gap: 24 } }, h('div', { style: { flex: 1 } }, h('h2', { className: 'cad-lead-name' }, leadName), h('div', { className: 'cad-inline', style: { marginTop: 8, flexWrap: 'wrap' } }, h('span', { className: 'cad-phone-chip' }, icon('PhoneOutgoing', 14), leadPhone || 'No phone'), leadAge && h('span', { className: 'cad-muted', style: { fontSize: 13 } }, leadAge, demo ? ' · last contacted 2d ago' : ''))), h('button', { className: 'cad-btn primary', style: { height: 52, padding: '0 22px', fontSize: 14 }, onClick: () => running && leadPhone ? dial(leadPhone) : startDial() }, icon('PhoneOutgoing', 16), running ? 'Dial now' : 'Start calling')), h('p', { className: 'cad-note' }, h('span', { className: 'cad-label', style: { marginRight: 8 } }, 'Notes'), leadNotes)),
+        h('div', null, h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label' }, 'After-call · keys 1-4'), h('span', { className: 'cad-subtle', style: { fontSize: 11 } }, 'NP · NI auto-advance')), h('div', { className: 'cad-outcomes' }, outcomeButton('np', 'NP', 'No pickup', '1'), outcomeButton('cb', 'CB', 'Callback', '2'), outcomeButton('ni', 'NI', 'No interest', '3'), outcomeButton('set', 'Set', 'Booked', '4'))),
+        running && h('button', { className: 'cad-btn', onClick: pauseDial, style: { alignSelf: 'flex-start' } }, icon('Clock', 14), 'Pause')
+      ),
+      h('aside', { className: 'cad-script' },
+        h('div', { className: 'cad-script-main' },
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } },
+            h('span', { className: 'cad-label' }, 'Calling Script'),
+            h('span', { className: 'cad-pill' }, scriptMeta)
+          ),
+          liveScriptHtml
+            ? h('div', { className: 'cad-script-read cad-rich', dangerouslySetInnerHTML: { __html: liveScriptHtml } })
+            : h('div', { className: 'cad-script-read' }, h('p', { className: 'cad-subtle' }, 'No calling script saved yet. Add one in Settings.')),
+          liveRefHtml && h('div', { className: 'cad-card', style: { padding: 12, marginTop: 14 } },
+            h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 8 } },
+              h('span', { className: 'cad-label' }, 'Reference'),
+              h('button', { className: 'cad-btn ghost', onClick: () => setTab('settings') }, 'Edit')
+            ),
+            h('div', { className: 'cad-rich cad-muted', style: { fontSize: 12, lineHeight: 1.5 }, dangerouslySetInnerHTML: { __html: liveRefHtml } })
+          ),
+          h('div', { className: 'cad-script-actions' },
+            h('button', { className: 'cad-btn', onClick: () => setTab('settings') }, icon('Settings', 13), 'Edit setup'),
+            h('button', { className: 'cad-btn', onClick: addObjection }, icon('Sparkles', 13), 'Add objection')
+          )
+        ),
+        h('div', { className: 'cad-script-tabs' },
+          h('div', { className: 'cad-script-tab-head' },
+            h('span', { className: 'cad-script-tab on' }, 'Objections ', h('span', { className: 'cad-mono cad-subtle' }, liveObjections.length)),
+            h('span', { className: 'cad-script-tab' }, 'Reference')
+          ),
+          h('div', { className: 'cad-objections' },
+            liveObjections.length
+              ? liveObjections.slice(0, 8).map(o => h('button', { className: 'cad-objection ' + (activeObj?.id === o.id ? 'on' : ''), key: o.id || o.title, onClick: () => setActiveObjectionId(o.id) }, h('span', null, o.title || 'Objection'), h('span', null, '>')))
+              : h('span', { className: 'cad-subtle', style: { fontSize: 12 } }, 'No objections saved yet.'),
+            activeObj && h('div', { className: 'cad-objection-answer' },
+              h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 8 } },
+                h('b', null, activeObj.title || 'Objection'),
+                !String(activeObj.id || '').startsWith('demo_') && h('span', { className: 'cad-inline' },
+                  h('button', { className: 'cad-btn ghost', onClick: () => editObjection(activeObj) }, 'Edit'),
+                  h('button', { className: 'cad-btn ghost danger', onClick: () => removeObjection(activeObj) }, 'Remove')
+                )
+              ),
+              selectedObjAnswer ? h('div', { className: 'cad-rich', dangerouslySetInnerHTML: { __html: selectedObjAnswer } }) : h('p', { className: 'cad-subtle' }, 'No talk track saved.')
+            )
+          )
+        )
+      )
+    ));
+    var apptRows = (appointments || []).filter(a => !a._deleted).slice(0, 8);
+    if (demo && !apptRows.length) apptRows = [
+      { date: 'May 5 · 10:30', name: 'Marcus Holloway', caller: 'Jordan M.', location: '1402 Wilshire', followUp: 'Tomorrow' },
+      { date: 'May 4 · 16:00', name: 'Linda Tao', caller: 'Priya S.', location: 'Coffee · Buena Vista', followUp: 'Today · soon' },
+      { date: 'May 3 · 11:15', name: 'Earl Briggs', caller: 'Carlos R.', location: 'Phone follow-up', followUp: 'Met · paid' },
+      { date: 'May 2 · 14:30', name: 'Sarah Lin', caller: 'Jordan M.', location: 'Office', followUp: 'Fly kite' }
+    ];
+    var apptsView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
+      h('div', { className: 'cad-dashboard-head' },
+        h('div', null, h('h2', { style: { fontSize: 24 } }, 'Appointments'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, apptRows.length, ' in view - ', apptsToday, " today's set - ", closedToday, ' closed')),
+        h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => setTab('cal') }, icon('Calendar', 13), 'Week'), h('button', { className: 'cad-btn', onClick: () => setTab('leads') }, icon('Sheet', 13), 'Open in Sheets'))
+      ),
+      h('div', { className: 'cad-table' },
+        h('div', { className: 'cad-tr head' }, ['Date', 'Lead', 'Caller', 'Location', 'Status', ''].map(x => h('span', { key: x }, x))),
+        apptRows.map((a, i) => {
+          var status = a.followUp || a.status || 'pending';
+          var tone = /fly|cancel|no/i.test(status) ? 'red' : /today|soon/i.test(status) ? 'blue' : /tomorrow|pending/i.test(status) ? 'amber' : 'green';
+          var apptDateText = a.date || (a.dateTime ? new Date(a.dateTime).toLocaleString() : [a.apptDate, a.apptTime].filter(Boolean).join(' ') || 'TBD');
+          return h('div', { className: 'cad-tr', key: a.id || a.calEventId || i },
+            h('span', { className: 'cad-mono cad-muted' }, apptDateText),
+            h('b', null, a.name || a.leadName || a.lead_name || 'Lead'),
+            h('span', null, a.caller || a.adminName || a.admin || 'AutoDial'),
+            h('span', { className: 'cad-muted' }, a.location || a.apptLocation || 'Phone follow-up'),
+            h('span', null, h('span', { className: 'cad-pill ' + tone }, status)),
+            h('span', { className: 'cad-appt-actions' },
+              h('button', { className: 'cad-btn ghost', onClick: () => _openRescheduleFlow(a) }, 'Edit'),
+              a.needsDetails && h('button', { className: 'cad-btn ghost danger', onClick: () => undoIncompleteSetAppt(a) }, 'Undo')
+            )
+          );
+        })
+      )
+    ));
+    var keyRows = [
+      ['Anthropic Claude', localClaudeKey ? maskKey(localClaudeKey) : (claudeConnected ? 'proxy' : '-'), claudeConnected || !!localClaudeKey],
+      ['Google Gemini', localGeminiKey ? maskKey(localGeminiKey) : (geminiConnected ? 'proxy' : '-'), geminiConnected || !!localGeminiKey],
+      ['OpenAI', '-', false]
+    ];
+    var connectedKeys = keyRows.filter(r => r[2]).length;
+    var settingsCardData = [
+      ['Calling script', (scriptVersions.length || 0) + ' saved - ' + activeScriptName, 'PhoneOutgoing'],
+      ['Reference notes', liveRefHtml ? plainRich(liveRefHtml, 64) : 'No reference notes saved', 'Sheet'],
+      ['Objection handles', liveObjections.length + ' saved', 'Sparkles'],
+      ['WhatsApp templates', waTemplateCount + ' template' + (waTemplateCount === 1 ? '' : 's'), 'Bell']
+    ];
+    var settingsNav = [
+      ['setup', 'Setup', 'Check'],
+      ['prefs', 'Calling', 'PhoneOutgoing'],
+      ['integr', 'Workspace', 'Sheet'],
+      ['team', 'Team', 'Users'],
+      ['data', 'Sync', 'Refresh'],
+      ['owner', 'Owner', 'Star']
+    ].filter(x => x[0] !== 'team' || isManageMode);
+    var activeSettingsKey = settingsSubtab === 'sync' ? 'data' : settingsSubtab;
+    if (!settingsNav.some(x => x[0] === activeSettingsKey)) activeSettingsKey = 'setup';
+    var settingsCopy = {
+      setup: ['Setup', 'Get the workspace ready without touching call state.'],
+      prefs: ['Calling', 'Scripts, objections, WhatsApp templates, AI keys.'],
+      integr: ['Workspace', 'Google Sheets, Calendar, Drive, and lead source wiring.'],
+      team: ['Team', 'Admin roster, shared sheets, scripts, and assignment status.'],
+      data: ['Sync', 'Health checks, pending writes, pull/flush tools, and cache version.'],
+      owner: ['Owner', 'Account authority, role, and system-level controls.']
+    };
+    var pillState = (ok, label) => h('span', { className: 'cad-pill ' + (ok ? 'green' : 'amber') }, icon(ok ? 'Check' : 'Clock', 10), label || (ok ? 'OK' : 'Check'));
+    var fieldBlock = (label, child, help) => h('div', { className: 'cad-field', style: { marginBottom: 0 } }, h('label', null, label), child, help && h('p', { className: 'cad-page-note' }, help));
+    var addTeamAdminClaude = async () => {
+      var em = String(newAdminEmail || '').trim().toLowerCase();
+      if (!em.includes('@')) return toast('Enter a valid admin email', 'err');
+      var hubMatch = (hubAdminPool || []).find(p => p.email === em);
+      if (hubMatch && hubMatch.tetheredTo && hubMatch.tetheredTo !== (myEmail || '').toLowerCase()) return toast(em + ' is already hired by another Main', 'err');
+      var proceed = await confirmAsync('Add ' + em + ' to this AutoDial team? This creates a shared admin config for that account.', { title: 'Add team admin', confirmLabel: 'Add admin' });
+      if (!proceed) return;
+      var nextCfg = {
+        payRates: [...(cfg.payRates || [8, 10, 12, 16, 20, 25])],
+        sessionDur: cfg.sessionDur || 5,
+        mThresh: cfg.mThresh || 2,
+        nThresh: cfg.nThresh || 3,
+        bonusMult: cfg.bonusMult || 1.5,
+        tierMins: [...(cfg.tierMins || [0, 30, 60, 100, 150, 200])],
+        metIncentive: cfg.metIncentive || 10,
+        bizName: hubMatch?.name || '',
+        timesheetId: '',
+        sheetTab: '',
+        tethered_main_email: (myEmail || '').toLowerCase(),
+        tethered_at: new Date().toISOString()
+      };
+      var next = { ...(adminConfigs || {}), [em]: { ...nextCfg, ...(adminConfigs || {})[em] } };
+      setAdminConfigs(next);
+      try { publishAdminConfigs(next); } catch (_e) {}
+      setNewAdminEmail('');
+      fetchHubAdminPool(true);
+      toast('Admin added: ' + em);
+    };
+    var setupRows = (guidedSetupItems || []).filter(Boolean);
+    var setupDone = setupRows.filter(x => x.done).length;
+    var setupPage = h('div', { className: 'cad-settings-stack' },
+      h('div', { className: 'cad-card cad-editor-card' },
+        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Setup checklist'), pillState(setupRows.length && setupDone === setupRows.length, setupRows.length ? Math.round(setupDone / setupRows.length * 100) + '%' : 'Ready')),
+        h('div', { className: 'cad-progress', style: { height: 8 } }, h('i', { style: { width: (setupRows.length ? setupDone / setupRows.length * 100 : 100) + '%' } })),
+        h('div', { className: 'cad-setup-list' }, setupRows.length ? setupRows.map(item => h(item.action ? 'button' : 'div', { className: 'cad-setup-item ' + (item.done ? 'done' : ''), key: item.label, onClick: item.action || undefined },
+          h('span', null, h('b', null, item.label), item.detail && h('small', null, item.detail)),
+          pillState(!!item.done, item.done ? item.readyLabel || 'Done' : item.waitLabel || (item.action ? 'Open' : 'Waiting'))
+        )) : h('div', { className: 'cad-setup-item done' }, h('span', null, h('b', null, 'Base app loaded'), h('small', null, 'No setup checklist items were returned.')), pillState(true, 'OK')))
+      ),
+      h('div', { className: 'cad-settings-grid' },
+        h('div', { className: 'cad-card cad-editor-card' }, h('span', { className: 'cad-label' }, 'Current workspace'), h('div', { className: 'cad-kv-row' }, h('span', null, 'Role'), h('b', null, role)), h('div', { className: 'cad-kv-row' }, h('span', null, 'Google'), pillState(gOk, gOk ? 'Connected' : 'Not connected')), h('div', { className: 'cad-kv-row' }, h('span', null, 'Leads'), h('span', { className: 'cad-muted' }, cfg.sheetTab || myCfg.sheetTab || 'No tab'))),
+        h('div', { className: 'cad-card cad-editor-card' }, h('span', { className: 'cad-label' }, 'Fast actions'), h('div', { className: 'cad-action-grid' }, h('button', { className: 'cad-btn', onClick: connectG }, icon('Sparkles', 13), gOk ? 'Reconnect' : 'Connect Google'), h('button', { className: 'cad-btn', onClick: () => setSettingsSubtab('integr') }, icon('Sheet', 13), 'Workspace'), h('button', { className: 'cad-btn primary', onClick: () => { setMainMode('call'); setTab('home'); } }, icon('PhoneOutgoing', 13), 'Call view')))
+      )
+    );
+    var workspacePage = h('div', { className: 'cad-settings-stack' },
+      h('div', { className: 'cad-settings-grid' },
+        h('div', { className: 'cad-card cad-editor-card' },
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Google workspace'), pillState(gOk, gOk ? 'Connected' : 'Not connected')),
+          h('p', { className: 'cad-page-note' }, role === 'admin' ? 'Main manages Google access for admins.' : 'Connect once, then load Sheets tabs and Calendar destinations from the same account.'),
+          h('div', { className: 'cad-action-grid' }, h('button', { className: 'cad-btn primary', onClick: connectG, disabled: role === 'admin' }, icon('Sparkles', 13), gOk ? 'Reconnect' : 'Connect'), h('button', { className: 'cad-btn', onClick: () => fetchLeads(), disabled: !cfg.sheetTab || sLoad }, icon('Refresh', 13), sLoad ? 'Fetching' : 'Fetch leads'), h('button', { className: 'cad-btn', onClick: () => gCalShare.listCalendars().then(setCalList).catch(() => toast('Calendar list failed', 'err')), disabled: !gOk || role === 'admin' }, icon('Calendar', 13), 'Load calendars'))
+        ),
+        h('div', { className: 'cad-card cad-editor-card' },
+          h('span', { className: 'cad-label' }, 'Lead source'),
+          fieldBlock('Sheet URL or ID', h('input', { value: cfg.sheetId || '', placeholder: 'Paste Google Sheet URL or ID', onChange: e => setCfg(s => ({ ...s, sheetId: e.target.value })) })),
+          h('div', { className: 'cad-action-grid' }, h('button', { className: 'cad-btn', onClick: () => fetchTabs(cfg.sheetId), disabled: !cfg.sheetId || sLoad }, sLoad ? 'Checking' : 'Load tabs'), h('button', { className: 'cad-btn primary', onClick: fetchLeads, disabled: !cfg.sheetTab || sLoad }, 'Fetch selected'), h('button', { className: 'cad-btn', onClick: () => fileRef.current && fileRef.current.click() }, 'Upload file')),
+          sTabs.length > 0 && fieldBlock('Sheet tab', h('select', { value: cfg.sheetTab || '', onChange: e => setCfg(s => ({ ...s, sheetTab: e.target.value })) }, h('option', { value: '' }, 'Select tab'), sTabs.map(t => h('option', { key: t.id || t.title, value: t.title }, t.title, ' (', t.rows, ' rows)'))))
+        )
+      ),
+      h('div', { className: 'cad-card cad-editor-card' },
+        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Calendar destination'), h('span', { className: 'cad-pill' }, calList.length || calShares.length, ' loaded')),
+        fieldBlock('Target calendar', h('select', { value: cfg.targetCalendarId || '', onChange: e => setCfg(s => ({ ...s, targetCalendarId: e.target.value })) }, h('option', { value: '' }, 'Primary calendar'), calList.map(c => h('option', { key: c.id, value: c.id }, c.summary || c.id))), 'New appointments use this calendar when Google Calendar is connected.'),
+        h('div', { className: 'cad-kv-row' }, h('span', null, 'Appointment sheet'), h('span', { className: 'cad-muted' }, myCfg.timesheetId || cfg.sheetId || 'Local only'))
+      )
+    );
+    var adminEntries2 = Object.entries(adminConfigs || {}).filter(([em]) => em && em.includes('@')).sort((a, b) => a[0].localeCompare(b[0]));
+    var availableAdmins = (hubAdminPool || []).filter(p => !p.tetheredTo || p.tetheredTo === (myEmail || '').toLowerCase()).slice(0, 8);
+    var teamPage = h('div', { className: 'cad-settings-stack' },
+      h('div', { className: 'cad-card cad-editor-card' },
+        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Team roster'), h('span', { className: 'cad-pill' }, adminEntries2.length, ' admins')),
+        h('div', { className: 'cad-form-grid' }, fieldBlock('Admin email', h('input', { value: newAdminEmail, onChange: e => setNewAdminEmail(e.target.value), placeholder: 'admin@example.com' })), h('div', { className: 'cad-inline', style: { alignItems: 'end' } }, h('button', { className: 'cad-btn', onClick: () => fetchHubAdminPool(true), disabled: hubAdminPoolLoading }, hubAdminPoolLoading ? 'Refreshing' : 'Refresh pool'), h('button', { className: 'cad-btn primary', onClick: addTeamAdminClaude }, 'Add admin'))),
+        availableAdmins.length > 0 && h('div', { className: 'cad-admin-list' }, availableAdmins.map(p => h('button', { className: 'cad-admin-row2', key: p.email, onClick: () => setNewAdminEmail(p.email) }, h('span', { className: 'cad-mini-avatar' }, (p.name || p.email || 'A')[0].toUpperCase()), h('span', null, h('b', null, p.name || p.email), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, p.email)), adminConfigs[p.email] ? pillState(true, 'Added') : h('span', { className: 'cad-pill' }, 'Pick'))))
+      ),
+      h('div', { className: 'cad-card cad-editor-card' },
+        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Admin configs'), h('button', { className: 'cad-btn', disabled: !(cfg.sheetId && cfg.sheetTab) || !adminEntries2.length, onClick: () => assignCurrentLeadSourceToAdmins(adminEntries2.map(([em]) => em)) }, 'Assign current lead source')),
+        adminEntries2.length ? h('div', { className: 'cad-admin-list' }, adminEntries2.map(([em, ac]) => h('div', { className: 'cad-admin-row2', key: em }, h('span', { className: 'cad-mini-avatar' }, (ac.bizName || em || 'A')[0].toUpperCase()), h('span', null, h('b', null, ac.bizName || em), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, em, ' - ', ac.sheetTab || 'no lead tab')), h('span', { className: 'cad-inline' }, pillState(!!(ac.timesheetId && ac.sheetTab), ac.sheetTab ? 'Linked' : 'Needs sheet'), h('span', { className: 'cad-pill ' + (ac.scriptShareVersionId ? 'green' : '') }, ac.scriptShareVersionId ? 'Script' : 'No script'))))) : h('p', { className: 'cad-page-note' }, 'No admins added yet.')
+      )
+    );
+    var qSaved = load('_sheetQueue');
+    var qCount = (sheetQueueRef.current || []).length + (Array.isArray(qSaved) ? qSaved.length : 0);
+    var diagRows = [
+      ['Google', gOk, gOk ? 'Connected' : 'Not connected'],
+      ['Leads source', !!((cfg.sheetId || myCfg.timesheetId) && (cfg.sheetTab || myCfg.sheetTab)), cfg.sheetTab || myCfg.sheetTab || 'No tab selected'],
+      ['Calendar', role === 'admin' ? !!(calShares.length || myCfg.targetCalendarId || weekEvents.length) : gOk && (calList.length > 0 || weekEvents.length > 0 || calShares.length > 0), weekEvents.length ? weekEvents.length + ' events loaded' : 'No week events loaded'],
+      ['Cloud sync', !!(_SB && window._cloudReady && syncStatus !== 'offline'), syncStatus + (lastSyncAt ? ' - ' + new Date(lastSyncAt).toLocaleTimeString() : '')],
+      ['Sheet queue', qCount === 0, qCount + ' pending write' + (qCount === 1 ? '' : 's')]
+    ];
+    var syncPage = h('div', { className: 'cad-settings-stack' },
+      h('div', { className: 'cad-card cad-editor-card' },
+        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Sync diagnostics'), h('span', { className: 'cad-pill cad-mono' }, window.APP_VERSION || 'local')),
+        diagRows.map(row => h('div', { className: 'cad-kv-row', key: row[0] }, h('span', null, h('b', null, row[0]), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, row[2])), pillState(row[1], row[1] ? 'OK' : 'Check'))),
+        h('div', { className: 'cad-action-grid' }, h('button', { className: 'cad-btn', onClick: flushSheetQueue }, 'Flush queue'), h('button', { className: 'cad-btn', onClick: () => window._liveSyncPull && window._liveSyncPull() }, 'Pull cloud'), h('button', { className: 'cad-btn primary', onClick: async () => { await Promise.allSettled([pullApptsFromSheet(), pullSessionsFromSheet()]); } }, 'Pull sheets'))
+      )
+    );
+    var ownerPage = h('div', { className: 'cad-settings-stack' },
+      h('div', { className: 'cad-card cad-editor-card' },
+        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Account'), pillState(isCreatorUser, isCreatorUser ? 'Creator' : role)),
+        h('div', { className: 'cad-kv-row' }, h('span', null, 'Email'), h('span', { className: 'cad-mono cad-muted' }, myEmail || _profEmail || 'local preview')),
+        h('div', { className: 'cad-kv-row' }, h('span', null, 'Role'), h('b', null, role)),
+        h('div', { className: 'cad-kv-row' }, h('span', null, 'Preview mode'), h('span', { className: 'cad-pill ' + (window._localPreviewMode ? 'green' : '') }, window._localPreviewMode ? 'local' : 'live')),
+        h('div', { className: 'cad-kv-row' }, h('span', null, 'Worker'), h('span', { className: 'cad-mono cad-muted' }, WORKER_URL ? 'configured' : 'not configured'))
+      ),
+      h('div', { className: 'cad-card cad-editor-card' }, h('span', { className: 'cad-label' }, 'Owner tools'), h('p', { className: 'cad-page-note' }, isCreatorUser ? 'Creator and hub user management remain available in the live hub. This Claude page keeps the operational status visible without changing account permissions.' : 'This section is restricted to the account owner.'))
+    );
+    var callingPage = h(React.Fragment, null,
+      h('div', { className: 'cad-settings-cards' }, settingsCardData.map(c => h('div', { className: 'cad-card cad-settings-card', key: c[0] },
+        h('div', { className: 'cad-inline' },
+          h('span', { className: 'cad-pill brass' }, icon(c[2], 14)),
+          h('div', null, h('b', { style: { fontSize: 14 } }, c[0]), h('p', { className: 'cad-subtle', style: { fontSize: 12, marginTop: 2 } }, c[1]))
+        ),
+        h('span', null, '>')
+      ))),
+      h('div', { className: 'cad-settings-grid' },
+        h('div', { className: 'cad-card cad-editor-card' },
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Calling script'), h('span', { className: 'cad-pill' }, scriptMeta)),
+          h('textarea', { value: scriptEditing ? scriptContent : (scriptContent || cfg.callingScript || ''), placeholder: 'Paste or edit the caller script here.', onChange: e => { setScriptEditing(true); setScriptContent(e.target.value); } }),
+          h('div', { className: 'cad-inline', style: { justifyContent: 'flex-end', flexWrap: 'wrap' } },
+            h('button', { className: 'cad-btn', onClick: () => saveCurrentScriptDraft('Script draft saved') }, 'Save draft'),
+            h('button', { className: 'cad-btn', onClick: saveCurrentScriptVersion }, 'Save version'),
+            h('button', { className: 'cad-btn primary', onClick: saveAsNewScriptVersion }, 'Save as new')
+          )
+        ),
+        h('div', { className: 'cad-card cad-editor-card' },
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Reference notes'), h('span', { className: 'cad-pill' }, liveRefHtml ? 'attached' : 'empty')),
+          h('textarea', { className: 'small', value: refEditing ? refNotes : (refNotes || cfg.refNotes || ''), placeholder: 'Caller reference notes, product notes, eligibility reminders.', onChange: e => { setRefEditing(true); setRefNotes(e.target.value); } }),
+          h('div', { className: 'cad-inline', style: { justifyContent: 'flex-end', flexWrap: 'wrap' } },
+            h('button', { className: 'cad-btn', onClick: () => saveCurrentScriptDraft('Reference notes saved') }, 'Save notes'),
+            h('button', { className: 'cad-btn', onClick: addObjection }, icon('Sparkles', 13), 'Add objection')
+          ),
+          h('div', { className: 'cad-objections', style: { padding: 0, marginTop: 2 } },
+            liveObjections.length ? liveObjections.slice(0, 5).map(o => h('button', { className: 'cad-objection ' + (activeObj?.id === o.id ? 'on' : ''), key: o.id || o.title, onClick: () => setActiveObjectionId(o.id) }, h('span', null, o.title || 'Objection'), h('span', null, '>'))) : h('span', { className: 'cad-subtle', style: { fontSize: 12 } }, 'No objection handles saved.')
+          )
+        )
+      ),
+      h('div', { className: 'cad-card', style: { padding: 18 } },
+        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 12 } }, h('span', { className: 'cad-label' }, 'AI keys'), h('span', { className: 'cad-pill ' + (connectedKeys ? 'green' : 'amber') }, connectedKeys ? icon('Check', 10) : icon('Clock', 10), connectedKeys + ' connected')),
+        keyRows.map((row, i) => h('div', { className: 'cad-kv-row', key: row[0] },
+          h('span', null, row[0]),
+          h('span', { className: 'cad-inline' }, h('span', { className: 'cad-mono cad-subtle' }, row[1]), h('span', { className: 'cad-pill ' + (row[2] ? 'green' : '') }, row[2] ? 'active' : 'off'))
+        ))
+      )
+    );
+    var settingsPages = { setup: setupPage, prefs: callingPage, integr: workspacePage, team: teamPage, data: syncPage, owner: ownerPage };
+    var settingsView = h('div', { className: 'cad-shell' }, topbar, h('div', { className: 'cad-settings' },
+      h('aside', { className: 'cad-rail' },
+        h('span', { className: 'cad-label', style: { marginBottom: 10 } }, 'Settings'),
+        settingsNav.map(x => h('button', { className: 'cad-tab ' + (activeSettingsKey === x[0] ? 'on' : ''), key: x[0], onClick: () => { setTab('settings'); setSettingsSubtab(x[0]); } }, icon(x[2], 13), x[1]))
+      ),
+      h('main', { className: 'cad-settings-main' },
+        h('div', { className: 'cad-settings-head' },
+          h('div', null,
+            h('h2', { style: { fontSize: 24 } }, settingsCopy[activeSettingsKey][0]),
+            h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, settingsCopy[activeSettingsKey][1])
+          ),
+          h('span', { className: 'cad-pill cad-mono' }, window.APP_VERSION || 'local')
+        ),
+        h('div', { className: 'cad-input-like' }, icon('Search', 14), 'Claude layout page - ', settingsCopy[activeSettingsKey][0], h('span', { className: 'cad-pill ' + (syncStatus === 'offline' ? 'amber' : 'green'), style: { marginLeft: 'auto' } }, syncStatus || 'idle')),
+        settingsPages[activeSettingsKey] || setupPage
+      )
+    ));
+    var leadPairs = (leads || []).map((l, i) => ({ lead: l, idx: i })).filter(x => {
+      var q = String(leadSearch || search || '').toLowerCase().trim();
+      if (!q) return true;
+      var l = x.lead || {};
+      return String(l.name || '').toLowerCase().includes(q) || String(l.phone || '').includes(q) || String(l.email || '').toLowerCase().includes(q);
+    });
+    var statusTone = s => /set|book/i.test(s || '') ? 'green' : /cb|call/i.test(s || '') ? 'blue' : /ni|no/i.test(s || '') ? 'red' : /np/i.test(s || '') ? 'amber' : '';
+    var leadsView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
+      h('div', { className: 'cad-leads-head' },
+        h('div', null, h('h2', { style: { fontSize: 24 } }, 'Leads'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, leads.length, ' loaded - ', pending.length, ' callable - ', cfg.sheetTab || myCfg.sheetTab || 'no tab selected')),
+        h('div', { className: 'cad-inline' },
+          !gOk && role !== 'admin' && h('button', { className: 'cad-btn', onClick: connectG }, icon('Sparkles', 13), 'Connect Google'),
+          h('button', { className: 'cad-btn', disabled: sLoad, onClick: fetchLeads }, icon('Refresh', 13), sLoad ? 'Fetching...' : 'Fetch leads'),
+          h('button', { className: 'cad-btn primary', onClick: () => fileRef.current && fileRef.current.click() }, icon('Sheet', 13), 'Upload file')
+        )
+      ),
+      h('input', { ref: fileRef, type: 'file', accept: '.csv,.tsv,.xlsx,.xls', onChange: handleFile, style: { display: 'none' } }),
+      role !== 'admin' && h('div', { className: 'cad-card', style: { padding: 16 } },
+        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', alignItems: 'flex-end' } },
+          h('div', null, h('span', { className: 'cad-label' }, 'Google Sheets'), h('p', { className: 'cad-muted', style: { fontSize: 12, marginTop: 5 } }, cfg.sheetId ? (cfg._sheetName || 'Active sheet') : 'Connect or paste a sheet in Settings, then fetch')),
+          h('span', { className: 'cad-pill ' + (gOk ? 'green' : 'amber') }, gOk ? 'Connected' : 'Not connected')
+        ),
+        gOk && h('div', { className: 'cad-form-grid', style: { marginTop: 12 } },
+          h('input', { value: cfg.sheetId || '', placeholder: 'Sheet URL or ID', onChange: e => setCfg(s => ({ ...s, sheetId: e.target.value })) }),
+          h('button', { className: 'cad-btn', onClick: () => fetchTabs(cfg.sheetId), disabled: sLoad }, sLoad ? 'Checking...' : 'Load tabs')
+        ),
+        gOk && sTabs.length > 0 && h('div', { className: 'cad-form-grid', style: { marginTop: 10 } },
+          h('select', { value: cfg.sheetTab || '', onChange: e => setCfg(s => ({ ...s, sheetTab: e.target.value })) }, h('option', { value: '' }, 'Select tab'), sTabs.map(t => h('option', { key: t.id || t.title, value: t.title }, t.title, ' (', t.rows, ' rows)'))),
+          h('button', { className: 'cad-btn primary', onClick: fetchLeads, disabled: !cfg.sheetTab || sLoad }, 'Fetch selected tab')
+        )
+      ),
+      h('input', { className: 'cad-search', value: leadSearch, onChange: e => setLeadSearch(e.target.value), placeholder: 'Search leads by name, phone, or email' }),
+      leadPairs.length ? h('div', { className: 'cad-lead-list' },
+        h('div', { className: 'cad-lead-row head' }, h('span', null, 'Lead'), h('span', null, 'Phone'), h('span', null, 'Status'), h('span', null, 'Notes'), h('span', null, '')),
+        leadPairs.slice(0, 120).map(({ lead: l, idx }) => h('div', { className: 'cad-lead-row', key: l.id || l.phone || idx },
+          h('div', null, h('b', null, l.name || 'Unnamed lead'), h('p', { className: 'cad-subtle', style: { fontSize: 11, marginTop: 3 } }, l.email || l.source || l._sourceSheetTab || '')),
+          h('span', { className: 'cad-mono cad-muted' }, l.phone || '-'),
+          h('span', null, h('span', { className: 'cad-pill ' + statusTone(l.status) }, (l.status || 'pending').toUpperCase())),
+          h('span', { className: 'cad-muted' }, String(l.notes || l.remarks || '').slice(0, 90)),
+          h('button', { className: 'cad-btn', onClick: () => { setMainMode('call'); setTab('home'); adHocDialLead(idx); } }, icon('PhoneOutgoing', 13), 'Call')
+        ))
+      ) : h('div', { className: 'cad-card cad-empty' }, h('div', null, h('div', { className: 'cad-logo', style: { margin: '0 auto 14px', width: 46, height: 46, borderRadius: 14 } }, icon('Sheet', 22)), h('h3', null, 'No leads loaded'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 6 } }, 'Fetch from Google Sheets or upload CSV/Excel to start the queue.')))
+    ));
+    var calNow = new Date();
+    var calStart = startOfWeek(calNow);
+    calStart.setDate(calStart.getDate() + calWeekOffset * 7);
+    var calDays = [];
+    var calByDay = {};
+    (weekEvents || []).forEach(ev => {
+      var d = new Date(ev.start?.dateTime || ev.start?.date || 0);
+      var k = localDateKey(d);
+      if (!calByDay[k]) calByDay[k] = [];
+      calByDay[k].push(ev);
+    });
+    for (var di = 0; di < 7; di++) {
+      var d0 = new Date(calStart.getTime() + di * 86400000);
+      var dLocal = new Date(d0.getFullYear(), d0.getMonth(), d0.getDate());
+      var k0 = localDateKey(dLocal);
+      calDays.push({ key: k0, date: dLocal, events: (calByDay[k0] || []).slice().sort((a, b) => new Date(a.start?.dateTime || a.start?.date || 0) - new Date(b.start?.dateTime || b.start?.date || 0)) });
+    }
+    var calView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
+      h('div', { className: 'cad-dashboard-head' },
+        h('div', null, h('h2', { style: { fontSize: 24 } }, 'Calendar'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, fmtDayMonth(calStart), ' - ', fmtDayMonth(new Date(calStart.getTime() + 6 * 86400000)), ' - ', (weekEvents || []).length, ' events')),
+        h('div', { className: 'cad-inline' },
+          h('button', { className: 'cad-btn', onClick: () => setCalWeekOffset(p => p - 1) }, '<'),
+          h('button', { className: 'cad-btn', onClick: () => setCalWeekOffset(0) }, 'Today'),
+          h('button', { className: 'cad-btn', onClick: () => setCalWeekOffset(p => p + 1) }, '>'),
+          h('button', { className: 'cad-btn primary', onClick: () => { setCalRefreshing(true); setCalRefreshTrigger(p => p + 1); } }, calRefreshing ? 'Refreshing...' : 'Refresh')
+        )
+      ),
+      !gOk ? h('div', { className: 'cad-card cad-empty' }, h('div', null, h('div', { className: 'cad-logo', style: { margin: '0 auto 14px', width: 46, height: 46, borderRadius: 14 } }, icon('Calendar', 22)), h('h3', null, role === 'admin' ? 'Calendar not linked yet' : 'Connect Google Calendar'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 6 } }, role === 'admin' ? 'Main controls calendar access.' : 'Connect Google in Settings to view and create calendar events.'))) :
+      h('div', { className: 'cad-calendar' }, calDays.map(day => h('div', { className: 'cad-day ' + (day.key === localDateKey(new Date()) ? 'today' : ''), key: day.key },
+        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('b', null, day.date.toLocaleDateString('en-SG', { weekday: 'short' })), h('span', { className: 'cad-mono cad-muted', style: { fontSize: 12 } }, day.date.getDate())),
+        day.events.length ? day.events.slice(0, 6).map(ev => {
+          var es = new Date(ev.start?.dateTime || ev.start?.date || 0);
+          return h('button', { className: 'cad-event', key: ev.id || ev.summary || es.getTime(), onClick: () => setCalEditEvent ? setCalEditEvent(ev) : null }, h('span', { className: 'cad-mono' }, es.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), ' ', ev.summary || 'Busy');
+        }) : h('span', { className: 'cad-subtle', style: { fontSize: 12 } }, 'No events')
+      )))
+    ));
+    var cadField = (label, child) => h('div', { className: 'cad-field' }, h('label', null, label), child);
+    var cadModal = (show, cls, onClose, body) => show ? h('div', { className: 'cad-modal-overlay', onClick: onClose }, h('div', { className: 'cad-modal ' + (cls || ''), onClick: e => e.stopPropagation() }, body)) : null;
+    var makeCbPick = (days, hour, minute) => {
+      var d = new Date();
+      d.setDate(d.getDate() + days);
+      d.setHours(hour, minute || 0, 0, 0);
+      return { date: localDateKey(d), time: String(hour).padStart(2, '0') + ':' + String(minute || 0).padStart(2, '0') };
+    };
+    var submitClaudeAppointment = async () => {
+      if (!apptDate || !apptTime) return toast('Pick appointment date and time', 'err');
+      if (apptSaving) return;
+      setApptSaving(true);
+      try {
+        var lead = apptLead || activeLead;
+        if (!lead) throw new Error('No lead selected for appointment');
+        var dur = _slotMinutes(apptSlotDuration, apptCoreMin, 1, 480);
+        var s = new Date(apptDate + 'T' + apptTime);
+        if (Number.isNaN(s.getTime())) throw new Error('Invalid appointment date or time');
+        var e = new Date(s.getTime() + dur * 60000);
+        if (rescheduleTargetAppt) {
+          var target = rescheduleTargetAppt;
+          var evtId = target.calEventId || '';
+          if (window.gCal && gOk) {
+            try {
+              var title = 'Appt: ' + (target.name || lead.name || '') + (apptLocation ? ' @ ' + apptLocation : '');
+              if (evtId) await withTimeout(gCal.update(evtId, { summary: title, status: 'confirmed', start: { dateTime: s.toISOString() }, end: { dateTime: e.toISOString() } }, myCfg.targetCalendarId || 'primary'), 8000, 'Calendar update');
+              else {
+                var created = await withTimeout(gCal.create(title, apptObs || '', s.toISOString(), e.toISOString(), null, myCfg.targetCalendarId || 'primary'), 8000, 'Calendar create');
+                evtId = created?.id || '';
+              }
+            } catch (err) {
+              toast('Calendar update failed; local appointment is still updated.', 'err');
+              console.warn('[Claude appointment reschedule]', err?.message || err);
+            }
+          }
+          var updated = { ...target, apptDate, apptTime, duration: dur, location: apptLocation, remarks: apptObs || target.remarks, calEventId: evtId, followUp: 'pending', followUpDate: new Date().toISOString(), shaky: apptShaky };
+          setAppointments(prev => prev.map(a => a.id === target.id ? updated : a));
+          if (target.admin && target.admin.toLowerCase() !== myEmail.toLowerCase()) _mainWritebackAdminAppt(updated);
+          try { syncApptSheet(updated, { apptDate, apptTime, location: apptLocation, duration: dur, status: 'Set', followUp: 'Pending', notes: apptObs || target.remarks || '' }); } catch (_e) {}
+          _rememberApptLocation(apptLocation, lead);
+          _clearApptDraft(lead);
+          setShowAppt(false);
+          setRescheduleTargetAppt(null);
+          setApptShaky(false);
+          toast('Rescheduled ' + (target.name || 'appointment'));
+          return;
+        }
+        var desc = ['Client: ' + (lead.name || ''), 'Phone: ' + (lead.phone || ''), lead.email ? 'Email: ' + lead.email : '', apptObs ? 'Notes: ' + apptObs : '', lead.notes ? 'Sheet remarks: ' + lead.notes : ''].filter(Boolean).join('\n');
+        var invites = apptInvite ? apptInvite.split(',').map(x => x.trim()).filter(Boolean) : [];
+        var eventCalId = myCfg.targetCalendarId || 'primary';
+        var calendarErr = null;
+        var evt = null;
+        if (window.gCal && gOk) {
+          try {
+            evt = await withTimeout(gCal.create('Appt: ' + (lead.name || '') + (apptLocation ? ' @ ' + apptLocation : ''), desc, s.toISOString(), e.toISOString(), invites, eventCalId), 8000, 'Calendar create');
+          } catch (err) {
+            calendarErr = err;
+            if (eventCalId !== 'primary') {
+              try {
+                eventCalId = 'primary';
+                evt = await withTimeout(gCal.create('Appt: ' + (lead.name || ''), desc, s.toISOString(), e.toISOString(), invites, 'primary'), 7000, 'Primary calendar create');
+                calendarErr = null;
+              } catch (primaryErr) {
+                calendarErr = primaryErr;
+              }
+            }
+          }
+        } else {
+          calendarErr = new Error('Google Calendar is not connected');
+        }
+        if (invites.length) setSavedInvitees(p => Array.from(new Set([...(p || []), ...invites])).slice(0, 20));
+        var savedApptRow = null;
+        try {
+          savedApptRow = await withTimeout(DB.saveAppt({ admin: myEmail, name: lead.name, phone: lead.phone, apptDate, apptTime, duration: dur, calEventId: evt?.id || '', inviteEmails: apptInvite, location: apptLocation, shaky: apptShaky }, _user?.id), 6500, 'Supabase appointment save');
+        } catch (err) {
+          console.warn('[Claude appointment DB.saveAppt]', err?.message || err);
+          toast('Appointment kept locally; Supabase save is slow/unavailable.', 'err');
+        }
+        var localId = savedApptRow?.id || 'appt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        appStateRef.current._pendingSetCalEventId = { calEventId: evt?.id || '', apptId: lead.phone || '', dbApptId: savedApptRow?.id || '', calendarId: eventCalId };
+        setAppointments(prev => {
+          var list = Array.isArray(prev) ? prev.slice() : [];
+          var idx = list.findIndex(a => (a.leadId === lead.id || a.phone === lead.phone && a.phone) && (!a.followUp || a.followUp === 'pending') && !a.apptDate);
+          var row = { id: localId, dbApptId: savedApptRow?.id || '', apptSheetAutoId: localId, leadId: lead.id, name: lead.name, phone: lead.phone, gender: lead.gender || '', age: lead.age || '', apptDate, apptTime, duration: dur, location: apptLocation, industry: lead.industry || '', remarks: apptObs, followUp: 'pending', tip: 0, tipPaid: false, createdAt: new Date().toISOString(), admin: myEmail, calEventId: evt?.id || '', shaky: apptShaky, needsDetails: false };
+          if (idx >= 0) {
+            list[idx] = { ...list[idx], ...row, id: list[idx].id || row.id };
+            return list;
+          }
+          return [...list, row];
+        });
+        try { _liveSyncRef.current.localApptsGuardUntil = Date.now() + 6000; } catch (_e) {}
+        _rememberApptLocation(apptLocation, lead);
+        _clearApptDraft(lead);
+        if (lead.phone) setShowWA({ name: lead.name, phone: lead.phone, date: apptDate, time: apptTime, location: apptLocation });
+        var apptSheetId = myCfg.timesheetId || cfg.sheetId;
+        if (apptSheetId && localStorage.getItem('ad_gt')) {
+          var sheetPayload = { id: localId, autoId: localId, calEventId: evt?.id || '', name: lead.name, phone: lead.phone, gender: lead.gender || '', age: lead.age || lead.computed_age || '', industry: lead.industry || lead.company || '', apptDate, apptTime, location: apptLocation, duration: dur, remarks: apptObs };
+          (async () => {
+            try {
+              var res = await withTimeout(gSheets.appendAppt(apptSheetId, sheetPayload, userName), 10000, 'Appointment sheet append');
+              appStateRef.current._pendingSetCalEventId = { ...(appStateRef.current._pendingSetCalEventId || {}), apptSheetId, apptSheetRange: res?.updates?.updatedRange || '' };
+            } catch (err) {
+              console.warn('[Claude appointment sheet append]', err?.message || err);
+              toast('Appointment created; sheet append needs a sync check.', 'err');
+            }
+          })();
+        }
+        if (evt?.id) toast('Appointment created.');
+        else toast('Appointment saved locally; calendar event was not created: ' + (calendarErr?.message || calendarErr || 'Calendar unavailable'), 'err');
+        setShowAppt(false);
+        setApptLocation('');
+        setApptObs('');
+        setApptInvite('');
+        setApptShaky(false);
+      } catch (err) {
+        toast('Appointment failed: ' + (err?.message || err), 'err');
+      } finally {
+        setApptSaving(false);
+      }
+    };
+    var dialogModal = cadModal(!!dialogRequest, 'narrow', () => resolveDialog(dialogRequest?.kind === 'confirm' ? false : null), dialogRequest && h(React.Fragment, null,
+      h('div', { className: 'cad-modal-head' }, h('div', null, h('h3', { className: 'cad-modal-title' }, dialogRequest.title), h('p', { className: 'cad-modal-sub' }, dialogRequest.message)), h('button', { className: 'cad-btn ghost', onClick: () => resolveDialog(dialogRequest.kind === 'confirm' ? false : null) }, 'x')),
+      dialogRequest.kind === 'prompt' && cadField('Response', dialogRequest.multiline ? h('textarea', { value: dialogRequest.value, onChange: e => setDialogRequest(req => ({ ...req, value: e.target.value })), placeholder: dialogRequest.placeholder }) : h('input', { value: dialogRequest.value, onChange: e => setDialogRequest(req => ({ ...req, value: e.target.value })), placeholder: dialogRequest.placeholder, onKeyDown: e => { if (e.key === 'Enter') resolveDialog(dialogRequest.value || null); } })),
+      h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => resolveDialog(dialogRequest.kind === 'confirm' ? false : null) }, dialogRequest.cancelLabel || 'Cancel'), h('button', { className: 'cad-btn primary', onClick: () => resolveDialog(dialogRequest.kind === 'prompt' ? (dialogRequest.value || null) : true) }, dialogRequest.confirmLabel || 'Confirm'))
+    ));
+    var cbPicks = [['Later today', makeCbPick(0, Math.min(new Date().getHours() + 2, 20), 0)], ['Tomorrow 10am', makeCbPick(1, 10, 0)], ['Tomorrow 2pm', makeCbPick(1, 14, 0)], ['In 3 days', makeCbPick(3, 10, 0)]];
+    var cbModal = cadModal(showCb, '', () => setShowCb(false), h(React.Fragment, null,
+      h('div', { className: 'cad-modal-head' }, h('div', null, h('span', { className: 'cad-pill blue' }, 'Outcome - CB'), h('h3', { className: 'cad-modal-title', style: { marginTop: 10 } }, 'Schedule Callback'), h('p', { className: 'cad-modal-sub' }, activeLead?.name || leadName, leadPhone ? ' - ' + leadPhone : '')), h('button', { className: 'cad-btn ghost', onClick: () => setShowCb(false) }, 'x')),
+      h('div', { className: 'cad-option-list', style: { marginBottom: 14 } }, cbPicks.map(([label, p]) => h('button', { className: 'cad-option', key: label, onClick: () => { handleOutcome('cb', { cbDate: p.date, cbTime: p.time }); setShowCb(false); setCbDate(''); setCbTime(''); } }, h('span', null, label), h('span', { className: 'cad-mono cad-muted' }, p.date, ' ', p.time)))),
+      h('button', { className: 'cad-option', onClick: () => { var p = makeCbPick(3, 10, 0); handleOutcome('cb', { cbDate: p.date, cbTime: p.time, cbFlexible: true }); setShowCb(false); setCbDate(''); setCbTime(''); } }, h('span', null, 'No fixed date/time'), h('span', { className: 'cad-muted' }, 'Soft 3-day reminder')),
+      h('div', { className: 'cad-form-grid', style: { marginTop: 14 } }, cadField('Date', h('input', { type: 'date', value: cbDate, onChange: e => setCbDate(e.target.value) })), cadField('Time', h('input', { type: 'time', value: cbTime, onChange: e => setCbTime(e.target.value) }))),
+      h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => { setShowCb(false); setCbDate(''); setCbTime(''); } }, 'Cancel'), h('button', { className: 'cad-btn primary', onClick: () => { if (!cbDate || !cbTime) return toast('Pick date and time', 'err'); handleOutcome('cb', { cbDate, cbTime }); setShowCb(false); setCbDate(''); setCbTime(''); } }, 'Set callback'))
+    ));
+    var apptModal = cadModal(showAppt, 'wide', () => setShowAppt(false), h(React.Fragment, null,
+      h('div', { className: 'cad-modal-head' }, h('div', null, h('span', { className: 'cad-pill green' }, rescheduleTargetAppt ? 'Reschedule' : 'Outcome - Set'), h('h3', { className: 'cad-modal-title', style: { marginTop: 10 } }, rescheduleTargetAppt ? 'Reschedule appointment' : 'Book appointment'), h('p', { className: 'cad-modal-sub' }, (apptLead || activeLead)?.name || 'Lead', (apptLead || activeLead)?.phone ? ' - ' + (apptLead || activeLead).phone : '')), h('button', { className: 'cad-btn ghost', onClick: () => setShowAppt(false) }, 'x')),
+      h('div', { className: 'cad-form-grid' }, cadField('Date', h('input', { type: 'date', value: apptDate, onChange: e => setApptDate(e.target.value) })), cadField('Time', h('input', { type: 'time', value: apptTime, onChange: e => setApptTime(e.target.value) }))),
+      h('div', { className: 'cad-form-grid' }, cadField('Duration', h('input', { type: 'number', min: 15, step: 15, value: apptSlotDuration, onChange: e => setApptSlotDuration(_slotMinutes(e.target.value, 60, 1, 480)) })), cadField('Invite emails', h('input', { value: apptInvite, onChange: e => setApptInvite(e.target.value), placeholder: 'optional, comma separated' }))),
+      cadField('Location', h('input', { value: apptLocation, onChange: e => setApptLocation(e.target.value), placeholder: 'optional - office, home, cafe...' })),
+      recentApptLocations.length > 0 && h('div', { className: 'cad-inline', style: { flexWrap: 'wrap', margin: '-2px 0 12px' } }, recentApptLocations.slice(0, 6).map((x, i) => h('button', { className: 'cad-pill blue', key: x.loc + i, onClick: () => setApptLocation(x.loc) }, x.loc))),
+      cadField('Specialist notes', h('textarea', { value: apptObs, onChange: e => setApptObs(e.target.value), placeholder: 'Receptiveness, objections, timing, context for specialist' })),
+      h('label', { className: 'cad-option', style: { cursor: 'pointer' }, onClick: () => setApptShaky(p => !p) }, h('span', null, 'Shaky appointment'), h('span', { className: 'cad-pill ' + (apptShaky ? 'amber' : '') }, apptShaky ? 'Marked' : 'Off')),
+      h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => { setShowAppt(false); setRescheduleTargetAppt(null); setApptShaky(false); } }, 'Cancel'), h('button', { className: 'cad-btn primary', disabled: apptSaving || !apptDate || !apptTime, onClick: submitClaudeAppointment }, apptSaving ? 'Creating...' : rescheduleTargetAppt ? 'Reschedule' : 'Book & next lead'))
+    ));
+    var slots = (myCfg.sessionSlots || [{ hours: n(myCfg.sessionDur, 5), apptsBar: n(myCfg.mThresh, 2), bonusBar: n(myCfg.nThresh, 3) }]).filter(sl => n(sl.hours, 0) > 0).sort((a, b) => n(a.hours, 0) - n(b.hours, 0));
+    var slotModal = cadModal(showSlotPicker, '', () => setShowSlotPicker(false), h(React.Fragment, null,
+      h('div', { className: 'cad-modal-head' }, h('div', null, h('h3', { className: 'cad-modal-title' }, 'Choose session'), h('p', { className: 'cad-modal-sub' }, 'Pick the call block and target bar for this run.')), h('button', { className: 'cad-btn ghost', onClick: () => setShowSlotPicker(false) }, 'x')),
+      h('div', { className: 'cad-option-list' }, slots.map((slot, i) => { var hrs = n(slot.hours, 5); var ap = n(slot.apptsBar, 2); var bonus = n(slot.bonusBar, 4); return h('button', { className: 'cad-option', key: i, onClick: () => { setShowSlotPicker(false); startDial(slot); } }, h('span', null, h('b', null, hrs, 'h session'), h('span', { className: 'cad-muted', style: { display: 'block', fontSize: 12, marginTop: 3 } }, ap, ' appts bar - ', bonus, ' bonus bar')), h('span', { className: 'cad-pill green' }, '$', (hrs * hourlyRate).toFixed(0))); }))
+    ));
+    var waModal = cadModal(!!showWA, '', () => setShowWA(null), showWA && h(React.Fragment, null,
+      h('div', { className: 'cad-modal-head' }, h('div', null, h('span', { className: 'cad-pill green' }, 'WhatsApp'), h('h3', { className: 'cad-modal-title', style: { marginTop: 10 } }, 'Send confirmation'), h('p', { className: 'cad-modal-sub' }, 'To ', showWA.name, showWA.phone ? ' - ' + showWA.phone : '')), h('button', { className: 'cad-btn ghost', onClick: () => setShowWA(null) }, 'x')),
+      h('div', { className: 'cad-option-list', style: { marginBottom: 12 } }, (waTemplates || []).slice(0, 5).map(t => h('button', { className: 'cad-option', key: t.id || t.name, onClick: async () => { var chosenName = await promptAsync('Confirm how this prospect should be addressed in the WhatsApp message.', showWA.name || '', { title: 'Confirm WhatsApp name', placeholder: 'Mr Tan / Ms Lim', confirmLabel: 'Open WhatsApp', cancelLabel: 'Cancel' }); if (chosenName === null) return; chosenName = String(chosenName || '').trim(); if (!chosenName) return toast('Confirm a name first', 'err'); var msg = waFill(t.template, { name: chosenName, date: showWA.date || '', time: showWA.time || '', location: showWA.location || '', admin: userName, company: 'PolicyLens' }); window.open(waLink(showWA.phone, msg), '_blank'); setShowWA(null); } }, h('span', null, t.name), h('span', { className: 'cad-muted' }, 'Open')))),
+      cadField('Custom message', h('textarea', { id: 'cad-wa-custom', placeholder: 'Type a custom confirmation message...' })),
+      h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => setShowWA(null) }, 'Skip'), h('button', { className: 'cad-btn primary', onClick: () => { var msg = document.getElementById('cad-wa-custom')?.value; if (!msg) return toast('Type a message', 'err'); window.open(waLink(showWA.phone, msg), '_blank'); setShowWA(null); } }, 'Send custom'))
+    ));
+    var importModal = cadModal(!!importReview, '', () => setImportReview(null), importReview && h(React.Fragment, null,
+      h('div', { className: 'cad-modal-head' }, h('div', null, h('h3', { className: 'cad-modal-title' }, 'Lead Import Review'), h('p', { className: 'cad-modal-sub' }, importReview.meta?.source || 'Import', ' - ', importReview.count, ' leads staged')), h('button', { className: 'cad-btn ghost', onClick: () => setImportReview(null) }, 'x')),
+      importReview.lowCols.length > 0 && h('div', { className: 'cad-inline', style: { flexWrap: 'wrap', marginBottom: 12 } }, importReview.lowCols.map(c => h('span', { className: 'cad-pill amber', key: c.key }, c.key, ' ', c.score, '%'))),
+      h('div', { className: 'cad-option-list' }, importReview.questionable.slice(0, 8).map((l, i) => h('div', { className: 'cad-option', key: l.id || i }, h('span', null, h('b', null, l.name || '(missing name)'), h('span', { className: 'cad-muted', style: { display: 'block', fontSize: 12, marginTop: 3 } }, l.phone || '(missing phone)', ' - ', (l.status || 'pending').toUpperCase())), h('span', { className: 'cad-pill amber' }, l.needsReview ? 'Review' : 'Weak')))),
+      h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => setImportReview(null) }, 'Cancel'), h('button', { className: 'cad-btn primary', onClick: () => { setLeads(importReview.leads || []); if (importReview.meta?.colMap) setDetectedColMap(importReview.meta.colMap); setImportReview(null); toast('Import accepted: ' + (importReview.leads || []).length + ' leads'); } }, 'Accept import'))
+    ));
+    var colPickerModal = cadModal(!!showColPicker, '', () => setShowColPicker(null), showColPicker && h(React.Fragment, null,
+      h('div', { className: 'cad-modal-head' }, h('div', null, h('h3', { className: 'cad-modal-title' }, 'Which column has status?'), h('p', { className: 'cad-modal-sub' }, 'Pick the column with NI, NP, CB, or Set remarks.')), h('button', { className: 'cad-btn ghost', onClick: () => setShowColPicker(null) }, 'x')),
+      h('div', { className: 'cad-option-list' }, showColPicker.candidates.map(col => { var samples = showColPicker.rows.slice(0, 5).map(r => String(r[col.idx] || '').trim()).filter(Boolean).slice(0, 3); return h('button', { className: 'cad-option', key: col.idx, onClick: () => { var r = showColPicker.rows; var reLeads = leads.map((l, i) => { if (i >= r.length) return l; var rmk = String(r[i][col.idx] || '').trim(); var rl = rmk.toLowerCase(); var status = 'pending'; var npCount = l.npCount; if (/^ni$/i.test(rmk) || /\bnot interested\b/i.test(rl)) status = 'ni'; else if (/np/i.test(rl) && rl.length < 10) { status = 'np'; var m = rl.match(/np\s*x?\s*(\d+)/i); npCount = m ? parseInt(m[1]) : Math.max(1, npCount || 0); } else if (/\bappt\b|\bappointment\b|appt set/i.test(rl)) status = 'set'; else if (/\bcallback\b|\bcall back\b|\bcall again\b|\bcb\b/i.test(rl)) status = 'cb'; return { ...l, status, npCount, notes: rmk, statusCol: col.idx }; }); setLeads(reLeads); toast('Updated statuses from "' + col.name + '"'); setShowColPicker(null); } }, h('span', null, h('b', null, 'Col ', a1Col(col.idx), ': ', col.name), h('span', { className: 'cad-muted', style: { display: 'block', fontSize: 12, marginTop: 3 } }, samples.join(' | ') || 'No samples')), h('span', { className: 'cad-pill brass' }, 'Pick')); })),
+      h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => setShowColPicker(null) }, 'Keep pending'))
+    ));
+    var undoBar = undoInfo ? h('div', { className: 'cad-floating-bar' }, h('span', null, h('b', null, undoInfo.status?.toUpperCase()), ' - ', undoInfo.name || 'last lead'), h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => setUndoInfo(null) }, 'Dismiss'), h('button', { className: 'cad-btn primary', onClick: () => doUndo() }, 'Undo now'))) : null;
+    var modalStack = h(React.Fragment, null, undoBar, cbModal, apptModal, slotModal, waModal, importModal, colPickerModal, dialogModal);
+    var withCadModals = view => h(React.Fragment, null, view, modalStack);
+    if (mainMode === 'call') return withCadModals(callView);
+    if (tab === 'leads') return withCadModals(leadsView);
+    if (tab === 'cal') return withCadModals(calView);
+    if (tab === 'appts') return withCadModals(apptsView);
+    if (tab === 'settings') return withCadModals(settingsView);
+    return withCadModals(dashboard);
+  };
+  var _assimilationQs = new URLSearchParams(location.search);
+  // 0068: assimilated Claude design is now the production render path. The
+  // legacy render below stays in the file as the ?legacy=1 escape hatch
+  // (and as the source of truth for any feature surfaces the assimilated
+  // path doesn't yet implement). Add ?review=1 for the strict-claude-review
+  // mockup viewer in local preview mode.
+  if (_assimilationQs.get('legacy') !== '1' && _assimilationQs.get('review') !== '1') return renderClaudeAssimilatedApp();
   return React.createElement("div", {
     className: "desktop-wrap"
   }, React.createElement("div", {
-    className: "app-shell",
-    // Phase 5 (design handoff): expose scriptPanelWidth as --script-w on
-    // the desktop grid container so grid-template-columns can size the
-    // right column. The CSS uses var(--script-w, 380px) as fallback so
-    // SSR/initial paint defaults cleanly.
-    style: { '--script-w': scriptPanelWidth + 'px' }
+    className: "app-shell " + (isCallMode ? "is-call-mode" : "is-manage-mode")
   }, React.createElement(Confetti, {
     show: confetti
   }), React.createElement(MilestonePopup, _extends({
@@ -14749,16 +15510,7 @@ function App() {
     className: "hdr-brand"
   }, React.createElement("div", {
     className: "hdr-logo"
-  }, React.createElement("svg", {
-    width: "15",
-    height: "15",
-    viewBox: "0 0 24 24",
-    fill: "none",
-    stroke: "#fff",
-    strokeWidth: "2.5"
-  }, React.createElement("path", {
-    d: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"
-  }))), React.createElement("h1", null, "AutoDial v2")), isOffline && React.createElement("span", {
+  }, window.Icon && window.Icon.PhoneOutgoing ? window.Icon.PhoneOutgoing({ size: 15, sw: 2.3 }) : null), React.createElement("h1", null, "AutoDial v2")), isOffline && React.createElement("span", {
     className: "pill",
     style: {
       background: 'var(--rdim)',
@@ -14774,12 +15526,7 @@ function App() {
       fontSize: 10,
       padding: '2px 7px'
     }
-  }, "LIVE ", fmtTime(elapsed)), false && (() => {
-    // Phase 3 (design handoff): the standalone sync-pill is gated by
-    // `false &&` because it has been collapsed into a 6px sync-dot at
-    // the bottom-right of the avatar (see avatar IIFE below). The IIFE
-    // body is preserved untouched in case we need to revert; React
-    // sees `false` and skips it. Same for the cloud Syncing pill below.
+  }, "LIVE ", fmtTime(elapsed)), (() => {
     var _ago = lastSyncAt ? Math.floor((Date.now() - lastSyncAt) / 1000) : null;
     var _fresh = _ago !== null && _ago < 8;
     var _color = syncStatus === 'offline' ? 'var(--red)' : _fresh ? 'var(--green)' : syncStatus === 'pushing' || syncStatus === 'pulling' ? 'var(--amber)' : 'var(--text3)';
@@ -14810,7 +15557,7 @@ function App() {
         animation: syncStatus === 'pushing' || syncStatus === 'pulling' ? 'pulse 1s infinite' : undefined
       }
     }), _label, React.createElement("span", { className: "sp-icon" }, "↻"));
-  })(), false && syncing && React.createElement("span", {
+  })(), syncing && React.createElement("span", {
     className: "pill",
     style: {
       background: 'var(--adim)',
@@ -14819,7 +15566,12 @@ function App() {
       padding: '2px 7px',
       animation: 'pulse 1.5s infinite'
     }
-  }, "\u2601\uFE0F Syncing"), !isCallMode && React.createElement("button", {
+  }, "\u2601\uFE0F Syncing"), session && !session.ended && React.createElement("button", {
+    type: "button",
+    className: "end-session-top",
+    title: "End the active calling session",
+    onClick: endSessionConfirm
+  }, "End session"), !isCallMode && React.createElement("button", {
     // Header Start-Calling button. Shown whenever the user is NOT already in
     // call mode so it's reachable from any tab (Home, Leads, Cal, Appts,
     // More) without scrolling back to the Quick Actions panel. For Mains:
@@ -14845,37 +15597,22 @@ function App() {
       border: '1px solid rgba(34,197,94,.4)',
       whiteSpace: 'nowrap'
     }
-  }, "\uD83D\uDCDE Call"), (() => {
+  },
+    window.Icon && window.Icon.PhoneOutgoing ? window.Icon.PhoneOutgoing({ size: 13, sw: 2 }) : null,
+    "Call"
+  ), (() => {
     var _isCreator = isCreatorUser || isCreator(window._user?.email || '');
     // Phase 7B2: pendingUsers always 0 here (UM moved to hub); notice dot
     // now reflects only action-activity (undo timers, etc.).
     var _hasNotice = hasActionActivity;
     var _initials = (userName || 'U').split(/\s+/).filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase()).join('') || 'U';
-    // Phase 3 (design handoff): collapse standalone sync-pill into the
-    // avatar. Compute the same state the pill used to show \u2014 color +
-    // textual label \u2014 and render it as a single 6px sync-dot at the
-    // avatar's bottom-right + a tooltip line. Force-pull moves into the
-    // dropdown menu (next to "Activity").
-    var _sAgo = lastSyncAt ? Math.floor((Date.now() - lastSyncAt) / 1000) : null;
-    var _sFresh = _sAgo !== null && _sAgo < 8;
-    var _syncCls = syncStatus === 'offline' ? 'bad'
-                : (syncStatus === 'pushing' || syncStatus === 'pulling' || syncing) ? 'warn'
-                : _sFresh ? 'fresh'
-                : '';
-    var _syncWord = syncStatus === 'offline' ? 'Offline'
-                 : (syncStatus === 'pushing' || syncing) ? 'Pushing\u2026'
-                 : syncStatus === 'pulling' ? 'Pulling\u2026'
-                 : _sFresh ? 'Synced'
-                 : (_sAgo !== null ? _sAgo + 's ago' : 'Idle');
-    var _ver = (typeof window !== 'undefined' && window.APP_VERSION) || '';
-    var _tip = (userName || 'User') + '  \u00B7  v' + _ver
-             + '\nSync: ' + _syncWord
-             + (lastSyncAt ? '  \u00B7  ' + new Date(lastSyncAt).toLocaleTimeString() : '');
+    var _syncDotColor = syncStatus === 'offline' ? 'var(--red)' : syncStatus === 'pushing' || syncStatus === 'pulling' ? 'var(--amber)' : 'var(--green)';
+    var _syncLabel = syncStatus === 'offline' ? 'Offline' : syncStatus === 'pushing' ? 'Pushing' : syncStatus === 'pulling' ? 'Pulling' : lastSyncAt ? 'Synced ' + Math.max(0, Math.floor((Date.now() - lastSyncAt) / 1000)) + 's ago' : 'Sync idle';
     return React.createElement("button", {
       ref: avatarBtnRef,
       type: "button",
       className: "avatar-btn",
-      title: _tip,
+      title: userName + ' \u2014 ' + _syncLabel + ' \u2014 ' + (window.APP_VERSION || ''),
       onClick: () => {
         if (avatarMenuOpen) {
           setAvatarMenuOpen(false);
@@ -14891,13 +15628,12 @@ function App() {
         }
         setAvatarMenuOpen(true);
       }
-    },
-      _initials,
-      // Sync-dot bottom-right, replaces the standalone sync-pill chip
-      React.createElement("span", { className: 'sync-dot ' + _syncCls }),
-      // Notice dot top-right (action-activity / undo timers)
-      _hasNotice && React.createElement("span", { className: "dot" })
-    );
+    }, _initials, React.createElement("span", {
+      className: "dot sync-dot",
+      style: { background: _syncDotColor, boxShadow: syncStatus === 'pushing' || syncStatus === 'pulling' ? '0 0 8px ' + _syncDotColor : 'none' }
+    }), _hasNotice && React.createElement("span", {
+      className: "dot notice-dot"
+    }));
   })()), isCallMode && React.createElement("div", {
     className: "hdr-row2"
   }, _showRank ? (() => {
@@ -14914,9 +15650,10 @@ function App() {
       }
     }, React.createElement("span", {
       style: {
-        fontSize: 15
+        display: 'inline-flex',
+        alignItems: 'center'
       }
-    }, _hdrRank.emoji), React.createElement("span", null, _hdrRank.label), React.createElement("span", {
+    }, window.Icon && window.Icon.Trophy ? window.Icon.Trophy({ size: 13, sw: 2 }) : null), React.createElement("span", null, _hdrRank.label), React.createElement("span", {
       style: {
         opacity: .6,
         fontSize: 10,
@@ -15016,10 +15753,7 @@ function App() {
             onClick: goHome,
             title: 'Home — manager dashboard',
             style: halfStyle(_activeHomeHere, '#e8c283', 'linear-gradient(135deg,#d6a87a,#a37a4d)', 'rgba(232,194,131,.55)')
-          },
-            // Phase 2: 🏠 → Icon.Home
-            window.Icon.Home({ size: _activeHomeHere ? 18 : 14, sw: 2 })
-          ),
+          }, window.Icon && window.Icon.Home ? window.Icon.Home({ size: _activeHomeHere ? 16 : 14, sw: 2 }) : 'Home'),
           // Vertical divider — only shows when neither side is "shining"
           // hard, so the active gradient gets to bleed cleanly to the edge.
           React.createElement("div", {
@@ -15035,10 +15769,7 @@ function App() {
             onClick: goCall,
             title: 'Call — operator workspace',
             style: halfStyle(_activeCallHere, '#22c55e', 'linear-gradient(135deg,#16a34a,#22c55e)', 'rgba(34,197,94,.55)')
-          },
-            // Phase 2: 📞 → Icon.PhoneOutgoing
-            window.Icon.PhoneOutgoing({ size: _activeCallHere ? 18 : 14, sw: 2 }),
-            cbDue ? React.createElement("span", {
+          }, window.Icon && window.Icon.PhoneOutgoing ? window.Icon.PhoneOutgoing({ size: _activeCallHere ? 16 : 14, sw: 2 }) : 'Call', cbDue ? React.createElement("span", {
             style: {
               fontSize: 9,
               fontWeight: 900,
@@ -15136,182 +15867,108 @@ function App() {
     var _todayClosed = _todayAppts.filter(a => a.followUp === 'closed');
     var _todayRevenue = _todayClosed.reduce((a, x) => a + (x.efyc || 0), 0);
     var _recentProm = (promotionLog || []).filter(p => (p.admin || '').toLowerCase() !== myEmail.toLowerCase() && _now - new Date(p.date).getTime() < 7 * _oneDay).slice(0, 5);
-    // ─── Phase 6 (design handoff): plan-not-dump dashboard ──────────────
-    // Compute team-level tactile gamification values (streak + tier)
-    // entirely from _adminEntriesH, no new state. Streak = consecutive
-    // days back from today where ANY admin had at least one session;
-    // bounded for-loop (31 max iterations) so an empty session list
-    // can't pin the main thread.
-    var _streakDays = (() => {
-      var byDay = new Set();
-      _adminEntriesH.forEach(([_em, ss]) => ss.forEach(s => {
-        if (s.startTime) byDay.add(new Date(s.startTime).toDateString());
-      }));
-      var d = new Date();
-      var n = 0;
-      for (var checked = 0; checked < 31 && n < 30; checked++) {
-        if (!byDay.has(d.toDateString())) {
-          if (checked === 0) { d.setDate(d.getDate() - 1); continue; }
-          break;
-        }
-        n++;
-        d.setDate(d.getDate() - 1);
-      }
-      return n;
-    })();
-    var _monthStart = new Date(); _monthStart.setDate(1); _monthStart.setHours(0,0,0,0);
-    var _monthSets = appointments.filter(a => a.createdAt && new Date(a.createdAt) >= _monthStart && !a._deleted).length;
-    var _tierStops = [['bronze', 30], ['brass', 60], ['gold', 90], ['platinum', 150]];
-    var _curTierIdx = -1;
-    for (var _ti = _tierStops.length - 1; _ti >= 0; _ti--) {
-      if (_monthSets >= _tierStops[_ti][1]) { _curTierIdx = _ti; break; }
-    }
-    var _curTier = _curTierIdx >= 0 ? _tierStops[_curTierIdx][0] : null;
-    var _nextTier = _curTierIdx + 1 < _tierStops.length ? _tierStops[_curTierIdx + 1][0] : null;
-    var _curThresh = _curTierIdx >= 0 ? _tierStops[_curTierIdx][1] : 0;
-    var _nextThresh = _nextTier ? _tierStops[_curTierIdx + 1][1] : (_curTier ? _curThresh : 30);
-    var _setsToNext = Math.max(0, _nextThresh - _monthSets);
-    var _tierPct = Math.max(2, Math.min(100, Math.round((_monthSets - (_curTierIdx > 0 ? _tierStops[_curTierIdx - 1][1] : 0)) / Math.max(1, _nextThresh - (_curTierIdx > 0 ? _tierStops[_curTierIdx - 1][1] : 0)) * 100)));
-    var _monthEnd = new Date(_monthStart); _monthEnd.setMonth(_monthEnd.getMonth() + 1);
-    var _daysToMonthEnd = Math.max(0, Math.ceil((_monthEnd.getTime() - _now) / _oneDay));
-    var _onCallNow = _adminEntriesH.filter(([_em, ss]) => ss.some(s => !s.endTime && s.startTime)).length;
-    var _readyAdmins = _knownAdmins.length;
-    var _greeting = (() => {
-      var h = new Date().getHours();
-      if (h >= 5 && h < 12) return 'Good morning';
-      if (h >= 12 && h < 18) return 'Good afternoon';
-      return 'Good evening';
-    })();
-    var _firstName = (userName || 'there').split(/\s+/)[0];
     return React.createElement("div", {
       className: "content-pad"
-    },
-      // ─── Greeting block (per design §3 + STRICT_DIFF §6c) ────────────
-      React.createElement("div", {
-        style: { marginBottom: 16, padding: '4px 2px' }
-      },
-        // Date pill + streak chip on row 1
-        React.createElement("div", {
-          style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }
-        },
-          React.createElement("span", {
-            style: { fontSize: 10, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.08em' }
-          }, new Date().toLocaleDateString('en-SG', { weekday: 'long', day: 'numeric', month: 'short' }).toUpperCase()),
-          _streakDays > 0 && React.createElement("span", {
-            // StreakChip — flame icon, warm-amber pill (FORBIDDEN_PATTERNS §12 form)
-            style: {
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-              padding: '3px 9px', borderRadius: 999,
-              background: 'var(--amdim)', color: 'var(--amber)',
-              border: '1px solid rgba(210,153,34,.32)',
-              fontSize: 11, fontWeight: 600, letterSpacing: '.02em'
-            }
-          },
-            window.Icon && window.Icon.Flame ? window.Icon.Flame({ size: 11, sw: 2 }) : null,
-            React.createElement('span', { className: 'mono' }, _streakDays),
-            '-day streak'
-          )
-        ),
-        // "Good morning, Joel."
-        React.createElement("h1", {
-          style: { margin: '4px 0 0', fontSize: 26, fontWeight: 600, letterSpacing: '-0.02em', color: 'var(--text)' }
-        }, _greeting + ', ' + _firstName + '.'),
-        // Sub-line: "N admins ready · M are on a call right now."
-        React.createElement("p", {
-          style: { margin: '4px 0 0', fontSize: 13, color: 'var(--text2)' }
-        }, _readyAdmins, ' admin', _readyAdmins === 1 ? '' : 's', ' ready · ', _onCallNow, ' ', _onCallNow === 1 ? 'is' : 'are', ' on a call right now.')
-      ),
-      // ─── 4-up stat grid (per design §3) ─────────────────────────────
-      React.createElement("div", {
-        style: { display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }
-      },
-        [
-          ['SESSIONS TODAY', _todaySessions.length, 'var(--text)', _todaySessions.filter(s => !s.endTime).length + ' live · ' + _todaySessions.filter(s => s.endTime).length + ' wrapped'],
-          ['APPTS SET', _todayAppts.length, 'var(--green)', _todayAppts.length === 0 ? 'today' : (_todayAppts.length + ' booked today')],
-          ['CLOSED', _todayClosed.length, 'var(--text)', (_todayAppts.length ? Math.round(_todayClosed.length / _todayAppts.length * 100) : 0) + '% close rate'],
-          ['EFYC', '$' + Math.round(_todayRevenue).toLocaleString(), 'var(--text)', 'today']
-        ].map(([k, v, accent, sub]) => React.createElement("div", {
-          key: k,
-          style: {
-            padding: '14px 16px',
-            background: 'var(--bg2)',
-            border: '1px solid var(--border)',
-            borderRadius: 14,
-            display: 'flex', flexDirection: 'column', gap: 4
-          }
-        },
-          React.createElement('span', { style: { fontSize: 10, fontWeight: 600, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.06em' } }, k),
-          React.createElement('span', { className: 'mono', style: { fontSize: 24, fontWeight: 600, color: accent, letterSpacing: '-0.02em' } }, v),
-          React.createElement('span', { style: { fontSize: 11, color: 'var(--text3)' } }, sub)
-        ))
-      ),
-      // ─── Tactile gamification card (per design §3 bottom + Phase 5) ──
-      _nextTier && React.createElement("div", {
-        style: {
-          padding: '18px 20px', marginBottom: 12,
-          background: 'var(--bg2)', border: '1px solid var(--border)',
-          borderRadius: 16, display: 'grid',
-          gridTemplateColumns: 'auto 1fr auto', gap: 18, alignItems: 'center'
-        }
-      },
-        // 52×52 brass-gradient trophy mark
-        React.createElement("div", {
-          style: {
-            width: 48, height: 48, borderRadius: 12,
-            background: 'linear-gradient(140deg, var(--accent), #a37a4d)',
-            color: '#1a1306',
-            display: 'grid', placeItems: 'center',
-            boxShadow: '0 6px 20px -8px rgba(214,168,122,.6)'
-          }
-        }, window.Icon && window.Icon.Trophy ? window.Icon.Trophy({ size: 22, sw: 2 }) : null),
-        React.createElement("div", null,
-          React.createElement("div", {
-            style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }
-          },
-            React.createElement("span", { style: { fontSize: 14, fontWeight: 600, color: 'var(--text)' } },
-              'Team is ', _setsToNext, ' set', _setsToNext === 1 ? '' : 's', ' from'
-            ),
-            React.createElement("span", {
-              style: {
-                fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
-                color: 'var(--accent2)', padding: '3px 8px', borderRadius: 6,
-                background: 'rgba(214,168,122,.14)', border: '1px solid rgba(214,168,122,.32)'
-              }
-            }, _nextTier + ' tier')
-          ),
-          React.createElement("div", {
-            style: { fontSize: 11, color: 'var(--text3)', marginTop: 5 }
-          }, 'Reached at ', _nextThresh, ' sets this month · resets in ', _daysToMonthEnd, ' days')
-        ),
-        // 3-stop progress + bar
-        React.createElement("div", {
-          style: { display: 'flex', flexDirection: 'column', gap: 6, minWidth: 220 }
-        },
-          React.createElement("div", {
-            style: { display: 'flex', justifyContent: 'space-between', fontSize: 10 }
-          },
-            React.createElement("span", { style: { color: 'var(--text3)' } }, (_curTier || 'Bronze') + ' ' + (_curTier ? _curThresh : 30)),
-            React.createElement("span", { className: 'mono', style: { color: 'var(--accent2)', fontWeight: 600 } }, _monthSets + ' / ' + _nextThresh),
-            React.createElement("span", { style: { color: 'var(--text3)' } }, _nextTier + ' ' + _nextThresh)
-          ),
-          React.createElement("div", {
-            style: { height: 6, borderRadius: 999, background: 'var(--bg3)', overflow: 'hidden' }
-          },
-            React.createElement("div", {
-              style: { width: _tierPct + '%', height: '100%', background: 'linear-gradient(90deg, var(--accent), #e8c283)' }
-            })
-          )
-        )
-      ),
-      // ─── Legacy dashboard content below (operator tiles, callbacks,
-      //     incentives, etc.) — kept verbatim so no functionality is
-      //     lost. The Phase 7 polish commit will progressively replace
-      //     these panels with the design's "Today's plan" + "Live now"
-      //     two-column row. The `_daysToMonthEnd && null` line below
-      //     is a placeholder so the static analyser sees _daysToMonthEnd
-      //     as used (it's referenced in the tier-progress card above). */
-      _daysToMonthEnd && null,
-      (() => {
+    }, React.createElement("div", {
+      className: "card",
+      style: {
+        marginBottom: 10,
+        background: 'linear-gradient(135deg,rgba(214,168,122,.08),rgba(214,168,122,.035))',
+        borderColor: 'rgba(214,168,122,.25)'
+      }
+    }, React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 10,
+        color: 'var(--text3)',
+        fontWeight: 700,
+        textTransform: 'uppercase',
+        letterSpacing: '.1em'
+      }
+    }, "Manager command center \xB7 ", new Date().toLocaleDateString('en-SG', {
+      weekday: 'long',
+      day: 'numeric',
+      month: 'short'
+    })), React.createElement("div", {
+      style: {
+        display: 'grid',
+        gridTemplateColumns: 'repeat(4,1fr)',
+        gap: 8,
+        marginTop: 8
+      }
+    }, React.createElement("div", {
+      style: {
+        textAlign: 'center'
+      }
+    }, React.createElement("p", {
+      className: "mono",
+      style: {
+        margin: 0,
+        fontSize: 18,
+        fontWeight: 900,
+        color: 'var(--accent2)'
+      }
+    }, _todaySessions.length), React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 9,
+        color: 'var(--text3)'
+      }
+    }, "Sessions")), React.createElement("div", {
+      style: {
+        textAlign: 'center'
+      }
+    }, React.createElement("p", {
+      className: "mono",
+      style: {
+        margin: 0,
+        fontSize: 18,
+        fontWeight: 900,
+        color: 'var(--green)'
+      }
+    }, _todayAppts.length), React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 9,
+        color: 'var(--text3)'
+      }
+    }, "Appts Set")), React.createElement("div", {
+      style: {
+        textAlign: 'center'
+      }
+    }, React.createElement("p", {
+      className: "mono",
+      style: {
+        margin: 0,
+        fontSize: 18,
+        fontWeight: 900,
+        color: 'var(--gold)'
+      }
+    }, _todayClosed.length), React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 9,
+        color: 'var(--text3)'
+      }
+    }, "Closed")), React.createElement("div", {
+      style: {
+        textAlign: 'center'
+      }
+    }, React.createElement("p", {
+      className: "mono",
+      style: {
+        margin: 0,
+        fontSize: 18,
+        fontWeight: 900,
+        color: 'var(--amber)'
+      }
+    }, "$", _todayRevenue.toFixed(0)), React.createElement("p", {
+      style: {
+        margin: 0,
+        fontSize: 9,
+        color: 'var(--text3)'
+      }
+    }, "EFYC")))), (() => {
       var _tiles = [['Live admins', liveAdmins.length], ['Pay due', '$' + _totalOwed.toFixed(0)], ['Weak callers', _weakCallers], ['Hot streaks', _hotStreaks]].filter(([_lbl, _v]) => typeof _v === 'number' ? _v > 0 : (_v && _v !== '$0' && _v !== '0'));
       if (!_tiles.length) return null;
       return React.createElement("div", {
@@ -15352,7 +16009,7 @@ function App() {
         color: '#f1f5f9',
         margin: '4px 0 8px'
       }
-    }, "\uD83D\uDCCB Action Items"), _totalOwed > 0 && React.createElement("div", {
+    }, window.Icon && window.Icon.Check ? window.Icon.Check({ size: 13, sw: 2 }) : null, " Action Items"), _totalOwed > 0 && React.createElement("div", {
       onClick: () => setTab('timesheet'),
       className: "card",
       style: {
@@ -15377,11 +16034,7 @@ function App() {
         alignItems: 'center',
         justifyContent: 'center'
       }
-    }, React.createElement("span", {
-      style: {
-        fontSize: 18
-      }
-    }, "\uD83D\uDCB0")), React.createElement("div", {
+    }, window.Icon && window.Icon.Sheet ? window.Icon.Sheet({ size: 17, sw: 2 }) : null), React.createElement("div", {
       style: {
         flex: 1
       }
@@ -15428,11 +16081,7 @@ function App() {
         alignItems: 'center',
         justifyContent: 'center'
       }
-    }, React.createElement("span", {
-      style: {
-        fontSize: 18
-      }
-    }, "\u23F3")), React.createElement("div", {
+    }, window.Icon && window.Icon.Clock ? window.Icon.Clock({ size: 17, sw: 2 }) : null), React.createElement("div", {
       style: {
         flex: 1
       }
@@ -15526,11 +16175,7 @@ function App() {
         alignItems: 'center',
         justifyContent: 'center'
       }
-    }, React.createElement("span", {
-      style: {
-        fontSize: 18
-      }
-    }, "\uD83D\uDCCB")), React.createElement("div", {
+    }, window.Icon && window.Icon.Sheet ? window.Icon.Sheet({ size: 17, sw: 2 }) : null), React.createElement("div", {
       style: {
         flex: 1
       }
@@ -15575,11 +16220,7 @@ function App() {
         alignItems: 'center',
         justifyContent: 'center'
       }
-    }, React.createElement("span", {
-      style: {
-        fontSize: 18
-      }
-    }, "\uD83D\uDE34")), React.createElement("div", {
+    }, window.Icon && window.Icon.Bell ? window.Icon.Bell({ size: 17, sw: 2 }) : null), React.createElement("div", {
       style: {
         flex: 1
       }
@@ -15608,7 +16249,7 @@ function App() {
         fontSize: 28,
         margin: 0
       }
-    }, "\u2728"), React.createElement("p", {
+    }, window.Icon && window.Icon.Check ? window.Icon.Check({ size: 28, sw: 1.8 }) : null), React.createElement("p", {
       style: {
         color: 'var(--text3)',
         fontSize: 12,
@@ -15621,7 +16262,7 @@ function App() {
         color: 'var(--gold)',
         margin: '14px 0 8px'
       }
-    }, "\uD83D\uDCC8 Recent Promotions"), _recentProm.map((p, i) => {
+    }, window.Icon && window.Icon.Trophy ? window.Icon.Trophy({ size: 13, sw: 2 }) : null, " Recent Promotions"), _recentProm.map((p, i) => {
       var _em = (p.admin || '').toLowerCase();
       var _nm = (adminConfigs[_em] || {}).bizName || _em;
       return React.createElement("div", {
@@ -15678,7 +16319,7 @@ function App() {
         color: '#f1f5f9',
         margin: '14px 0 8px'
       }
-    }, "\u26A1 Quick Actions"), React.createElement("div", {
+    }, window.Icon && window.Icon.Zap ? window.Icon.Zap({ size: 13, sw: 2 }) : null, " Quick Actions"), React.createElement("div", {
       style: {
         display: 'grid',
         gridTemplateColumns: role === 'main' ? '1fr 1fr' : '1fr',
@@ -15871,7 +16512,7 @@ function App() {
       letterSpacing: '.06em',
       animation: 'pulse 1.4s ease-in-out infinite'
     }
-  }, "📞 ", isMob ? 'Opening dialer…' : 'Dial sent — check phone'), React.createElement("p", {
+  }, window.Icon && window.Icon.PhoneOutgoing ? window.Icon.PhoneOutgoing({ size: 13, sw: 2 }) : null, isMob ? 'Opening dialer...' : 'Dial sent - check phone'), React.createElement("p", {
     style: {
       margin: '5px 0 0',
       fontSize: 10,
@@ -15928,27 +16569,29 @@ function App() {
   }, "End"))), cur && running && phase === 'calling' && !isMob && React.createElement("p", {
     style: { margin: '0 0 6px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.08em', textAlign: 'center', opacity: .7 }
   }, "Keyboard:  ", React.createElement("kbd", { style: { padding: '1px 5px', borderRadius: 4, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)', fontFamily: 'inherit' } }, "1"), " NP   ", React.createElement("kbd", { style: { padding: '1px 5px', borderRadius: 4, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)', fontFamily: 'inherit' } }, "2"), " CB   ", React.createElement("kbd", { style: { padding: '1px 5px', borderRadius: 4, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)', fontFamily: 'inherit' } }, "3"), " NI   ", React.createElement("kbd", { style: { padding: '1px 5px', borderRadius: 4, background: 'var(--bg3)', border: '1px solid var(--border)', color: 'var(--text2)', fontFamily: 'inherit' } }, "4"), " Set"), cur && running && phase === 'calling' && React.createElement("div", {
-    // Phase 4 (design handoff): outcome row uses .outcome-grid (2×2 on
-    // mobile per spec §9, 1×4 on desktop ≥960px via media query). Each
-    // button is .outcome.<tone> for tinted-bg + saturated-glyph (per
-    // FORBIDDEN_PATTERNS §5). Keyboard hint visible at all times.
-    className: "outcome-grid",
-    style: { marginBottom: 8 }
-  }, [
-    ['np', 'NP', 'No pickup', '1'],
-    ['cb', 'CB', 'Callback', '2'],
-    ['ni', 'NI', 'No interest', '3'],
-    ['set', 'Set', 'Booked', '4']
-  ].map(([s, glyph, label, hint]) => React.createElement("button", {
+    className: "outcome-grid outcome-grid--call",
+    style: {
+      display: 'grid',
+      gridTemplateColumns: 'repeat(4,1fr)',
+      gap: 6,
+      marginBottom: 8
+    }
+  }, [['np', 'NP', 'No pickup', '1', 'var(--amber)', 'var(--amdim)'], ['cb', 'CB', 'Callback', '2', 'var(--blue)', 'var(--bdim)'], ['ni', 'NI', 'No interest', '3', 'var(--red)', 'var(--rdim)'], ['set', 'Set', 'Book appt', '4', 'var(--green)', 'var(--gdim)']].map(([s, label, sub, hint, color, bg]) => React.createElement("button", {
     key: s,
-    className: 'outcome ' + s,
+    className: 'outcome outcome--' + s,
     onClick: () => s === 'cb' ? (setShowCb(true), setCbDate(''), setCbTime('')) : handleOutcome(s),
-    disabled: s === 'set' && (setDone || showPostCall?.status === 'set')
-  },
-    React.createElement('span', { className: 'hint' }, hint),
-    React.createElement('span', { className: 'glyph' }, glyph),
-    React.createElement('span', { className: 'lbl' }, label)
-  ))), cur && running && phase === 'calling' && React.createElement("button", {
+    disabled: s === 'set' && (setDone || showPostCall?.status === 'set'),
+    style: {
+      padding: '11px 0',
+      borderRadius: 12,
+      background: bg,
+      color,
+      fontSize: 12,
+      fontWeight: 900,
+      border: '1px solid rgba(255,255,255,.06)',
+      opacity: s === 'set' && (setDone || showPostCall?.status === 'set') ? .5 : 1
+    }
+  }, React.createElement("span", { className: "outcome__hint" }, hint), React.createElement("span", { className: "outcome__glyph" }, label), React.createElement("span", { className: "outcome__label" }, sub)))), cur && running && phase === 'calling' && React.createElement("button", {
     onClick: skipCurrentLead,
     title: "Skip without recording an outcome \u2014 useful if you didn't actually dial. Has 10s undo.",
     style: {
@@ -16158,7 +16801,7 @@ function App() {
       textTransform: 'uppercase',
       color: 'var(--accent)'
     }
-  }, "📌 On callback detour"), React.createElement("p", {
+  }, "Callback detour"), React.createElement("p", {
     style: {
       margin: '0 0 10px',
       fontSize: 12,
@@ -17775,34 +18418,30 @@ function App() {
       fontWeight: 800,
       borderRadius: 14,
       opacity: pending.length ? 1 : .4,
-      boxShadow: '0 6px 24px rgba(34,197,94,.3)'
+      boxShadow: '0 6px 24px rgba(34,197,94,.3)',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8
     }
-  }, "\u25B6 Start (", pending.length, ")") : React.createElement(React.Fragment, null, React.createElement("button", {
+  }, window.Icon && window.Icon.PhoneOutgoing ? window.Icon.PhoneOutgoing({ size: 16, sw: 2 }) : null, " Start (", pending.length, ")") : React.createElement(React.Fragment, null, React.createElement("button", {
     onClick: pauseDial,
     style: {
       width: '100%',
       padding: '14px',
-      background: 'linear-gradient(135deg,#f59e0b,#d97706)',
-      color: '#fff',
+      background: 'var(--amdim)',
+      color: 'var(--amber)',
       fontSize: 15,
       fontWeight: 800,
       borderRadius: 14,
-      boxShadow: '0 6px 24px rgba(245,158,11,.3)'
+      boxShadow: 'none',
+      border: '1px solid rgba(210,153,34,.32)',
+      display: 'inline-flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8
     }
-  }, "\u23F8 Pause"), React.createElement("button", {
-    onClick: endSessionConfirm,
-    style: {
-      width: '100%',
-      padding: '16px',
-      background: 'linear-gradient(135deg,#dc2626,#b91c1c)',
-      color: '#fff',
-      fontSize: 16,
-      fontWeight: 800,
-      borderRadius: 14,
-      boxShadow: '0 6px 24px rgba(220,38,38,.4)',
-      border: '2px solid rgba(248,81,73,.3)'
-    }
-  }, "\u23F9 End Session"))), React.createElement("div", {
+  }, window.Icon && window.Icon.Clock ? window.Icon.Clock({ size: 15, sw: 2 }) : null, " Pause"))), React.createElement("div", {
     style: {
       height: 80
     }
@@ -17818,7 +18457,7 @@ function App() {
       color: 'var(--blue)',
       margin: '0 0 8px'
     }
-  }, "\uD83D\uDD14 Callbacks Due (", cbQueue.filter(cb => cb.status !== 'called').length, ")"), cbQueue.filter(cb => cb.status !== 'called').slice(0, 5).map(cb => React.createElement("div", {
+  }, window.Icon && window.Icon.Bell ? window.Icon.Bell({ size: 13, sw: 2 }) : null, " Callbacks Due (", cbQueue.filter(cb => cb.status !== 'called').length, ")"), cbQueue.filter(cb => cb.status !== 'called').slice(0, 5).map(cb => React.createElement("div", {
     key: cb.id,
     style: {
       display: 'flex',
@@ -23917,7 +24556,7 @@ function App() {
   }, React.createElement("input", {
     value: settingsSearch,
     onChange: e => setSettingsSearch(e.target.value),
-    placeholder: "\uD83D\uDD0D Search settings \u2014 try 'script', 'calendar', 'pay', 'objection'\u2026",
+    placeholder: "Search settings - try 'script', 'calendar', 'pay', 'objection'...",
     style: {
       marginBottom: 10,
       fontSize: 13,
@@ -23943,12 +24582,12 @@ function App() {
     // search find a tab by what's INSIDE it (e.g. searching "WhatsApp"
     // finds Calling, "calendar" finds Workspace, "pay" finds Team).
     var searchIndex = [
-      ['setup',  '\uD83D\uDE80 Setup',     'setup checklist first-time onboarding guide google connect lead sheet'],
-      ['prefs',  '\uD83D\uDCDE Calling',   'calling script reference notes objection objections handling whatsapp templates ai claude gemini'],
-      ['integr', '\uD83D\uDD0C Workspace', 'workspace google sheets drive calendar oauth integration api keys'],
-      ['team',   '\uD83D\uDC65 Team',      'team admins pay rates share script share template hire untether session slot bonus'],
-      ['data',   '\uD83D\uDD04 Sync',      'sync data backup restore diagnostics cloud supabase realtime nuke'],
-      ['owner',  '\uD83D\uDC51 Owner',     'owner global rules stars ranks billing creator nuclear reset reset thresholds milestone']
+      ['setup',  'Setup',     'setup checklist first-time onboarding guide google connect lead sheet'],
+      ['prefs',  'Calling',   'calling script reference notes objection objections handling whatsapp templates ai claude gemini'],
+      ['integr', 'Workspace', 'workspace google sheets drive calendar oauth integration api keys'],
+      ['team',   'Team',      'team admins pay rates share script share template hire untether session slot bonus'],
+      ['data',   'Sync',      'sync data backup restore diagnostics cloud supabase realtime nuke'],
+      ['owner',  'Owner',     'owner global rules stars ranks billing creator nuclear reset reset thresholds milestone']
     ];
     var q = settingsSearch.toLowerCase();
     var allowedKeys = new Set(settingsAllTabs.map(([k]) => k));
@@ -33759,63 +34398,9 @@ function App() {
       color: 'var(--text3)',
       fontSize: 13
     }
-  }, "Close")))), scriptOpen && React.createElement("div", {
-    className: 'script-panel ' + (showRefNotes ? '' : 'ref-collapsed'),
-    // Phase 5: position:relative so the absolutely-positioned drag
-    // handle anchors to the panel's left edge.
-    style: { position: 'relative' }
-  },
-    React.createElement("div", {
-      // Phase 5 (design handoff): 6px drag handle on the panel's left
-      // edge. Captures pointerdown, locks the body cursor + selection
-      // while dragging via .sp-resizing, listens for pointermove on
-      // document, persists final width on pointerup. Width clamped
-      // 280–520 per design spec; updates coalesced through rAF so
-      // re-renders don't fire on every mousemove tick.
-      className: "sp-resize",
-      title: "Drag to resize the script panel",
-      onPointerDown: e => {
-        e.preventDefault();
-        var startX = e.clientX;
-        var startW = scriptPanelWidth;
-        var moved = false;
-        var lastW = startW;
-        var rafPending = false;
-        document.body.classList.add('sp-resizing');
-        e.currentTarget.classList.add('dragging');
-        var handleEl = e.currentTarget;
-        var onMove = ev => {
-          var dx = ev.clientX - startX;
-          // Drag right (positive dx) shrinks panel, drag left widens.
-          // The panel is on the right side of the viewport so widening
-          // means the left edge moves left → smaller dx.
-          var nextW = Math.max(280, Math.min(520, startW - dx));
-          if (nextW !== lastW) {
-            lastW = nextW;
-            moved = true;
-            if (!rafPending) {
-              rafPending = true;
-              window.requestAnimationFrame(() => {
-                rafPending = false;
-                setScriptPanelWidth(lastW);
-              });
-            }
-          }
-        };
-        var onUp = () => {
-          document.removeEventListener('pointermove', onMove);
-          document.removeEventListener('pointerup', onUp);
-          document.body.classList.remove('sp-resizing');
-          if (handleEl) handleEl.classList.remove('dragging');
-          if (moved) {
-            try { localStorage.setItem('scriptPanelWidth', String(lastW)); } catch (_e) {}
-          }
-        };
-        document.addEventListener('pointermove', onMove);
-        document.addEventListener('pointerup', onUp);
-      }
-    }),
-    React.createElement("div", {
+  }, "Close")))), scriptOpen && isCallMode && React.createElement("div", {
+    className: 'script-panel ' + (showRefNotes ? '' : 'ref-collapsed')
+  }, React.createElement("div", {
     className: "sp-header"
   }, React.createElement("h3", {
     style: {
@@ -35306,15 +35891,19 @@ function App() {
     }, React.createElement("div", { className: "am-name" },
       React.createElement("div", { className: "n" }, userName || 'User'),
       React.createElement("div", { className: "e" }, (_user?.email || window._user?.email || ''))
+    ), React.createElement("div", { className: "am-system" },
+      React.createElement("b", null, "System"),
+      React.createElement("div", null, "Version ", window.APP_VERSION || "local"),
+      React.createElement("div", null, syncStatus === "offline" ? "Offline" : syncStatus === "pushing" ? "Pushing changes" : syncStatus === "pulling" ? "Pulling changes" : lastSyncAt ? "Synced " + new Date(lastSyncAt).toLocaleTimeString() : "Sync idle")
     ), _isCreator && React.createElement("button", {
       onClick: () => {
         setAvatarMenuOpen(false);
         setShowApprovalModal(true);
       }
-    }, React.createElement("span", { className: "ico" }, "👥"), "Owner tools"),
+    }, React.createElement("span", { className: "ico" }, window.Icon && window.Icon.Users ? window.Icon.Users({ size: 15, sw: 2 }) : null), "Owner tools"),
     React.createElement("button", {
       onClick: () => { setAvatarMenuOpen(false); setShowActivityDrawer(true); }
-    }, React.createElement("span", { className: "ico" }, "◴"), "Activity & undo", hasActionActivity && React.createElement("span", { className: "badge warn" }, "•")),
+    }, React.createElement("span", { className: "ico" }, window.Icon && window.Icon.Clock ? window.Icon.Clock({ size: 15, sw: 2 }) : null), "Activity & undo", hasActionActivity && React.createElement("span", { className: "badge warn" }, "•")),
     React.createElement("button", {
       onClick: () => { setAvatarMenuOpen(false); setShowHelp(true); }
     }, React.createElement("span", { className: "ico" }, "?"), "Help & shortcuts"),
@@ -35325,14 +35914,14 @@ function App() {
         setMainMode(next);
         setTab(next === 'call' ? 'home' : 'home');
       }
-    }, React.createElement("span", { className: "ico" }, mainMode === 'call' ? "🧭" : "📞"), mainMode === 'call' ? "Switch to Manage mode" : "Switch to Call mode"),
+    }, React.createElement("span", { className: "ico" }, mainMode === 'call' ? window.Icon.Settings({ size: 15, sw: 2 }) : window.Icon.PhoneOutgoing({ size: 15, sw: 2 })), mainMode === 'call' ? "Switch to Manage mode" : "Switch to Call mode"),
     React.createElement("button", {
       className: "danger",
       onClick: async () => {
         setAvatarMenuOpen(false);
         if (await confirmAsync('Sign out of AutoDial?', { title: 'Sign out', confirmLabel: 'Sign out' })) authLogout();
       }
-    }, React.createElement("span", { className: "ico" }, "⏏"), "Sign out")));
+    }, React.createElement("span", { className: "ico" }, window.Icon && window.Icon.X ? window.Icon.X({ size: 15, sw: 2 }) : null), "Sign out")));
   })(), document.body) : null), React.createElement(Modal, {
     show: !!dialogRequest,
     onClose: () => resolveDialog(dialogRequest?.kind === 'confirm' ? false : null),
@@ -35531,10 +36120,22 @@ class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
+function ClaudeDesignReview() {
+  var src = '.design-handoff-v9/design_handoff_autodial/01_preview/autodial-preview.html?v=' + encodeURIComponent(window.APP_VERSION || 'local');
+  return React.createElement("div", {
+    className: "claude-review-shell"
+  }, React.createElement("iframe", {
+    className: "claude-review-frame",
+    title: "AutoDial Claude design review",
+    src
+  }));
+}
 function initApp() {
   try {
     var root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(React.createElement(ErrorBoundary, null, React.createElement(App, null)));
+    var _qs = new URLSearchParams(location.search);
+    var _showClaudeReview = window._localPreviewMode && _qs.get('review') === '1';
+    root.render(React.createElement(ErrorBoundary, null, React.createElement(_showClaudeReview ? ClaudeDesignReview : App, null)));
   } catch (e) {
     console.error('[AutoDial] Render error:', e);
     document.getElementById('root').innerHTML = '<div style="padding:40px;text-align:center;color:#f87171"><h2>⚠️ AutoDial Error</h2><p style="color:#8b949e">' + e.message + '</p><button onclick="localStorage.clear();location.reload()" style="margin:16px 8px 0;padding:12px 24px;background:#d6a87a;color:white;border:none;border-radius:10px;cursor:pointer;font-size:14px">Clear Data & Retry</button><button onclick="location.reload()" style="margin:16px 8px 0;padding:12px 24px;background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:10px;cursor:pointer;font-size:14px">Reload</button></div>';
