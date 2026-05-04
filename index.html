@@ -388,7 +388,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0025';
+window.APP_VERSION='2026.05.03.0026';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -6718,6 +6718,54 @@ function App() {
   var [editingAdmin, setEditingAdmin] = useState(null);
   var [adminDetailEmail, setAdminDetailEmail] = useState(null);
   var [newAdminEmail, setNewAdminEmail] = useState('');
+  // ─── CKGtools admin picker ───────────────────────────────────────
+  // Phase 7B2 moved user provisioning to the ckgtools.com hub. The Main
+  // adding an admin to AutoDial doesn't create the account — the user
+  // must already exist in the hub's `profiles` table. This state holds
+  // the fetched pool of hub admins so the Main can fuzzy-search through
+  // them instead of having to type/copy the exact email.
+  var [hubAdminPool, setHubAdminPool] = useState([]);
+  var [hubAdminPoolLoading, setHubAdminPoolLoading] = useState(false);
+  var [hubAdminPoolFetched, setHubAdminPoolFetched] = useState(false);
+  var fetchHubAdminPool = useCallback(async (force) => {
+    if (!_SB) return;
+    if (hubAdminPoolLoading) return;
+    if (hubAdminPoolFetched && !force) return;
+    setHubAdminPoolLoading(true);
+    try {
+      // Pull every "member"-roled, active hub user. They're the universe of
+      // people that can be wired up as an AutoDial admin. Hub owners/admins
+      // are also valid (they can call too) so include them as well.
+      var r = await _SB.from('profiles')
+        .select('email,display_name,role,status')
+        .neq('status', 'revoked')
+        .order('display_name', { ascending: true });
+      if (r && !r.error && Array.isArray(r.data)) {
+        var meEm = (myEmail || '').toLowerCase();
+        var clean = r.data
+          .filter(p => p.email && String(p.email).includes('@'))
+          .filter(p => String(p.email).toLowerCase() !== meEm)
+          .map(p => ({
+            email: String(p.email).toLowerCase(),
+            name: p.display_name || String(p.email).split('@')[0],
+            hubRole: String(p.role || '').toLowerCase(),
+            status: String(p.status || '').toLowerCase()
+          }));
+        setHubAdminPool(clean);
+      }
+    } catch (e) {
+      console.warn('[hub admin pool]', e?.message || e);
+    } finally {
+      setHubAdminPoolLoading(false);
+      setHubAdminPoolFetched(true);
+    }
+  }, [hubAdminPoolLoading, hubAdminPoolFetched, myEmail]);
+  // Lazy-fetch the hub admin pool whenever the Main opens the Team panel.
+  useEffect(() => {
+    if (tab !== 'settings' || settingsSubtab !== 'team') return;
+    if (role !== 'main') return;
+    fetchHubAdminPool(false);
+  }, [tab, settingsSubtab, role, fetchHubAdminPool]);
   var [showInvoice, setShowInvoice] = useState(null);
   var [showPaymentDetail, setShowPaymentDetail] = useState(null);
   var [uploadingScreenshot, setUploadingScreenshot] = useState(false);
@@ -23487,29 +23535,50 @@ function App() {
       marginBottom: 8,
       color: 'var(--accent2)'
     }
-  }, "\uD83D\uDC65 Admin Pay (Per-Person)"), React.createElement("div", {
-    style: {
-      display: 'flex',
-      gap: 6,
-      marginBottom: 10
+  }, "\uD83D\uDC65 Admin Pay (Per-Person)"), (() => {
+    // \u2500\u2500\u2500 Fuzzy picker over the CKGtools hub admin pool \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+    // Below the input, show up to 6 matches (case-insensitive token-AND
+    // match across name + email + role). Already-added admins are
+    // dimmed. Tapping a row sets newAdminEmail so the user can confirm
+    // with the existing Add button.
+    var q = String(newAdminEmail || '').trim().toLowerCase();
+    var matches = [];
+    if (q && hubAdminPool.length) {
+      var tokens = q.split(/\s+/).filter(Boolean);
+      matches = hubAdminPool.filter(p => {
+        var hay = (p.name + ' ' + p.email + ' ' + p.hubRole).toLowerCase();
+        return tokens.every(tok => hay.includes(tok));
+      }).slice(0, 6);
+    } else if (!q && hubAdminPool.length) {
+      // No query yet \u2014 surface the first 6 hub admins as a discoverable
+      // starting point, useful when the Main isn't sure who's available.
+      matches = hubAdminPool.slice(0, 6);
     }
-  }, React.createElement("div", {
-    style: {
-      flex: 1,
-      position: 'relative'
-    }
-  }, React.createElement("input", {
-    value: newAdminEmail,
-    onChange: e => setNewAdminEmail(e.target.value),
-    placeholder: "Admin email",
-    list: "approved-users-list",
-    style: {
-      width: '100%',
-      fontSize: 13
-    }
-  }), React.createElement("datalist", {
-    id: "approved-users-list"
-  })), React.createElement("button", {
+    var alreadyAdded = em => !!(adminConfigs && adminConfigs[(em || '').toLowerCase()]);
+    return React.createElement(React.Fragment, null,
+      React.createElement("div", {
+        style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }
+      },
+        React.createElement("p", {
+          style: { margin: 0, fontSize: 10, fontWeight: 700, color: 'var(--text3)', letterSpacing: '.05em', flex: 1 }
+        }, "FROM CKGTOOLS \u00B7 ", hubAdminPoolLoading ? 'loading\u2026' : (hubAdminPool.length + ' user' + (hubAdminPool.length === 1 ? '' : 's') + ' available')),
+        React.createElement("button", {
+          onClick: () => fetchHubAdminPool(true),
+          title: "Refresh hub user list",
+          disabled: hubAdminPoolLoading,
+          style: { padding: '2px 8px', borderRadius: 6, background: 'var(--bg3)', color: 'var(--text3)', fontSize: 10, fontWeight: 700, border: '1px solid var(--border)', opacity: hubAdminPoolLoading ? .5 : 1 }
+        }, "\u21BB")
+      ),
+      React.createElement("div", {
+        style: { display: 'flex', gap: 6, marginBottom: matches.length ? 6 : 10 }
+      }, React.createElement("div", {
+        style: { flex: 1, position: 'relative' }
+      }, React.createElement("input", {
+        value: newAdminEmail,
+        onChange: e => setNewAdminEmail(e.target.value),
+        placeholder: hubAdminPool.length ? "\uD83D\uDD0D Search hub users by name or email\u2026" : "Admin email",
+        style: { width: '100%', fontSize: 13 }
+      })), React.createElement("button", {
     onClick: async () => {
       var em = newAdminEmail.trim().toLowerCase();
       if (!em.includes('@')) return toast('Invalid email', 'err');
@@ -23562,7 +23631,44 @@ function App() {
       fontSize: 12,
       fontWeight: 600
     }
-  }, "Add")), React.createElement("div", {
+  }, "Add")),
+      // Matches list \u2014 only render when we have results to show.
+      matches.length > 0 && React.createElement("div", {
+        style: { display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10, padding: '6px', borderRadius: 10, background: 'var(--bg)', border: '1px solid var(--border)' }
+      }, matches.map(p => {
+        var added = alreadyAdded(p.email);
+        return React.createElement("button", {
+          key: p.email,
+          onClick: () => { if (!added) setNewAdminEmail(p.email); },
+          disabled: added,
+          title: added ? 'Already added below' : 'Pick this hub user',
+          style: {
+            display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 8,
+            background: added ? 'var(--bg3)' : 'transparent',
+            border: '1px solid ' + (newAdminEmail.toLowerCase() === p.email ? 'rgba(99,102,241,.45)' : 'transparent'),
+            textAlign: 'left', cursor: added ? 'not-allowed' : 'pointer',
+            opacity: added ? .55 : 1
+          }
+        },
+          React.createElement("div", {
+            style: { width: 26, height: 26, borderRadius: 8, background: 'linear-gradient(135deg,var(--accent),#8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#fff', flexShrink: 0 }
+          }, (p.name || p.email).charAt(0).toUpperCase()),
+          React.createElement("div", { style: { flex: 1, minWidth: 0 } },
+            React.createElement("p", { style: { margin: 0, fontSize: 12, fontWeight: 700, color: '#f1f5f9', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, p.name),
+            React.createElement("p", { style: { margin: 0, fontSize: 10, color: 'var(--text3)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, p.email)
+          ),
+          React.createElement("span", {
+            className: 'pill',
+            style: { background: added ? 'var(--gdim)' : (p.hubRole === 'owner' || p.hubRole === 'admin' ? 'var(--amdim)' : 'var(--adim)'), color: added ? 'var(--green)' : (p.hubRole === 'owner' || p.hubRole === 'admin' ? 'var(--gold)' : 'var(--accent2)'), fontSize: 9, fontWeight: 800 }
+          }, added ? 'ADDED' : (p.hubRole || 'member').toUpperCase())
+        );
+      })),
+      // Empty-state hint when search yields nothing
+      !matches.length && q && hubAdminPool.length > 0 && React.createElement("p", {
+        style: { margin: '0 0 10px', fontSize: 10, color: 'var(--text3)', fontStyle: 'italic', padding: '6px 4px' }
+      }, "No hub user matches \"" + newAdminEmail + "\". You can still type a full email above and tap Add \u2014 they'll be wired up once they sign in via CKGtools.")
+    );
+  })(), React.createElement("div", {
     style: {
       marginBottom: 10,
       padding: '9px 10px',
