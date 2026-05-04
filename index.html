@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0069'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0070'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -506,7 +506,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 .cad-script-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.cad-script-actions .cad-btn{min-height:30px;padding:0 10px}
 .cad-script-tabs{border-top:1px solid var(--ad-line-1)}.cad-script-tab-head{display:flex;gap:4px;padding:10px 14px 0;border-bottom:1px solid var(--ad-line-1)}
 .cad-script-tab{padding:8px 12px;color:var(--ad-t-3);border-bottom:2px solid transparent;font-size:12px}.cad-script-tab.on{color:var(--ad-t-0);border-bottom-color:var(--ad-brass)}
-.cad-objections{padding:12px 14px 16px;display:flex;flex-direction:column;gap:6px}.cad-objection{padding:9px 11px;border-radius:9px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:12px;display:flex;justify-content:space-between;gap:10px;text-align:left}.cad-objection.on{border-color:var(--ad-brass-line);background:var(--ad-brass-dim);color:var(--ad-brass-2)}.cad-objection-answer{margin-top:8px;padding:11px;border-radius:10px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:12px;line-height:1.55}
+.cad-objections{padding:12px 14px 16px;display:flex;flex-direction:column;gap:6px;max-height:340px;overflow:auto}.cad-objection{padding:9px 11px;border-radius:9px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:12px;display:flex;justify-content:space-between;gap:10px;text-align:left}.cad-objection.on{border-color:var(--ad-brass-line);background:var(--ad-brass-dim);color:var(--ad-brass-2)}.cad-objection-answer{margin-top:8px;padding:11px;border-radius:10px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:12px;line-height:1.55}
 .cad-table{border:1px solid var(--ad-line-1);border-radius:12px;overflow:hidden}.cad-tr{display:grid;grid-template-columns:120px 1.4fr 1fr 1fr .8fr 60px;gap:16px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--ad-line-1);font-size:12px}.cad-tr.head{background:var(--ad-bg-2);color:var(--ad-t-3);text-transform:uppercase;letter-spacing:.08em;font-size:10px;font-weight:800}
 .cad-settings{display:flex;flex:1;min-height:0}.cad-rail{width:240px;border-right:1px solid var(--ad-line-1);padding:22px 16px;display:flex;flex-direction:column;gap:4px}.cad-settings-main{flex:1;padding:26px 32px;display:flex;flex-direction:column;gap:22px;overflow:auto}
 .cad-settings-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}.cad-settings-card{padding:18px;display:flex;align-items:center;justify-content:space-between}.cad-input-like{min-height:42px;padding:0 12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-1);color:var(--ad-t-3);display:flex;align-items:center;gap:10px}
@@ -517,6 +517,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 .cad-page-grid{display:grid;grid-template-columns:repeat(2,minmax(280px,1fr));gap:14px}.cad-page-grid.three{grid-template-columns:repeat(3,minmax(220px,1fr))}.cad-list-stack{display:flex;flex-direction:column;gap:8px}.cad-list-row{display:grid;grid-template-columns:minmax(180px,1.2fr) minmax(110px,.7fr) minmax(160px,1fr) auto;gap:14px;align-items:center;padding:12px 14px;border-radius:12px;border:1px solid var(--ad-line-1);background:var(--ad-bg-1);font-size:12px}.cad-list-row.slim{grid-template-columns:minmax(180px,1.3fr) minmax(120px,.8fr) auto}.cad-list-row.tone-red{border-color:oklch(0.68 0.18 25 / .28);background:var(--ad-red-dim)}.cad-list-row.tone-amber{border-color:oklch(0.80 0.13 75 / .28);background:var(--ad-amber-dim)}.cad-list-row.tone-blue{border-color:oklch(0.72 0.12 240 / .28);background:var(--ad-blue-dim)}.cad-list-row.tone-green{border-color:oklch(0.74 0.16 150 / .28);background:var(--ad-green-dim)}.cad-action-strip{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px}.cad-toggle{width:48px;height:26px;border-radius:999px;border:1px solid var(--ad-line-2);background:var(--ad-bg-3);position:relative;padding:3px;transition:.18s}.cad-toggle:before{content:"";display:block;width:18px;height:18px;border-radius:999px;background:var(--ad-t-2);transition:.18s}.cad-toggle.on{background:var(--ad-brass-dim);border-color:var(--ad-brass-line)}.cad-toggle.on:before{transform:translateX(20px);background:var(--ad-brass)}.cad-mini-progress{height:8px;border-radius:999px;background:var(--ad-bg-3);overflow:hidden}.cad-mini-progress i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--ad-brass),var(--ad-green))}.cad-more-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.cad-more-grid .cad-option{min-height:68px;align-items:flex-start}.cad-value-big{font:750 28px 'JetBrains Mono',ui-monospace,monospace;letter-spacing:-.03em}.cad-tab-menu{position:relative}
 .cad-leads-head{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:18px;align-items:end}
 .cad-search{min-height:42px;width:100%;padding:0 14px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-1);color:var(--ad-t-0);font-size:13px}
+.cad-sheet-results,.cad-free-slots{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow:auto}.cad-free-slot{padding:7px 9px;border-radius:9px;border:1px dashed oklch(0.74 0.16 150 / .34);background:var(--ad-green-dim);color:var(--ad-green);font-size:11px;display:flex;justify-content:space-between;gap:8px;text-align:left}.cad-script-versionbar{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.cad-script-versionbar select{min-height:30px;flex:1 1 120px;min-width:0;padding:0 8px;border-radius:9px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font-size:11px}
 .cad-lead-list{display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--ad-line-1);border-radius:12px;background:var(--ad-bg-1)}
 .cad-lead-row{display:grid;grid-template-columns:minmax(180px,1.35fr) 130px 90px 1fr auto;gap:14px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--ad-line-1);font-size:12px}
 .cad-lead-row:last-child{border-bottom:0}.cad-lead-row.head{background:var(--ad-bg-2);color:var(--ad-t-3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
@@ -614,7 +615,7 @@ var a1Col = window.a1Col;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0069';
+window.APP_VERSION='2026.05.05.0070';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -944,6 +945,21 @@ function _saveGToken(token){
   _gToken=token;localStorage.setItem('ad_gt',token);localStorage.setItem('ad_gt_ts',Date.now().toString());
   localStorage.setItem('ad_g_ever','1');window._gOkCb&&window._gOkCb(true);
   if(_SB){try{_SB.schema('autodial').from('global_state').upsert({id:1,gtoken:token,gtoken_updated_at:new Date().toISOString()},{onConflict:'id'})}catch(e){}}}
+async function _pullSharedGToken(maxAgeMs){
+  if(!_SB)return false;
+  try{
+    var gt=await _SB.schema('autodial').from('global_state').select('gtoken,gtoken_updated_at').eq('id',1).maybeSingle();
+    if(gt.data&&gt.data.gtoken&&gt.data.gtoken_updated_at){
+      var ts=new Date(gt.data.gtoken_updated_at).getTime();
+      if(Number.isFinite(ts)&&(Date.now()-ts)<(maxAgeMs||3300000)){
+        _gToken=gt.data.gtoken;localStorage.setItem('ad_gt',gt.data.gtoken);localStorage.setItem('ad_gt_ts',ts.toString());localStorage.setItem('ad_g_ever','1');window._gOkCb&&window._gOkCb(true);
+        return true;
+      }
+    }
+  }catch(e){console.warn('[Google shared token]',e?.message||e)}
+  return false;
+}
+window._pullSharedGToken=_pullSharedGToken;
 
 // ═══ WORKER REFRESH — silent, no popup, lasts forever ═══
 // HARD FIX: accepts optional override email so admin can impersonate main against the Worker.
@@ -1094,8 +1110,9 @@ window._autoRefreshGoogle=async function(){
   if(Date.now()-ts>2400000){// Token >40min old, refresh it
     var ok=await Promise.race([window._workerRefresh(),new Promise(resolve=>setTimeout(()=>resolve(false),5000))]);
     if(ok)DBG('[Google] Auto-refreshed on mount');
-    return ok}
-  return !!localStorage.getItem('ad_gt')};
+    if(ok)return true;
+    return await _pullSharedGToken(3300000)}
+  return !!localStorage.getItem('ad_gt')||await _pullSharedGToken(3300000)};
 
 // ═══ API FETCH — auto-retry with Worker refresh on 401 ═══
 window.gF=async function(url,opts){
@@ -7004,6 +7021,7 @@ function App() {
     var _onFocus = () => _attempt('focus');
     document.addEventListener('visibilitychange', _onVis);
     window.addEventListener('focus', _onFocus);
+    _attempt('mount');
     var _periodicId = setInterval(() => _attempt('periodic'), 30 * 60 * 1000);
     return () => {
       _stopped = true;
@@ -14995,6 +15013,13 @@ function App() {
             h('span', { className: 'cad-label' }, 'Calling Script'),
             h('span', { className: 'cad-pill' }, scriptMeta)
           ),
+          h('div', { className: 'cad-script-versionbar' },
+            scriptVersions.length > 0 && h('select', { value: cfg.scriptVersionId || '', title: 'Load saved script version', onChange: e => { if (e.target.value) restoreScriptVersion(e.target.value); } }, h('option', { value: '' }, 'Load saved...'), scriptVersions.map(v => h('option', { key: v.id, value: v.id }, v.name || new Date(v.ts || Date.now()).toLocaleDateString('en-SG')))),
+            h('button', { className: 'cad-btn', onClick: saveCurrentScriptVersion, title: cfg.scriptVersionId ? 'Overwrite the selected version' : 'Create the first saved version' }, 'Save'),
+            h('button', { className: 'cad-btn', onClick: saveAsNewScriptVersion, title: 'Save as a new named version' }, 'Save As'),
+            scriptVersions.length > 0 && cfg.scriptVersionId && h('button', { className: 'cad-btn ghost', onClick: () => renameScriptVersion(cfg.scriptVersionId) }, 'Rename'),
+            scriptVersions.length > 0 && cfg.scriptVersionId && h('button', { className: 'cad-btn ghost danger', onClick: () => deleteScriptVersion(cfg.scriptVersionId) }, 'Delete')
+          ),
           liveScriptHtml
             ? h('div', { className: 'cad-script-read cad-rich', dangerouslySetInnerHTML: { __html: liveScriptHtml } })
             : h('div', { className: 'cad-script-read' }, h('p', { className: 'cad-subtle' }, 'No calling script saved yet. Add one in Settings.')),
@@ -15017,7 +15042,7 @@ function App() {
           ),
           h('div', { className: 'cad-objections' },
             liveObjections.length
-              ? liveObjections.slice(0, 8).map(o => h('button', { className: 'cad-objection ' + (activeObj?.id === o.id ? 'on' : ''), key: o.id || o.title, onClick: () => setActiveObjectionId(o.id) }, h('span', null, o.title || 'Objection'), h('span', null, '>')))
+              ? liveObjections.map(o => h('button', { className: 'cad-objection ' + (activeObj?.id === o.id ? 'on' : ''), key: o.id || o.title, onClick: () => setActiveObjectionId(o.id) }, h('span', null, o.title || 'Objection'), h('span', null, '>')))
               : h('span', { className: 'cad-subtle', style: { fontSize: 12 } }, 'No objections saved yet.'),
             activeObj && h('div', { className: 'cad-objection-answer' },
               h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 8 } },
@@ -15282,6 +15307,13 @@ function App() {
           h('input', { value: cfg.sheetId || '', placeholder: 'Sheet URL or ID', onChange: e => setCfg(s => ({ ...s, sheetId: e.target.value })) }),
           h('button', { className: 'cad-btn', onClick: () => fetchTabs(cfg.sheetId), disabled: sLoad }, sLoad ? 'Checking...' : 'Load tabs')
         ),
+        gOk && h('div', { style: { marginTop: 12 } },
+          h('div', { className: 'cad-form-grid' },
+            h('input', { value: sheetQ, placeholder: 'Search Google Drive sheets by name', onChange: e => setSheetQ(e.target.value), onKeyDown: e => { if (e.key === 'Enter') searchSheets(); } }),
+            h('button', { className: 'cad-btn', onClick: searchSheets, disabled: sheetSearching }, sheetSearching ? 'Searching...' : 'Search Drive')
+          ),
+          sheetResults.length > 0 && h('div', { className: 'cad-sheet-results', style: { marginTop: 10 } }, sheetResults.map(f => h('button', { className: 'cad-option', key: f.id, onClick: () => { setCfg(s => ({ ...s, sheetId: f.id, _sheetName: f.name || s._sheetName || '' })); setSheetQ(f.name || ''); setSheetResults([]); fetchTabs(f.id); } }, h('span', null, h('b', null, f.name || 'Untitled sheet'), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, f.modifiedTime ? 'Modified ' + new Date(f.modifiedTime).toLocaleString('en-SG') : f.id)), h('span', { className: 'cad-subtle' }, '>'))))
+        ),
         gOk && sTabs.length > 0 && h('div', { className: 'cad-form-grid', style: { marginTop: 10 } },
           h('select', { value: cfg.sheetTab || '', onChange: e => setCfg(s => ({ ...s, sheetTab: e.target.value })) }, h('option', { value: '' }, 'Select tab'), sTabs.map(t => h('option', { key: t.id || t.title, value: t.title }, t.title, ' (', t.rows, ' rows)'))),
           h('button', { className: 'cad-btn primary', onClick: fetchLeads, disabled: !cfg.sheetTab || sLoad }, 'Fetch selected tab')
@@ -15316,6 +15348,9 @@ function App() {
       var k0 = localDateKey(dLocal);
       calDays.push({ key: k0, date: dLocal, events: (calByDay[k0] || []).slice().sort((a, b) => new Date(a.start?.dateTime || a.start?.date || 0) - new Date(b.start?.dateTime || b.start?.date || 0)) });
     }
+    var BIZ_START = 7, BIZ_END = 22, HOUR_PX = 44;
+    var calTodayKey = localDateKey(new Date());
+    var cadSlotClock = dt => String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
     var calView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
       h('div', { className: 'cad-dashboard-head' },
         h('div', null, h('h2', { style: { fontSize: 24 } }, 'Calendar'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, fmtDayMonth(calStart), ' - ', fmtDayMonth(new Date(calStart.getTime() + 6 * 86400000)), ' - ', (weekEvents || []).length, ' events')),
@@ -15323,17 +15358,29 @@ function App() {
           h('button', { className: 'cad-btn', onClick: () => setCalWeekOffset(p => p - 1) }, '<'),
           h('button', { className: 'cad-btn', onClick: () => setCalWeekOffset(0) }, 'Today'),
           h('button', { className: 'cad-btn', onClick: () => setCalWeekOffset(p => p + 1) }, '>'),
+          h('button', { className: 'cad-btn ' + (calFilterOpen ? 'primary' : ''), onClick: () => setCalFilterOpen(p => !p) }, icon('Sparkles', 13), calFilterOpen ? 'Hide slots' : 'Smart slots'),
           h('button', { className: 'cad-btn primary', onClick: () => { setCalRefreshing(true); setCalRefreshTrigger(p => p + 1); } }, calRefreshing ? 'Refreshing...' : 'Refresh')
         )
       ),
       !gOk ? h('div', { className: 'cad-card cad-empty' }, h('div', null, h('div', { className: 'cad-logo', style: { margin: '0 auto 14px', width: 46, height: 46, borderRadius: 14 } }, icon('Calendar', 22)), h('h3', null, role === 'admin' ? 'Calendar not linked yet' : 'Connect Google Calendar'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 6 } }, role === 'admin' ? 'Main controls calendar access.' : 'Connect Google in Settings to view and create calendar events.'))) :
-      h('div', { className: 'cad-calendar' }, calDays.map(day => h('div', { className: 'cad-day ' + (day.key === localDateKey(new Date()) ? 'today' : ''), key: day.key },
+      h('div', { className: 'cad-calendar' }, calDays.map(day => {
+        var isPastDay = day.key < calTodayKey;
+        var freeSlots = [];
+        if (calFilterOpen && !isPastDay) {
+          var slotEvs = day.events.map(_calendarEventBusyRange).filter(Boolean).map(r => ({ start: r.start, end: r.end }));
+          freeSlots = findFreeSlots(day.date, slotEvs, BIZ_START, BIZ_END).map(s => ({ slot: s, win: _slotBookableWindow(s, slotBeforeMin, slotAfterMin) })).filter(x => x.win.mins >= apptCoreMin).slice(0, 5);
+        }
+        return h('div', { className: 'cad-day ' + (day.key === calTodayKey ? 'today' : ''), key: day.key },
         h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('b', null, day.date.toLocaleDateString('en-SG', { weekday: 'short' })), h('span', { className: 'cad-mono cad-muted', style: { fontSize: 12 } }, day.date.getDate())),
         day.events.length ? day.events.slice(0, 6).map(ev => {
           var es = new Date(ev.start?.dateTime || ev.start?.date || 0);
           return h('button', { className: 'cad-event', key: ev.id || ev.summary || es.getTime(), onClick: () => setCalEditEvent ? setCalEditEvent(ev) : null }, h('span', { className: 'cad-mono' }, es.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })), ' ', ev.summary || 'Busy');
-        }) : h('span', { className: 'cad-subtle', style: { fontSize: 12 } }, 'No events')
-      )))
+        }) : h('span', { className: 'cad-subtle', style: { fontSize: 12 } }, 'No events'),
+        calFilterOpen && (freeSlots.length ? h('div', { className: 'cad-free-slots' }, freeSlots.map(({ win }, si) => {
+          var slotPayload = { date: day.key, time: cadSlotClock(win.start), duration: Math.min(apptCoreMin, win.mins) };
+          return h('button', { type: 'button', className: 'cad-free-slot', key: 'fs-' + day.key + '-' + si, title: 'Free - ' + _formatSlotMinutes(win.mins) + ' - click to book', onClick: e => { e.preventDefault(); e.stopPropagation(); _openCalAddApptPicker(slotPayload); } }, h('span', null, 'Free ', cadSlotClock(win.start), ' - ', cadSlotClock(win.end)), h('span', { className: 'cad-mono' }, _formatSlotMinutes(win.mins)));
+        })) : !isPastDay ? h('span', { className: 'cad-subtle', style: { fontSize: 12 } }, 'No bookable slots') : null)
+      ); }))
     ));
     var cadMoney = v => '$' + (Number(v) || 0).toFixed(2);
     var cadTimeAgo = ts => {
@@ -15559,6 +15606,7 @@ function App() {
           _rememberApptLocation(apptLocation, lead);
           _clearApptDraft(lead);
           setShowAppt(false);
+          setApptLead(null);
           setRescheduleTargetAppt(null);
           setApptShaky(false);
           toast('Rescheduled ' + (target.name || 'appointment'));
@@ -15596,7 +15644,7 @@ function App() {
           toast('Appointment kept locally; Supabase save is slow/unavailable.', 'err');
         }
         var localId = savedApptRow?.id || 'appt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-        appStateRef.current._pendingSetCalEventId = { calEventId: evt?.id || '', apptId: lead.phone || '', dbApptId: savedApptRow?.id || '', calendarId: eventCalId };
+        appStateRef.current._pendingSetCalEventId = { calEventId: evt?.id || '', apptId: localId, dbApptId: savedApptRow?.id || '', calendarId: eventCalId };
         setAppointments(prev => {
           var list = Array.isArray(prev) ? prev.slice() : [];
           var idx = list.findIndex(a => (a.leadId === lead.id || a.phone === lead.phone && a.phone) && (!a.followUp || a.followUp === 'pending') && !a.apptDate);
@@ -15627,6 +15675,7 @@ function App() {
         if (evt?.id) toast('Appointment created.');
         else toast('Appointment saved locally; calendar event was not created: ' + (calendarErr?.message || calendarErr || 'Calendar unavailable'), 'err');
         setShowAppt(false);
+        setApptLead(null);
         setApptLocation('');
         setApptObs('');
         setApptInvite('');
@@ -15650,15 +15699,15 @@ function App() {
       h('div', { className: 'cad-form-grid', style: { marginTop: 14 } }, cadField('Date', h('input', { type: 'date', value: cbDate, onChange: e => setCbDate(e.target.value) })), cadField('Time', h('input', { type: 'time', value: cbTime, onChange: e => setCbTime(e.target.value) }))),
       h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => { setShowCb(false); setCbDate(''); setCbTime(''); } }, 'Cancel'), h('button', { className: 'cad-btn primary', onClick: () => { if (!cbDate || !cbTime) return toast('Pick date and time', 'err'); handleOutcome('cb', { cbDate, cbTime }); setShowCb(false); setCbDate(''); setCbTime(''); } }, 'Set callback'))
     ));
-    var apptModal = cadModal(showAppt, 'wide', () => setShowAppt(false), h(React.Fragment, null,
-      h('div', { className: 'cad-modal-head' }, h('div', null, h('span', { className: 'cad-pill green' }, rescheduleTargetAppt ? 'Reschedule' : 'Outcome - Set'), h('h3', { className: 'cad-modal-title', style: { marginTop: 10 } }, rescheduleTargetAppt ? 'Reschedule appointment' : 'Book appointment'), h('p', { className: 'cad-modal-sub' }, (apptLead || activeLead)?.name || 'Lead', (apptLead || activeLead)?.phone ? ' - ' + (apptLead || activeLead).phone : '')), h('button', { className: 'cad-btn ghost', onClick: () => setShowAppt(false) }, 'x')),
+    var apptModal = cadModal(showAppt, 'wide', () => { setShowAppt(false); setApptLead(null); setRescheduleTargetAppt(null); setApptShaky(false); }, h(React.Fragment, null,
+      h('div', { className: 'cad-modal-head' }, h('div', null, h('span', { className: 'cad-pill green' }, rescheduleTargetAppt ? 'Reschedule' : 'Outcome - Set'), h('h3', { className: 'cad-modal-title', style: { marginTop: 10 } }, rescheduleTargetAppt ? 'Reschedule appointment' : 'Book appointment'), h('p', { className: 'cad-modal-sub' }, (apptLead || activeLead)?.name || 'Lead', (apptLead || activeLead)?.phone ? ' - ' + (apptLead || activeLead).phone : '')), h('button', { className: 'cad-btn ghost', onClick: () => { setShowAppt(false); setApptLead(null); setRescheduleTargetAppt(null); setApptShaky(false); } }, 'x')),
       h('div', { className: 'cad-form-grid' }, cadField('Date', h('input', { type: 'date', value: apptDate, onChange: e => setApptDate(e.target.value) })), cadField('Time', h('input', { type: 'time', value: apptTime, onChange: e => setApptTime(e.target.value) }))),
       h('div', { className: 'cad-form-grid' }, cadField('Duration', h('input', { type: 'number', min: 15, step: 15, value: apptSlotDuration, onChange: e => setApptSlotDuration(_slotMinutes(e.target.value, 60, 1, 480)) })), cadField('Invite emails', h('input', { value: apptInvite, onChange: e => setApptInvite(e.target.value), placeholder: 'optional, comma separated' }))),
       cadField('Location', h('input', { value: apptLocation, onChange: e => setApptLocation(e.target.value), placeholder: 'optional - office, home, cafe...' })),
       recentApptLocations.length > 0 && h('div', { className: 'cad-inline', style: { flexWrap: 'wrap', margin: '-2px 0 12px' } }, recentApptLocations.slice(0, 6).map((x, i) => h('button', { className: 'cad-pill blue', key: x.loc + i, onClick: () => setApptLocation(x.loc) }, x.loc))),
       cadField('Specialist notes', h('textarea', { value: apptObs, onChange: e => setApptObs(e.target.value), placeholder: 'Receptiveness, objections, timing, context for specialist' })),
       h('label', { className: 'cad-option', style: { cursor: 'pointer' }, onClick: () => setApptShaky(p => !p) }, h('span', null, 'Shaky appointment'), h('span', { className: 'cad-pill ' + (apptShaky ? 'amber' : '') }, apptShaky ? 'Marked' : 'Off')),
-      h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => { setShowAppt(false); setRescheduleTargetAppt(null); setApptShaky(false); } }, 'Cancel'), h('button', { className: 'cad-btn primary', disabled: apptSaving || !apptDate || !apptTime, onClick: submitClaudeAppointment }, apptSaving ? 'Creating...' : rescheduleTargetAppt ? 'Reschedule' : 'Book & next lead'))
+      h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => { setShowAppt(false); setApptLead(null); setRescheduleTargetAppt(null); setApptShaky(false); } }, 'Cancel'), h('button', { className: 'cad-btn primary', disabled: apptSaving || !apptDate || !apptTime, onClick: submitClaudeAppointment }, apptSaving ? 'Creating...' : rescheduleTargetAppt ? 'Reschedule' : 'Book & next lead'))
     ));
     var slots = (myCfg.sessionSlots || [{ hours: n(myCfg.sessionDur, 5), apptsBar: n(myCfg.mThresh, 2), bonusBar: n(myCfg.nThresh, 3) }]).filter(sl => n(sl.hours, 0) > 0).sort((a, b) => n(a.hours, 0) - n(b.hours, 0));
     var slotModal = cadModal(showSlotPicker, '', () => setShowSlotPicker(false), h(React.Fragment, null,
