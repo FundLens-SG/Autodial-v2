@@ -391,7 +391,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0032';
+window.APP_VERSION='2026.05.03.0033';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -1573,16 +1573,40 @@ window.gDrive={
     if(q)fq+=" and name contains '"+q.replace(/'/g,"\\'")+"'";
     return(await(await gF('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(fq)+'&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc&pageSize=20')).json()).files||[]
   },
-  // ═══ Find or create a folder by name in My Drive root. Returns folder ID.
-  async ensureFolder(name){
+  // ═══ Find or create a folder by name. Defaults to My Drive root; pass
+  // ═══ parentId to scope the lookup + creation to a specific parent (so
+  // ═══ "Autodial" inside CKGTools doesn't get confused with a stray
+  // ═══ legacy "Autodial" folder at root). Returns the folder ID.
+  async ensureFolder(name,parentId){
     if(!name)return'';
     try{
       var fq="mimeType='application/vnd.google-apps.folder' and name='"+name.replace(/'/g,"\\'")+"' and trashed=false";
-      var found=(await(await gF('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(fq)+'&fields=files(id,name)&pageSize=5')).json()).files||[];
+      if(parentId)fq+=" and '"+parentId+"' in parents";
+      var found=(await(await gF('https://www.googleapis.com/drive/v3/files?q='+encodeURIComponent(fq)+'&fields=files(id,name,parents)&pageSize=5')).json()).files||[];
       if(found.length)return found[0].id;
-      var r=await(await gF('https://www.googleapis.com/drive/v3/files?fields=id,name',{method:'POST',body:JSON.stringify({name:name,mimeType:'application/vnd.google-apps.folder'})})).json();
+      var body={name:name,mimeType:'application/vnd.google-apps.folder'};
+      if(parentId)body.parents=[parentId];
+      var r=await(await gF('https://www.googleapis.com/drive/v3/files?fields=id,name',{method:'POST',body:JSON.stringify(body)})).json();
       return r.id||'';
     }catch(e){console.warn('[gDrive.ensureFolder]',e?.message||e);return''}
+  },
+  // ═══ Canonical CKGTools folder structure: My Drive / CKGTools / <tool>.
+  // ═══ Used by every per-tool helper so AutoDial files live under
+  // ═══ CKGTools/Autodial, leaving room for sibling tools (Policylens,
+  // ═══ Fundlens, Illustration Builder, etc.) to nest the same way.
+  // ═══ Cached at module level — Drive folder IDs don't change once
+  // ═══ allocated, so a single per-session lookup is enough.
+  async ensureCkgToolsFolder(toolName){
+    var tool=toolName||'Autodial';
+    if(!this._ckgRootId){
+      this._ckgRootId=await this.ensureFolder('CKGTools');
+    }
+    if(!this._ckgRootId)return'';
+    var key='_tool_'+tool;
+    if(!this[key]){
+      this[key]=await this.ensureFolder(tool,this._ckgRootId);
+    }
+    return this[key]||'';
   },
   // ═══ Find or create a Google Sheet inside the given folder. Returns sheet ID.
   async ensureSheetFile(folderId,name){
@@ -1660,10 +1684,17 @@ window.gScripts={
     }catch(_e){}
   },
   async ensureFile(){
-    var folderId=await gDrive.ensureFolder('AutoDial');
+    // Live under My Drive / CKGTools / Autodial. ensureCkgToolsFolder
+    // creates both levels on first call and caches IDs for the session.
+    var folderId=await gDrive.ensureCkgToolsFolder('Autodial');
     if(!folderId)return'';
     var sheetId=await gDrive.ensureSheetFile(folderId,'AutoDial Scripts');
     if(!sheetId)return'';
+    // Best-effort migration: if this file is currently in the legacy
+    // root-level "AutoDial" folder (or anywhere else), pull it into the
+    // canonical CKGTools/Autodial location. Safe to run on every boot —
+    // moveFileToFolder is idempotent when the file is already there.
+    try{ await gDrive.moveFileToFolder(sheetId,folderId); }catch(_e){}
     // Sheet1 = canonical script versions tab. Header set + styled.
     try{
       var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/Sheet1!A1:F1')).json();
@@ -1794,6 +1825,77 @@ window.gScripts={
         };
       }).filter(Boolean);
     }catch(e){console.warn('[gScripts.loadObjections]',e?.message||e);return[]}
+  }
+};
+
+// ─── WhatsApp templates Drive backup ──────────────────────────────────
+// Mirrors gScripts: a single Sheet inside CKGTools/Autodial holds every
+// WA template the Main has saved. Auto-backs up on edit (3s debounce
+// via the per-app useEffect) and the same workbook can be restored on a
+// fresh device. Schema kept human-readable so the Main can audit / hand-
+// edit in Sheets if needed.
+window.gWaTpl={
+  async ensureFile(){
+    var folderId=await gDrive.ensureCkgToolsFolder('Autodial');
+    if(!folderId)return'';
+    var sheetId=await gDrive.ensureSheetFile(folderId,'AutoDial WhatsApp Templates');
+    if(!sheetId)return'';
+    try{ await gDrive.moveFileToFolder(sheetId,folderId); }catch(_e){}
+    // Header + style
+    try{
+      var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/Sheet1!A1:E1')).json();
+      var headers=vals.values&&vals.values[0]?vals.values[0]:[];
+      var canon=['Name','Category','Template','Updated','Updated By'];
+      if(headers.join('|')!==canon.join('|')){
+        await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/Sheet1!A1:E1?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[canon]})});
+        try{
+          var meta=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'?fields=sheets.properties')).json();
+          var sid=meta.sheets&&meta.sheets[0]?meta.sheets[0].properties.sheetId:0;
+          // Reuse the canonical purple header banner (same as gScripts).
+          await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+':batchUpdate',{method:'POST',body:JSON.stringify({requests:[
+            {repeatCell:{range:{sheetId:sid,startRowIndex:0,endRowIndex:1,startColumnIndex:0,endColumnIndex:5},cell:{userEnteredFormat:{backgroundColor:{red:0.224,green:0.094,blue:0.337},textFormat:{foregroundColor:{red:1,green:1,blue:1},bold:true,fontSize:11}}},fields:'userEnteredFormat(backgroundColor,textFormat)'}},
+            {updateSheetProperties:{properties:{sheetId:sid,gridProperties:{frozenRowCount:1}},fields:'gridProperties.frozenRowCount'}}
+          ]})});
+        }catch(_e){}
+      }
+    }catch(e){console.warn('[gWaTpl.ensureFile header]',e?.message||e)}
+    return sheetId;
+  },
+  async save(sheetId,templates,actor){
+    if(!sheetId||!Array.isArray(templates))return false;
+    try{
+      var ts=new Date().toLocaleString('en-SG');
+      var rows=templates.map(function(t){return[
+        String(t?.name||''),
+        String(t?.category||'appointment'),
+        String(t?.template||''),
+        ts,
+        actor||''
+      ]});
+      await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/Sheet1!A2:E:clear',{method:'POST',body:JSON.stringify({})});
+      if(rows.length){
+        await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/Sheet1!A2?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:rows})});
+      }
+      return true;
+    }catch(e){console.warn('[gWaTpl.save]',e?.message||e);return false}
+  },
+  async load(sheetId){
+    if(!sheetId)return[];
+    try{
+      var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+sheetId+'/values/Sheet1!A2:E')).json();
+      var rows=vals.values||[];
+      return rows.map(function(r,i){
+        var name=r[0]||'';
+        if(!name)return null;
+        return{
+          id:'wa_drive_'+i+'_'+name.toLowerCase().replace(/[^a-z0-9]/g,'_').slice(0,20),
+          name:name,
+          category:r[1]||'appointment',
+          template:r[2]||'',
+          _fromDrive:true
+        };
+      }).filter(Boolean);
+    }catch(e){console.warn('[gWaTpl.load]',e?.message||e);return[]}
   }
 };
 
@@ -11649,7 +11751,7 @@ function App() {
     try {
       var adminEmails = Object.keys(adminConfigs || {}).filter(em => em && em.includes('@'));
       if (adminEmails.length) {
-        var folderId = await window.gDrive.ensureFolder('AutoDial');
+        var folderId = await window.gDrive.ensureCkgToolsFolder('Autodial');
         await Promise.all(adminEmails.map(async em => {
           try {
             await window.gDrive.shareFileWithEmail(fileId, em, 'reader');
@@ -11676,6 +11778,116 @@ function App() {
     if (!quiet) toast('✓ ' + scriptVersions.length + ' script version(s) + ref notes + objections backed up to Drive' + (Object.keys(adminConfigs || {}).filter(em => em.includes('@')).length ? ' & shared with admins' : ''));
     return fileId;
   }, [role, cfg.scriptsDriveFileId, scriptVersions, cfg.refNotes, cfg.objections, userName, adminConfigs]);
+  // ─── WhatsApp templates Drive backup (Main only) ─────────────────
+  // Mirrors backupScriptsToDrive: writes the full waTemplates list to
+  // a separate sheet inside CKGTools/Autodial. Auto-fires on edit via
+  // the useEffect below; manual trigger via the Settings → Calling →
+  // Templates "Backup to Drive" button. fileId persisted in
+  // cfg.waTplDriveFileId so we don't re-search Drive every save.
+  var backupWATemplatesToDrive = useCallback(async (opts = {}) => {
+    var quiet = !!opts.quiet;
+    if (role !== 'main') {
+      if (!quiet) toast('Drive backup is for Main accounts only', 'err');
+      return false;
+    }
+    if (!localStorage.getItem('ad_gt')) {
+      if (!quiet) toast('Connect Google first (Settings → Workspace)', 'err');
+      return false;
+    }
+    if (!quiet) toast('↻ Backing up WhatsApp templates to Drive…', 'info');
+    var fileId = cfg.waTplDriveFileId || '';
+    if (!fileId) {
+      fileId = await window.gWaTpl.ensureFile();
+      if (!fileId) {
+        if (!quiet) toast('Could not create the WhatsApp templates file in Drive', 'err');
+        return false;
+      }
+      setCfg(p => ({ ...p, waTplDriveFileId: fileId }));
+    }
+    var ok = await window.gWaTpl.save(fileId, waTemplates || [], userName);
+    if (!ok) {
+      if (!quiet) toast('Drive WA-template save failed — check console', 'err');
+      return false;
+    }
+    // Share the file with every configured admin (read-only) the same way
+    // the scripts file gets shared. Best-effort, silent on failure.
+    try {
+      var adminEmails = Object.keys(adminConfigs || {}).filter(em => em && em.includes('@'));
+      if (adminEmails.length) {
+        await Promise.all(adminEmails.map(em => window.gDrive.shareFileWithEmail(fileId, em, 'reader').catch(() => {})));
+      }
+    } catch (_e) {}
+    if (!quiet) toast('✓ ' + (waTemplates || []).length + ' WA template(s) backed up to Drive');
+    return fileId;
+  }, [role, cfg.waTplDriveFileId, waTemplates, userName, adminConfigs]);
+  // Auto-backup WA templates 3s after the last edit. Same skip-first-
+  // run pattern as scripts so app boot doesn't double-write.
+  var _waTplAutoBackupSkipFirst = useRef(true);
+  useEffect(() => {
+    if (role !== 'main') return;
+    if (!cfg.waTplDriveFileId) return;
+    if (!localStorage.getItem('ad_gt')) return;
+    if (_waTplAutoBackupSkipFirst.current) {
+      _waTplAutoBackupSkipFirst.current = false;
+      return;
+    }
+    var t = setTimeout(() => {
+      backupWATemplatesToDrive({ quiet: true }).catch(e => console.warn('[WA Drive auto-backup]', e?.message || e));
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [role, waTemplates, cfg.waTplDriveFileId, backupWATemplatesToDrive]);
+  // First-boot auto-restore: if a Drive file ID is configured but local
+  // waTemplates is empty (fresh device, just signed in), pull the
+  // backup so the Main isn't staring at an empty templates list.
+  var _waTplAutoRestoreDone = useRef(false);
+  useEffect(() => {
+    if (_waTplAutoRestoreDone.current) return;
+    if (role !== 'main') return;
+    if (!cfg.waTplDriveFileId) return;
+    if (!localStorage.getItem('ad_gt')) return;
+    if (Array.isArray(waTemplates) && waTemplates.filter(t => !window.isMainOnlyWATemplate(t)).length > 0) return;
+    _waTplAutoRestoreDone.current = true;
+    (async () => {
+      try {
+        var fromDrive = await window.gWaTpl.load(cfg.waTplDriveFileId);
+        if (fromDrive && fromDrive.length) {
+          setWaTemplates(window.ensureDefaultWATemplates(fromDrive));
+          toast('Restored ' + fromDrive.length + ' WhatsApp template(s) from Drive', 'info');
+        }
+      } catch (e) {
+        console.warn('[WA Drive auto-restore]', e?.message || e);
+      }
+    })();
+  }, [role, cfg.waTplDriveFileId, waTemplates]);
+  var restoreWATemplatesFromDrive = useCallback(async () => {
+    if (role !== 'main') {
+      toast('Drive restore is for Main accounts only', 'err');
+      return false;
+    }
+    if (!localStorage.getItem('ad_gt')) {
+      toast('Connect Google first', 'err');
+      return false;
+    }
+    toast('↻ Reading WhatsApp templates from Drive…', 'info');
+    var fileId = cfg.waTplDriveFileId || '';
+    if (!fileId) {
+      fileId = await window.gWaTpl.ensureFile();
+      if (!fileId) {
+        toast('No WA templates file found in Drive', 'err');
+        return false;
+      }
+      setCfg(p => ({ ...p, waTplDriveFileId: fileId }));
+    }
+    var fromDrive = await window.gWaTpl.load(fileId);
+    if (!fromDrive || !fromDrive.length) {
+      toast('No WhatsApp templates found in Drive (or sheet is empty)', 'info');
+      return false;
+    }
+    if (!(await confirmAsync('Replace your local WhatsApp templates with ' + fromDrive.length + ' from Drive? Local copies are kept in cloud and can be restored.', { title: 'Restore WA templates', confirmLabel: 'Replace' }))) return false;
+    setWaTemplates(window.ensureDefaultWATemplates(fromDrive));
+    toast('✓ Restored ' + fromDrive.length + ' WhatsApp template(s) from Drive');
+    return true;
+  }, [role, cfg.waTplDriveFileId, confirmAsync]);
   // ═══ Auto-backup scripts to Drive whenever scriptVersions changes — debounced
   // ═══ 3s so a flurry of edits coalesces into one write. Quiet mode (no toast)
   // ═══ since this happens in the background. Only fires for Main users with a
@@ -11886,9 +12098,10 @@ function App() {
       toast('No changes made — use Backup or Restore manually when ready', 'info');
     }
   }, [role, cfg.scriptsDriveFileId, compareScriptsWithDrive, backupScriptsToDrive, confirmAsync]);
-  // ═══ Tidy Drive: ensure AutoDial folder exists, then move the user's linked
-  // ═══ leads/timesheet sheet INTO that folder (alongside the scripts file).
-  // ═══ Idempotent — moving an already-in-folder file is a no-op.
+  // ═══ Tidy Drive: target the canonical CKGTools / Autodial folder so the
+  // ═══ user's leads/timesheet sheet lives next to the AutoDial Scripts +
+  // ═══ WhatsApp Templates files. Idempotent — moveFileToFolder no-ops
+  // ═══ when the file is already in the right place.
   var moveSheetToAutoDialFolder = useCallback(async () => {
     if (role !== 'main') {
       toast('Drive organize is for Main accounts only', 'err');
@@ -11903,16 +12116,16 @@ function App() {
       toast('No linked sheet to organize', 'err');
       return false;
     }
-    if (!(await confirmAsync('Move your linked AutoDial sheet into the "AutoDial" folder in your Drive? You can move it back manually anytime.', { title: 'Organize Drive', confirmLabel: 'Move' }))) return false;
+    if (!(await confirmAsync('Move your linked AutoDial sheet into "CKGTools / Autodial" in your Drive? You can move it back manually anytime.', { title: 'Organize Drive', confirmLabel: 'Move' }))) return false;
     toast('↻ Organizing Drive…', 'info');
-    var folderId = await window.gDrive.ensureFolder('AutoDial');
+    var folderId = await window.gDrive.ensureCkgToolsFolder('Autodial');
     if (!folderId) {
-      toast('Could not create/find AutoDial folder', 'err');
+      toast('Could not create/find CKGTools / Autodial folder', 'err');
       return false;
     }
     var ok = await window.gDrive.moveFileToFolder(sheetId, folderId);
     if (ok) {
-      toast('✓ Sheet moved into AutoDial folder');
+      toast('✓ Sheet moved into CKGTools / Autodial');
       return true;
     }
     toast('Move failed — check console for details', 'err');
@@ -27396,7 +27609,30 @@ function App() {
       setWaTemplates([]);
       toast('All templates deleted');
     }
-  }, "Delete All")), React.createElement("p", {
+  }, "Delete All")), role === 'main' && React.createElement("div", {
+    // ─── Drive backup controls (Main only) ─────────────────────────
+    // Mirror the gScripts buttons so WA templates get the same treatment:
+    // manual backup, manual restore, and a passive note that auto-sync
+    // (3s debounced) is on whenever a Drive file ID is configured.
+    style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 8, padding: '8px 10px', borderRadius: 10, background: 'rgba(37,211,102,.05)', border: '1px solid rgba(37,211,102,.18)' }
+  }, React.createElement("span", {
+    style: { fontSize: 10, fontWeight: 700, color: 'var(--text3)', flex: 1, minWidth: 0 }
+  },
+    cfg.waTplDriveFileId
+      ? '☁ Auto-syncing to CKGTools / Autodial / WhatsApp Templates'
+      : 'Backup to keep your templates safe across devices'
+  ), React.createElement("button", {
+    onClick: () => backupWATemplatesToDrive(),
+    style: { padding: '6px 12px', borderRadius: 8, background: 'var(--gdim)', color: 'var(--green)', fontSize: 10, fontWeight: 800, border: '1px solid rgba(34,197,94,.32)' }
+  }, '⬆ Backup'), React.createElement("button", {
+    onClick: () => restoreWATemplatesFromDrive(),
+    style: { padding: '6px 12px', borderRadius: 8, background: 'var(--bg3)', color: 'var(--text2)', fontSize: 10, fontWeight: 700, border: '1px solid var(--border)' }
+  }, '⬇ Restore'), cfg.waTplDriveFileId && React.createElement("a", {
+    href: 'https://docs.google.com/spreadsheets/d/' + cfg.waTplDriveFileId,
+    target: '_blank',
+    rel: 'noopener',
+    style: { fontSize: 10, color: 'var(--accent2)', textDecoration: 'none', fontWeight: 700 }
+  }, 'Open ↗')), React.createElement("p", {
     style: {
       fontSize: 10,
       color: 'var(--text3)',
