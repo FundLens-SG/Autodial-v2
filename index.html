@@ -391,7 +391,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0030';
+window.APP_VERSION='2026.05.03.0031';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -3221,7 +3221,9 @@ function _cleanScriptVersion(v) {
     name: String(v.name || 'Saved script'),
     html: _sanitizeRichHtml(v.html || ''),
     notes: _sanitizeRichHtml(v.notes || ''),
-    objections: _normalizeObjections(v.objections || []),
+    // Strip embedded objections — they're global per Main, not a
+    // per-version frozen snapshot. Older versions may still carry the
+    // field; we drop it on the way out.
     author: v.author || '',
     ts: v.ts || Date.now()
   };
@@ -3233,10 +3235,15 @@ function _scriptSharePayload(ownerCfg, versions, versionId) {
   }) || list.find(function (v) {
     return v && v.id && v.id === ownerCfg?.scriptVersionId;
   }) || null;
+  // Objections always come from the OWNER's current global list, never
+  // from the selected version's embedded snapshot. That way every admin
+  // gets the latest objection bank regardless of which script version
+  // they're assigned.
+  var liveObjections = _normalizeObjections(ownerCfg?.objections || []);
   if (selected) return {
     html: selected.html,
     notes: selected.notes,
-    objections: _normalizeObjections(selected.objections || []),
+    objections: liveObjections,
     versions: [selected],
     versionId: selected.id,
     name: selected.name || 'Saved script',
@@ -3245,7 +3252,7 @@ function _scriptSharePayload(ownerCfg, versions, versionId) {
   return {
     html: _sanitizeRichHtml(ownerCfg?.callingScript || ''),
     notes: _sanitizeRichHtml(ownerCfg?.refNotes || ''),
-    objections: _normalizeObjections(ownerCfg?.objections || []),
+    objections: liveObjections,
     versions: [],
     versionId: '',
     name: 'Current visible script',
@@ -8041,7 +8048,26 @@ function App() {
       editedAt
     };
   }, [scriptContent, refNotes, cfg.callingScript, cfg.refNotes, scriptEditing, refEditing]);
-  var snapshotScriptVersion = useCallback(async () => {
+  // ─── Script version save: TWO modes ────────────────────────────────
+  //
+  // The previous "Save Version" always created a NEW snapshot AND
+  // embedded the current objections list inside it. That meant loading
+  // an older version silently reverted the user's objections to that
+  // older version's frozen list — the "jumble" the user reported.
+  //
+  // New design:
+  //   • saveCurrentScriptVersion ("Save")   — overwrites the version
+  //     currently selected (cfg.scriptVersionId) in place. Falls back
+  //     to Save As when nothing is selected.
+  //   • saveAsNewScriptVersion ("Save As")  — always prompts for a
+  //     name and creates a brand-new version with a unique ID.
+  //
+  // Neither stores objections inside the version — objections live
+  // globally on cfg.objections and are not affected by version
+  // restore. Reference notes stay per-version (different scripts
+  // legitimately have different talking points).
+  var _newScriptVersionId = () => 'sv_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+  var saveAsNewScriptVersion = useCallback(async () => {
     var html = getCurrentScriptHtml();
     var notes = getCurrentRefNotesHtml();
     if (!html && !notes) return toast('Nothing to save yet', 'err');
@@ -8053,20 +8079,19 @@ function App() {
       minute: '2-digit'
     });
     var pickedName = await promptAsync('Name this saved script version', defaultName, {
-      title: 'Save script version',
+      title: 'Save as new version',
       placeholder: 'DBS retirement promo'
     });
     if (!pickedName) return;
     var version = {
-      id: 'sv_' + editedAt,
+      id: _newScriptVersionId(),
       name: pickedName.trim() || defaultName,
       html,
       notes,
-      objections: _normalizeObjections(cfg.objections || []),
       author: myEmail,
-      ts: Date.now()
+      ts: editedAt
     };
-    var next = [version, ...scriptVersions.filter(v => v.id !== version.id)].slice(0, 20);
+    var next = [version, ...scriptVersions].slice(0, 20);
     setScriptVersions(next);
     setShareScriptVersionId(version.id);
     setCfg(s => ({
@@ -8079,8 +8104,41 @@ function App() {
     }));
     setScriptEditing(false);
     setRefEditing(false);
-    toast('Saved version: ' + version.name);
-  }, [scriptContent, refNotes, cfg.callingScript, cfg.refNotes, cfg.objections, myEmail, scriptVersions, promptAsync, scriptEditing, refEditing]);
+    toast('Saved as new version: ' + version.name);
+  }, [scriptContent, refNotes, cfg.callingScript, cfg.refNotes, myEmail, scriptVersions, promptAsync, scriptEditing, refEditing]);
+  var saveCurrentScriptVersion = useCallback(async () => {
+    var html = getCurrentScriptHtml();
+    var notes = getCurrentRefNotesHtml();
+    if (!html && !notes) return toast('Nothing to save yet', 'err');
+    var currentId = cfg.scriptVersionId || '';
+    var existing = currentId ? scriptVersions.find(v => v.id === currentId) : null;
+    if (!existing) {
+      // Nothing to overwrite — fall through to Save As.
+      return saveAsNewScriptVersion();
+    }
+    var editedAt = Date.now();
+    var updated = {
+      ...existing,
+      html,
+      notes,
+      ts: editedAt,
+      author: myEmail || existing.author
+    };
+    var next = scriptVersions.map(v => v.id === currentId ? updated : v);
+    setScriptVersions(next);
+    setCfg(s => ({
+      ...s,
+      callingScript: html,
+      refNotes: notes,
+      scriptVersions: next,
+      scriptLocalEditedAt: editedAt
+    }));
+    setScriptEditing(false);
+    setRefEditing(false);
+    toast('Saved: ' + (existing.name || 'current version'));
+  }, [scriptContent, refNotes, cfg.callingScript, cfg.refNotes, cfg.scriptVersionId, myEmail, scriptVersions, saveAsNewScriptVersion, scriptEditing, refEditing]);
+  // Back-compat alias — older callsites bind to snapshotScriptVersion.
+  var snapshotScriptVersion = saveAsNewScriptVersion;
   var restoreScriptVersion = useCallback(id => {
     var v = scriptVersions.find(x => x.id === id);
     if (!v) return;
@@ -8088,11 +8146,14 @@ function App() {
     var notes = _sanitizeRichHtml(v.notes || '');
     setScriptContent(html);
     setRefNotes(notes);
+    // Intentionally NOT restoring v.objections — objections are global,
+    // not tied to a script version. Older snapshots may still carry an
+    // embedded objections array; we ignore it on restore so the user's
+    // current global list stays intact.
     setCfg(s => ({
       ...s,
       callingScript: html,
       refNotes: notes,
-      objections: v.objections ? _normalizeObjections(v.objections) : s.objections,
       scriptVersionId: v.id,
       scriptLocalEditedAt: Date.now()
     }));
@@ -33114,17 +33175,38 @@ function App() {
       fontWeight: 700
     }
   }, "Edit"), React.createElement("button", {
-    onClick: snapshotScriptVersion,
-    title: "Save the current script and notes as a named version",
+    // "Save" — overwrites the currently-loaded version in place. Falls
+    // back to Save-As when no version is selected (e.g. first save). The
+    // disabled style hint still allows the click; saveCurrentScriptVersion
+    // routes to Save-As internally so the user always gets a valid action.
+    onClick: saveCurrentScriptVersion,
+    title: cfg.scriptVersionId
+      ? "Overwrite the loaded version with the current script + notes"
+      : "Nothing loaded yet — this will create a new version",
+    style: {
+      padding: '5px 10px',
+      borderRadius: 8,
+      background: cfg.scriptVersionId ? 'var(--gdim)' : 'var(--bg3)',
+      color: cfg.scriptVersionId ? 'var(--green)' : 'var(--text2)',
+      fontSize: 11,
+      fontWeight: 800,
+      border: '1px solid ' + (cfg.scriptVersionId ? 'rgba(63,185,80,.32)' : 'var(--border)')
+    }
+  }, "💾 Save"), React.createElement("button", {
+    // "Save As" — always prompts for a name and creates a brand-new
+    // version. This is what every save USED to do; now it's opt-in.
+    onClick: saveAsNewScriptVersion,
+    title: "Save the current script + notes as a brand-new named version",
     style: {
       padding: '5px 10px',
       borderRadius: 8,
       background: 'var(--bg3)',
       color: 'var(--text2)',
       fontSize: 11,
-      fontWeight: 700
+      fontWeight: 700,
+      border: '1px solid var(--border)'
     }
-  }, "Save Version"), scriptVersions.length > 0 && React.createElement("select", {
+  }, "Save As…"), scriptVersions.length > 0 && React.createElement("select", {
     value: cfg.scriptVersionId || '',
     onChange: e => {
       if (e.target.value) restoreScriptVersion(e.target.value);
@@ -33987,7 +34069,7 @@ function App() {
         color: 'var(--red)',
         fontWeight: 800
       }
-    }, "No saved scripts yet. Use Save Version first."), hasShareVersion && React.createElement("p", {
+    }, "No saved scripts yet. Use Save As… first."), hasShareVersion && React.createElement("p", {
       style: {
         margin: '5px 0 0',
         fontSize: 10,
