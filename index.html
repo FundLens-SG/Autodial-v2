@@ -388,7 +388,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.03.0026';
+window.APP_VERSION='2026.05.03.0027';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -6733,25 +6733,48 @@ function App() {
     if (hubAdminPoolFetched && !force) return;
     setHubAdminPoolLoading(true);
     try {
-      // Pull every "member"-roled, active hub user. They're the universe of
-      // people that can be wired up as an AutoDial admin. Hub owners/admins
-      // are also valid (they can call too) so include them as well.
-      var r = await _SB.from('profiles')
-        .select('email,display_name,role,status')
-        .neq('status', 'revoked')
-        .order('display_name', { ascending: true });
-      if (r && !r.error && Array.isArray(r.data)) {
-        var meEm = (myEmail || '').toLowerCase();
-        var clean = r.data
+      // Pull every active hub user — owners, admins, and members are all
+      // valid AutoDial admins (they can all call). Then in parallel pull
+      // the shared_admin_configs rows so we know which admins are
+      // already tethered to ANOTHER Main and should hide from the pool.
+      var meEm = (myEmail || '').toLowerCase();
+      var [profileRes, tetherRes] = await Promise.all([
+        _SB.from('profiles')
+          .select('email,display_name,role,status')
+          .neq('status', 'revoked')
+          .order('display_name', { ascending: true }),
+        _SB.schema('autodial').from('shared_admin_configs').select('admin_id,data')
+      ]);
+      // Build admin_id -> tethered_main_email map (email of the Main who
+      // currently owns this admin, if any).
+      var tetherByAdminId = {};
+      if (tetherRes && !tetherRes.error && Array.isArray(tetherRes.data)) {
+        tetherRes.data.forEach(r => {
+          var d = r && r.data || {};
+          var owner = String(d.tethered_main_email || '').toLowerCase();
+          // Only treat as "still tethered" if the row hasn't since been
+          // explicitly untethered (Remove writes _untetheredAt).
+          if (owner && !d._untetheredAt) tetherByAdminId[r.admin_id] = owner;
+        });
+      }
+      // Resolve profile emails to UIDs so we can join against the
+      // tethering map. _uidByEmail is memoized, so repeated calls are cheap.
+      if (profileRes && !profileRes.error && Array.isArray(profileRes.data)) {
+        var allProfiles = profileRes.data
           .filter(p => p.email && String(p.email).includes('@'))
-          .filter(p => String(p.email).toLowerCase() !== meEm)
-          .map(p => ({
+          .filter(p => String(p.email).toLowerCase() !== meEm);
+        var withUids = await Promise.all(allProfiles.map(async p => {
+          var uid = await window._uidByEmail(String(p.email).toLowerCase());
+          return {
             email: String(p.email).toLowerCase(),
             name: p.display_name || String(p.email).split('@')[0],
             hubRole: String(p.role || '').toLowerCase(),
-            status: String(p.status || '').toLowerCase()
-          }));
-        setHubAdminPool(clean);
+            status: String(p.status || '').toLowerCase(),
+            uid,
+            tetheredTo: uid ? (tetherByAdminId[uid] || '') : ''
+          };
+        }));
+        setHubAdminPool(withUids);
       }
     } catch (e) {
       console.warn('[hub admin pool]', e?.message || e);
@@ -23538,30 +23561,43 @@ function App() {
   }, "\uD83D\uDC65 Admin Pay (Per-Person)"), (() => {
     // \u2500\u2500\u2500 Fuzzy picker over the CKGtools hub admin pool \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
     // Below the input, show up to 6 matches (case-insensitive token-AND
-    // match across name + email + role). Already-added admins are
-    // dimmed. Tapping a row sets newAdminEmail so the user can confirm
-    // with the existing Add button.
+    // match across name + email + role). Admins already tethered to
+    // ANOTHER Main are filtered out entirely \u2014 once one Main hires
+    // them, they vanish from every other Main's search until they're
+    // untethered. Already-added (by THIS Main) admins are dimmed and
+    // tagged "ADDED" so the Main sees they're already on their roster.
+    var meLower = (myEmail || '').toLowerCase();
+    var alreadyAdded = em => !!(adminConfigs && adminConfigs[(em || '').toLowerCase()]);
+    // Available pool excludes anyone tethered to another Main.
+    var availablePool = hubAdminPool.filter(p => {
+      if (!p.tetheredTo) return true;
+      if (p.tetheredTo === meLower) return true; // tethered to me \u2014 show as ADDED
+      return false;
+    });
+    var hiddenByTetherCount = hubAdminPool.length - availablePool.length;
     var q = String(newAdminEmail || '').trim().toLowerCase();
     var matches = [];
-    if (q && hubAdminPool.length) {
+    if (q && availablePool.length) {
       var tokens = q.split(/\s+/).filter(Boolean);
-      matches = hubAdminPool.filter(p => {
+      matches = availablePool.filter(p => {
         var hay = (p.name + ' ' + p.email + ' ' + p.hubRole).toLowerCase();
         return tokens.every(tok => hay.includes(tok));
       }).slice(0, 6);
-    } else if (!q && hubAdminPool.length) {
-      // No query yet \u2014 surface the first 6 hub admins as a discoverable
-      // starting point, useful when the Main isn't sure who's available.
-      matches = hubAdminPool.slice(0, 6);
+    } else if (!q && availablePool.length) {
+      matches = availablePool.slice(0, 6);
     }
-    var alreadyAdded = em => !!(adminConfigs && adminConfigs[(em || '').toLowerCase()]);
     return React.createElement(React.Fragment, null,
       React.createElement("div", {
         style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }
       },
         React.createElement("p", {
           style: { margin: 0, fontSize: 10, fontWeight: 700, color: 'var(--text3)', letterSpacing: '.05em', flex: 1 }
-        }, "FROM CKGTOOLS \u00B7 ", hubAdminPoolLoading ? 'loading\u2026' : (hubAdminPool.length + ' user' + (hubAdminPool.length === 1 ? '' : 's') + ' available')),
+        },
+          "FROM CKGTOOLS \u00B7 ",
+          hubAdminPoolLoading
+            ? 'loading\u2026'
+            : (availablePool.length + ' available' + (hiddenByTetherCount > 0 ? ' \u00B7 ' + hiddenByTetherCount + ' hired by other Main' + (hiddenByTetherCount === 1 ? '' : 's') : ''))
+        ),
         React.createElement("button", {
           onClick: () => fetchHubAdminPool(true),
           title: "Refresh hub user list",
@@ -23605,23 +23641,33 @@ function App() {
       if (_SB) {
         try {
           // Phase 7B2: revoked_ remote sentinel eliminated (hub handles
-          // revocation). Reset shared admin config blob for the new admin.
+          // revocation). Reset shared admin config blob and stamp the
+          // tethered_main_email so other Mains' fuzzy search filters this
+          // admin out of their available pool. Untether (Remove button)
+          // clears these fields so the admin becomes hireable again.
           var aid = await window._uidByEmail(em);
           if (aid) {
             await _SB.schema('autodial').from('shared_admin_configs').upsert({
               admin_id: aid,
-              data: {},
+              data: {
+                tethered_main_email: (myEmail || '').toLowerCase(),
+                tethered_main_id: _user?.id || null,
+                tethered_at: new Date().toISOString()
+              },
               updated_at: new Date().toISOString()
             }, {
               onConflict: 'admin_id'
             });
           }
         } catch (e) {
-          console.warn('[Re-add]', e?.message || e);
+          console.warn('[Add tether]', e?.message || e);
         }
       }
       setNewAdminEmail('');
-      toast('Added ' + em);
+      // Refresh the hub pool so the just-added admin shows as ADDED in
+      // any subsequent search and gets filtered for other Mains.
+      fetchHubAdminPool(true);
+      toast('Tethered ' + em);
     },
     style: {
       padding: '0 16px',
@@ -23786,28 +23832,29 @@ function App() {
     size: "sm",
     weight: 600,
     onClick: async () => {
-      if (!(await confirmAsync('Remove ' + (ac.bizName || em) + ' from your admin list?\n\nTheir account will be locked out on next login until you re-add them. Their existing appointments stay in the cloud (use Appts first if you want to wipe those).', {
+      if (!(await confirmAsync('Untether ' + (ac.bizName || em) + ' from this Main?\n\nTheir CKGtools account stays active and can be hired by another Main. Their existing appointments stay in the cloud (use Appts first if you want to wipe those).', {
         title: 'Remove admin',
-        confirmLabel: 'Remove'
+        confirmLabel: 'Untether'
       }))) return;
       if (_SB) {
         try {
           var _now = Date.now();
           var raid = await window._uidByEmail(em);
           if (raid) {
-            // Phase 7B2: revoked_ sentinel eliminated. Mark the admin's
-            // shared config blob as revoked so the admin app picks it up.
-            // Hub admin dashboard handles the actual lockout.
+            // Untether (do NOT lock out). The admin's CKGtools account
+            // stays active — this just clears the per-admin shared config
+            // blob and the tethered_main_email pointer so the admin shows
+            // up again as available in other Mains' fuzzy search.
             await _SB.schema('autodial').from('shared_admin_configs').upsert({
               admin_id: raid,
-              data: { _revoked: true, _revokedAt: _now, revokedBy: myEmail },
+              data: { _untetheredAt: _now, _untetheredBy: myEmail },
               updated_at: new Date().toISOString()
             }, {
               onConflict: 'admin_id'
             });
           }
         } catch (e) {
-          console.warn('[Revoke]', e?.message || e);
+          console.warn('[Untether]', e?.message || e);
         }
       }
       var c = {
@@ -23815,7 +23862,11 @@ function App() {
       };
       delete c[em];
       setAdminConfigs(c);
-      toast('🔒 ' + (ac.bizName || em) + ' removed and locked out');
+      // Refresh the hub pool so this admin reappears as "available" in
+      // any subsequent search (mainly useful for the same Main flipping
+      // back and forth, but also keeps the hidden-count display fresh).
+      fetchHubAdminPool(true);
+      toast((ac.bizName || em) + ' untethered — they can be hired again');
     }
   }, "\xD7"))), React.createElement("div", {
     style: {
