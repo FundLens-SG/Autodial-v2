@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.04.0059'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.04.0060'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -408,7 +408,7 @@ window.CREATOR=CREATOR;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.04.0059';
+window.APP_VERSION='2026.05.04.0060';
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
 // inviting-Main → admin signup happens at the hub, not here.
@@ -2842,6 +2842,62 @@ window.CloudSync={
   // Sync indicator
   get isLoaded(){return this._loaded}
 };
+</script>
+
+<script>
+/* ═══ Phase 2 (design handoff): SVG Icon set ═══════════════════════════════
+   Lucide-style strokes, 24×24 viewBox. Port of
+   design_handoff_autodial/01_preview/autodial-preview/icons.jsx.
+   24 icons + 1 alias. Usage:
+     React.createElement(window.Icon.Phone, { size: 16 })
+   The set is globalized as window.Icon so any later inline-React block
+   can reach it without imports. Stroke 1.6 default; round caps + joins
+   per design spec.
+   ════════════════════════════════════════════════════════════════════════ */
+(function(){
+  var I = function(p) {
+    var size = p.size || 16, sw = p.sw || 1.6, fill = p.fill || 'none';
+    return React.createElement('svg', {
+      width: size, height: size, viewBox: '0 0 24 24',
+      fill: fill, stroke: 'currentColor', strokeWidth: sw,
+      strokeLinecap: 'round', strokeLinejoin: 'round',
+      'aria-hidden': 'true'
+    }, React.createElement('path', { d: p.d }));
+  };
+  var mk = function(d, defaultSw) {
+    return function(p) {
+      p = p || {};
+      return I({ d: d, size: p.size, sw: p.sw || defaultSw, fill: p.fill });
+    };
+  };
+  window.Icon = {
+    Phone: mk('M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z'),
+    PhoneOutgoing: mk('M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92zM22 8V2h-6M16 8l6-6'),
+    Home: mk('M3 9.5L12 3l9 6.5V20a2 2 0 0 1-2 2h-4v-7h-6v7H5a2 2 0 0 1-2-2V9.5z'),
+    Users: mk('M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75'),
+    Calendar: mk('M3 6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6zM16 2v4M8 2v4M3 10h18'),
+    Settings: mk('M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z'),
+    Search: mk('M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35'),
+    Check: mk('M20 6L9 17l-5-5'),
+    X: mk('M18 6L6 18M6 6l12 12'),
+    ArrowRight: mk('M5 12h14M12 5l7 7-7 7'),
+    Clock: mk('M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2'),
+    Bell: mk('M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M13.73 21a2 2 0 0 1-3.46 0'),
+    Star: mk('M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z'),
+    Sparkles: mk('M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3zM19 14l.8 2.4L22 17l-2.2.6L19 20l-.8-2.4L16 17l2.2-.6L19 14z'),
+    Zap: mk('M13 2L3 14h9l-1 8 10-12h-9l1-8z'),
+    Sheet: mk('M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zM14 2v6h6M8 13h8M8 17h8M8 9h2'),
+    Plus: mk('M12 5v14M5 12h14'),
+    More: mk('M12 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM19 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2zM5 13a1 1 0 1 0 0-2 1 1 0 0 0 0 2z', 2.5),
+    Refresh: mk('M23 4v6h-6M1 20v-6h6M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15'),
+    Mic: mk('M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8'),
+    ChevronRight: mk('M9 18l6-6-6-6'),
+    Skip: mk('M5 4l10 8-10 8V4zM19 5v14'),
+    Trophy: mk('M6 9H4a2 2 0 0 1-2-2V5a1 1 0 0 1 1-1h3M18 9h2a2 2 0 0 0 2-2V5a1 1 0 0 0-1-1h-3M6 4v6a6 6 0 0 0 12 0V4H6zM12 15v3M9 21h6'),
+    Flame: mk('M8.5 14.5A2.5 2.5 0 0 0 11 17c2.5 0 3.5-2.5 3.5-4 0-1.5-1-2-1-3.5 0-2 1.5-3 1.5-3s-7 1-7 6c0 .5.04 1 .14 1.5C7.5 14.5 8.5 14.5 8.5 14.5zM12 22a8 8 0 0 0 8-8c0-3.5-2.5-6-2.5-9.5 0 0-3 1.5-3 4.5 0-2-3-3.5-3-3.5s-3.5 2.5-3.5 6c0 .5.06 1 .17 1.5C8 13 6 13 6 14a6 6 0 0 0 6 8z'),
+    Bolt: mk('M13 2L3 14h9l-1 8 10-12h-9l1-8z')
+  };
+})();
 </script>
 
 <script>
@@ -14168,7 +14224,16 @@ function App() {
     a.click();
   };
   var _showRank = true;
-  var _baseTabs = [['dial', '📞 Dial'], ['appts', '📅 Appts'], ['leads', '📋 Leads'], ['settings', '⚙️ Set']];
+  // Phase 2: admin-side base tabs use {icon, label} objects so the
+  // .app-tabs render block (~line 14905) renders SVG icons instead of
+  // emoji prefixes. (Note: _baseTabs is currently unused — kept here for
+  // back-compat in case admin sub-routing is reintroduced.)
+  var _baseTabs = [
+    ['dial', { icon: 'PhoneOutgoing', label: 'Dial' }],
+    ['appts', { icon: 'Check', label: 'Appts' }],
+    ['leads', { icon: 'Sheet', label: 'Leads' }],
+    ['settings', { icon: 'Settings', label: 'Set' }]
+  ];
   var cbDue = cbQueue.filter(cb => cb.status !== 'called').length;
   // ─── Mode model (revised 2026.05.03.0032) ──────────────────────────
   // Mains no longer flip between "Call" and "Mgmt" modes — they always
@@ -14186,10 +14251,21 @@ function App() {
   // Home tab label is special — for Mains it doubles as a Home/Call
   // switch (rendered with custom JSX below). For Admins it's just the
   // operator's Home (always the call workspace).
+  // Phase 2 (design handoff): tab labels carry an SVG icon name + plain
+  // label instead of an emoji prefix. The render block below detects the
+  // {icon, label} shape and renders <Icon> + text. Strings still work as a
+  // back-compat fallback (the home-switch sentinel '__HOME_SWITCH__' uses
+  // string-equality so it must keep its string form).
   var _homeTabLabel = role === 'admin'
-    ? '📞 Home' + (cbDue ? ' 🔔' + cbDue : '')
+    ? { icon: 'Phone', label: 'Home' + (cbDue ? ' (' + cbDue + ')' : '') }
     : '__HOME_SWITCH__';
-  var unifiedTabs = [['home', _homeTabLabel], ['leads', '📋 Leads'], ['cal', '📆 Cal'], ['appts', '📅 Appts'], ['more', '⋯ More']];
+  var unifiedTabs = [
+    ['home', _homeTabLabel],
+    ['leads', { icon: 'Sheet', label: 'Leads' }],
+    ['cal', { icon: 'Calendar', label: 'Cal' }],
+    ['appts', { icon: 'Check', label: 'Appts' }],
+    ['more', { icon: 'More', label: 'More' }]
+  ];
   var moreTabKeys = ['timesheet', 'tracking', 'settings', 'live', 'rank', 'dial'];
   // ═══ `cal` is now a top-level tab; keep apptsSubtabKeys for the inner List/CB
   // ═══ sub-nav on the Appts tab only, so the Appts pill doesn't light up when the
@@ -14307,15 +14383,19 @@ function App() {
   // access to, sorted by goal: Setup → Calling → Workspace → Team →
   // Sync → Owner. Admins see the same goal-sorted list minus Team
   // (they don't manage other admins) and Owner (creator-only).
-  var _prefsTabLabel = '📞 Calling';
-  var _integrTabLabel = role === 'admin' ? '🔌 Workspace' : '🔌 Workspace';
+  // Phase 2: settings tabs as {icon, label} objects — same shape as the
+  // bottom nav so the same renderer can be reused. The legacy split
+  // hack below (`.split(' ')[1] === 'Calling'`) just routes to a fixed
+  // 'prefs' key and is preserved in spirit by hard-coding 'prefs'.
+  var _prefsTabLabel = { icon: 'PhoneOutgoing', label: 'Calling' };
+  var _integrTabLabel = { icon: 'Settings', label: 'Workspace' };
   var _allTabs = [
-    ['setup', '🚀 Setup'],
-    [_prefsTabLabel.split(' ')[1] === 'Calling' ? 'prefs' : 'prefs', _prefsTabLabel],
+    ['setup', { icon: 'Zap', label: 'Setup' }],
+    ['prefs', _prefsTabLabel],
     ['integr', _integrTabLabel],
-    ...(isManageMode ? [['team', '👥 Team']] : []),
-    ['data', '🔄 Sync'],
-    ...(isCreatorUser ? [['owner', '👑 Owner']] : [])
+    ...(isManageMode ? [['team', { icon: 'Users', label: 'Team' }]] : []),
+    ['data', { icon: 'Refresh', label: 'Sync' }],
+    ...(isCreatorUser ? [['owner', { icon: 'Star', label: 'Owner' }]] : [])
   ];
   var settingsAllTabs = _allTabs;
   var settingsRoleTabs = _allTabs;
@@ -14817,7 +14897,10 @@ function App() {
             onClick: goHome,
             title: 'Home — manager dashboard',
             style: halfStyle(_activeHomeHere, '#e8c283', 'linear-gradient(135deg,#d6a87a,#a37a4d)', 'rgba(232,194,131,.55)')
-          }, '🏠'),
+          },
+            // Phase 2: 🏠 → Icon.Home
+            window.Icon.Home({ size: _activeHomeHere ? 18 : 14, sw: 2 })
+          ),
           // Vertical divider — only shows when neither side is "shining"
           // hard, so the active gradient gets to bleed cleanly to the edge.
           React.createElement("div", {
@@ -14833,7 +14916,10 @@ function App() {
             onClick: goCall,
             title: 'Call — operator workspace',
             style: halfStyle(_activeCallHere, '#22c55e', 'linear-gradient(135deg,#16a34a,#22c55e)', 'rgba(34,197,94,.55)')
-          }, '📞', cbDue ? React.createElement("span", {
+          },
+            // Phase 2: 📞 → Icon.PhoneOutgoing
+            window.Icon.PhoneOutgoing({ size: _activeCallHere ? 18 : 14, sw: 2 }),
+            cbDue ? React.createElement("span", {
             style: {
               fontSize: 9,
               fontWeight: 900,
@@ -14860,7 +14946,17 @@ function App() {
         }
         setTab(k);
       }
-    }, v);
+    },
+      // Phase 2: tab labels are {icon, label} objects — render the SVG
+      // icon next to the label. String labels (e.g. legacy overrides)
+      // render verbatim for back-compat.
+      v && typeof v === 'object' && v.icon && window.Icon && window.Icon[v.icon]
+        ? React.createElement(React.Fragment, null,
+            React.createElement('span', { style: { display: 'inline-flex', verticalAlign: 'middle', marginRight: 5 } }, window.Icon[v.icon]({ size: 16 })),
+            v.label
+          )
+        : v
+    );
   })), false && !isCallMode && React.createElement("div", {
     className: "mode-banner",
     style: {
@@ -15410,7 +15506,11 @@ function App() {
         fontWeight: 700,
         border: '1px solid rgba(214,168,122,.2)'
       }
-    }, "\uD83D\uDD17 Invite Admin"), role === 'main' && React.createElement("button", {
+    },
+      // Phase 2: \uD83D\uDD17 \u2192 no chrome emoji
+      React.createElement("span", { style: { display: 'inline-flex', verticalAlign: 'middle', marginRight: 6 } }, window.Icon.Plus({ size: 14 })),
+      "Invite Admin"
+    ), role === 'main' && React.createElement("button", {
       onClick: () => { setMainMode('call'); setTab('home'); },
       style: {
         padding: '12px',
@@ -15419,9 +15519,14 @@ function App() {
         color: 'var(--green)',
         fontSize: 11,
         fontWeight: 700,
-        border: '1px solid rgba(34,197,94,.32)'
+        border: '1px solid rgba(34,197,94,.32)',
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6
       }
-    }, "\uD83D\uDCDE Start calling")));
+    },
+      // Phase 2: \uD83D\uDCDE \u2192 Icon.PhoneOutgoing
+      window.Icon.PhoneOutgoing({ size: 14, sw: 2 }),
+      "Start calling"
+    )));
   })(), (tab === 'dial' || tab === 'home') && isCallMode && React.createElement("div", {
     className: "content-pad",
     style: {
@@ -19976,8 +20081,12 @@ function App() {
     }
   }, "Appointments appear here once leads are marked ", React.createElement("b", { style: { color: 'var(--green)' } }, "Set"), " during a call"), React.createElement("button", {
     onClick: () => { setMainMode('call'); setTab('home'); },
-    style: { marginTop: 12, padding: '10px 16px', borderRadius: 10, background: 'var(--gdim)', color: 'var(--green)', fontSize: 12, fontWeight: 700, border: '1px solid rgba(34,197,94,.32)' }
-  }, "📞 Start calling"))), tab === 'timesheet' && (() => {
+    style: { marginTop: 12, padding: '10px 16px', borderRadius: 10, background: 'var(--gdim)', color: 'var(--green)', fontSize: 12, fontWeight: 700, border: '1px solid rgba(34,197,94,.32)', display: 'inline-flex', alignItems: 'center', gap: 6 }
+  },
+    // Phase 2: 📞 → Icon.PhoneOutgoing
+    window.Icon.PhoneOutgoing({ size: 14, sw: 2 }),
+    "Start calling"
+  ))), tab === 'timesheet' && (() => {
     var _showMyEarnings = role === 'admin';
     var _adminEntries = Object.entries(adminSessions || {}).filter(([em]) => em && em.includes('@') && (em || '').toLowerCase() !== myEmail.toLowerCase()).map(([em, ss]) => [em, (Array.isArray(ss) ? ss : []).filter(s => !s.cycleId)]);
     var _allAdminSessions = _adminEntries.flatMap(([em, ss]) => (Array.isArray(ss) ? ss : []).map(s => ({
@@ -23695,9 +23804,20 @@ function App() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
+      gap: 5,
       whiteSpace: 'nowrap'
     }
-  }, _lbl))), settingsSubtab === 'setup' && (() => {
+  },
+    // Phase 2: settings tab labels are {icon, label} objects — render
+    // the SVG icon next to the label. String labels (e.g. legacy tabs)
+    // render verbatim for back-compat.
+    _lbl && typeof _lbl === 'object' && _lbl.icon && window.Icon && window.Icon[_lbl.icon]
+      ? React.createElement(React.Fragment, null,
+          React.createElement('span', { style: { display: 'inline-flex', verticalAlign: 'middle' } }, window.Icon[_lbl.icon]({ size: 14 })),
+          _lbl.label
+        )
+      : _lbl
+  ))), settingsSubtab === 'setup' && (() => {
     var setupItems = guidedSetupItems;
     var doneCount = setupItems.filter(x => x.done).length;
     return React.createElement("div", {
