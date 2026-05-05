@@ -538,10 +538,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 .cad-script-resize::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:2px;height:32px;border-radius:2px;background:var(--ad-line-2);transition:background .12s,height .12s}
 .cad-script-resize:hover::after,.cad-script-resize.on::after{background:var(--ad-brass);height:48px}
 body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important;user-select:none !important}
-.cad-script-main{flex:1;min-height:0;overflow:auto;padding:20px 22px 12px}
+/* 0088: script body and objections panel split the aside 50/50 with
+   their own internal scroll. Previously cad-script-main was flex:1
+   and cad-script-tabs had no flex sizing, so a long script pushed the
+   objection list off-screen (user said "real estate vertically for
+   the objection handle is too short - cutting off alot of contetn").
+   Now: both flex 1 1 0 with min-height:0 so they share the parent's
+   height and each scrolls inside its own bounds. The script body has
+   a soft fade-mask at the bottom so the cut-off reads as intentional
+   instead of a hard cliff. */
+.cad-script-main{flex:1 1 0;min-height:0;overflow:auto;padding:20px 22px 12px;mask-image:linear-gradient(180deg,#000 calc(100% - 18px),transparent);-webkit-mask-image:linear-gradient(180deg,#000 calc(100% - 18px),transparent)}
 .cad-script-read{margin-top:14px;color:var(--ad-t-1);font-size:13px;line-height:1.65}.cad-script-read p{margin:0 0 12px}.cad-script-read em{color:var(--ad-brass-2);font-style:normal}.cad-rich ul,.cad-rich ol{padding-left:20px;margin:0 0 12px}.cad-rich li{margin:0 0 6px}.cad-rich strong,.cad-rich b{color:var(--ad-t-0);font-weight:750}.cad-rich a{color:var(--ad-brass-2)}
 .cad-script-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}.cad-script-actions .cad-btn{min-height:30px;padding:0 10px}
-.cad-script-tabs{border-top:1px solid var(--ad-line-1)}.cad-script-tab-head{display:flex;gap:4px;padding:10px 14px 0;border-bottom:1px solid var(--ad-line-1)}
+.cad-script-tabs{border-top:1px solid var(--ad-line-1);flex:1 1 0;min-height:0;display:flex;flex-direction:column}.cad-script-tab-head{display:flex;gap:4px;padding:10px 14px 0;border-bottom:1px solid var(--ad-line-1);flex:0 0 auto}
 .cad-script-tab{padding:8px 12px;color:var(--ad-t-3);border-bottom:2px solid transparent;font-size:12px}.cad-script-tab.on{color:var(--ad-t-0);border-bottom-color:var(--ad-brass)}
 /* 0077: shaky appointment row — full-width amber card when on, neutral
    when off. The dot pulses while shaky is marked so the operator's eye
@@ -686,6 +695,11 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-pastappt-btn--flykite{color:var(--ad-red);background:var(--ad-red-dim)}
 .cad-pastappt-btn--postponed{color:var(--ad-amber);background:var(--ad-amber-dim)}
 .cad-pastappt-btn--closed{color:var(--ad-brass-2);background:var(--ad-brass-dim)}
+/* 0088: misclick variant — neutral grey on a dark hairline, distinct
+   from the four real-status pills so the user reads it as a destructive
+   exit, not another resolution. */
+.cad-pastappt-btn--misclick{color:var(--ad-t-3);background:transparent;border-color:var(--ad-line-2);border-style:dashed}
+.cad-pastappt-btn--misclick:hover{color:var(--ad-red);border-color:var(--ad-red);background:var(--ad-red-dim)}
 @media(max-width:900px){
   .cad-pastappt-row{grid-template-columns:1fr}
   .cad-pastappt-actions{justify-content:flex-start}
@@ -6950,6 +6964,21 @@ function App() {
       return (ts + (dur + 30) * 60000) < nowMs;
     }).sort((a, b) => Date.parse(a.apptDate + 'T' + a.apptTime) - Date.parse(b.apptDate + 'T' + b.apptTime));
   }, [appointments, role]);
+  // 0088: robust appointment matcher — fall through id → calEventId →
+  // phone+date+time composite. The previous resolvers all used bare
+  // `x.id === a.id` which silently failed when a.id was undefined
+  // (legacy appts without an id, or appts pulled from sheet with only
+  // a calEventId). Symptom: user clicks Fly Kite on the past-appt
+  // banner, followUp doesn't update, banner doesn't shrink, popup
+  // looks frozen. This helper resolves the match across every field
+  // we have, so the update always lands on the right row.
+  var _matchAppt = (x, target) => {
+    if (!x || !target) return false;
+    if (target.id && x.id === target.id) return true;
+    if (target.calEventId && x.calEventId === target.calEventId) return true;
+    if (target.phone && x.phone === target.phone && target.apptDate && x.apptDate === target.apptDate && target.apptTime && x.apptTime === target.apptTime) return true;
+    return false;
+  };
   var resolvePastApptStatus = useCallback(async (a, status) => {
     if (!a || !status) return;
     var ts = new Date().toISOString();
@@ -6959,11 +6988,105 @@ function App() {
                     : status === 'postponed' ? 'Postponed'
                     : status === 'closed' ? 'Closed'
                     : status;
-    setAppointments(p => (p || []).map(x => x.id === a.id ? { ...x, followUp: localStatus, followUpDate: ts } : x));
+    setAppointments(p => (p || []).map(x => _matchAppt(x, a) ? { ...x, followUp: localStatus, followUpDate: ts } : x));
     try { await syncApptSheet({ ...a, followUp: localStatus, followUpDate: ts }, { followUp: sheetStatus }); } catch (_e) {}
     var emoji = status === 'met' ? '✓' : status === 'fly_kite' ? '🪁' : status === 'postponed' ? '⏰' : '🏁';
     toast(emoji + ' ' + (a.name || 'appointment') + ' → ' + sheetStatus, 'info');
   }, [syncApptSheet]);
+  // 0088: "I set wrongly (delete appointment)" — the misclick path on
+  // the past-appt banner. User said: Fly Kite KEEPS the set count
+  // (appt was real, prospect didn't show), Misclick REVERSES it
+  // (appt was never real). Tombstones the appt + reverts the lead +
+  // appends a Logs row + decrements counters when the actor was the
+  // setter. For Mains resolving an admin's misclick, the local Main
+  // counters stay untouched (the admin's session.sets was already
+  // committed at session-end and the corrected count flows back to
+  // the admin via cloud pull when their app re-derives totalSets).
+  var resolvePastApptMisclick = useCallback(async a => {
+    if (!a) return;
+    var ok = await confirmAsync(
+      'Delete "Set" for ' + (a.name || 'this lead') + '?\n\nThis was a misclick — the appointment was never real. Removes the appointments-sheet row, reverts the lead to Pending, decrements the set count (' + (a.admin || a.adminName || 'admin') + '\'s monthly tier rank shifts on next sync).\n\nUse "Fly Kite" instead if the appointment WAS real but the prospect didn\'t show.',
+      { title: '↶ Misclick — delete appointment?', confirmLabel: 'Delete', cancelLabel: 'Keep', danger: true }
+    );
+    if (!ok) return;
+    // Decrement local counters when *I* was the setter. If a Main is
+    // resolving an admin's misclick, the admin's counters stay
+    // managed admin-side (cloud sync will reflect the deletion).
+    var ownerEm = String(a.admin || a.adminEmail || a.adminName || a._adminEmail || '').toLowerCase();
+    var me = (myEmail || '').toLowerCase();
+    if (ownerEm === me || (!ownerEm && role === 'main')) {
+      setSession(p => p ? { ...p, sets: Math.max(0, (p.sets || 1) - 1) } : p);
+      setTotalSets(p => Math.max(0, (Number(p) || 1) - 1));
+      try {
+        var _ds = JSON.parse(localStorage.getItem('autodial_daily_sets') || '{}');
+        if (_ds.date === getTodaySGT() && _ds.count > 0) {
+          _ds.count--;
+          localStorage.setItem('autodial_daily_sets', JSON.stringify(_ds));
+          setDailySetsStateR(_ds.count);
+        }
+      } catch (_e) {}
+    }
+    // Revert lead status if we can find it
+    var leadPhone = a.phone || '';
+    var leadId = a.leadId || '';
+    setLeads(prev => (prev || []).map(l => {
+      var match = (leadId && l.id === leadId) || (leadPhone && normalizePhone(l.phone || '') === normalizePhone(leadPhone));
+      if (!match) return l;
+      return { ...l, status: 'pending', sheetValue: '' };
+    }));
+    var matchedLead = (leadsRef.current || []).find(l =>
+      (leadId && l.id === leadId) ||
+      (leadPhone && normalizePhone(l.phone || '') === normalizePhone(leadPhone))
+    );
+    if (matchedLead) {
+      try {
+        var leadSheetId = matchedLead._sourceSheetId || cfg.sheetId;
+        var leadSheetTab = matchedLead._sourceSheetTab || cfg.sheetTab || 'Sheet1';
+        if (leadSheetId && leadSheetTab && matchedLead.sheetRow && Number.isFinite(matchedLead.statusCol) && matchedLead.statusCol >= 0 && localStorage.getItem('ad_gt')) {
+          await gSheets.put(leadSheetId, leadSheetTab + '!' + a1Col(matchedLead.statusCol) + matchedLead.sheetRow, '');
+        } else {
+          await queueSheetValue(matchedLead, '');
+        }
+      } catch (_e) {}
+    }
+    // Tombstone appointment so cloud pull can't re-add it
+    try {
+      var _delIds = _readDeletedApptIds();
+      if (a.calEventId) _delIds.push(String(a.calEventId));
+      if (a.id) _delIds.push(String(a.id));
+      if (a.phone && a.createdAt) _delIds.push(a.phone + '_' + a.createdAt);
+      var _saved = _writeDeletedApptIds(_delIds);
+      _syncDeletedApptIdsCloud(_saved);
+    } catch (_e) {}
+    setAppointments(p => (p || []).filter(x => !_apptHardMatch(x, a)));
+    // Sheet row delete + audit log
+    var apptSheetId = a.apptSheetId || myCfg.timesheetId || cfg.sheetId;
+    if (apptSheetId && localStorage.getItem('ad_gt')) {
+      if (a.apptSheetRange) {
+        try { await gSheets.deleteApptRow(a.id, a, a.apptSheetRange); } catch (_e) {}
+      }
+      try {
+        gSheets.appendLog(apptSheetId, {
+          admin: userName,
+          action: 'Set undone (misclick — past-appt banner)',
+          entity: 'Appointment',
+          entityId: a.autoId || a.id || '',
+          lead: a.name || '',
+          phone: a.phone || '',
+          date: (a.apptDate || '') + (a.apptTime ? ' ' + a.apptTime : ''),
+          notes: 'Set count -1 for ' + (ownerEm || 'unknown owner') + '. Resolved by ' + (myEmail || 'current user') + ' via past-appt misclick button.'
+        });
+      } catch (_e) {}
+    }
+    // Delete calendar event too — appt was never real, calendar entry
+    // shouldn't linger. (Different from Fly Kite which keeps the
+    // historical record.)
+    if (a.calEventId && window.gCal) {
+      try { await gCal.del(a.calEventId, a.calendarId || 'primary'); } catch (_e) {}
+      setWeekEvents(prev => prev.filter(ev => ev.id !== a.calEventId));
+    }
+    toast('↶ Deleted ' + (a.name || 'appointment') + ' (misclick) · −1 from Set count', 'info');
+  }, [role, myEmail, myCfg, cfg, userName, queueSheetValue]);
   var _openRescheduleFlow = a => {
     if (!a) return;
     if (!_canEditAppt(a)) {
@@ -16185,9 +16308,14 @@ function App() {
           ),
           h('div', { className: 'cad-pastappt-actions' },
             h('button', { className: 'cad-pastappt-btn cad-pastappt-btn--met', onClick: () => resolvePastApptStatus(a, 'met'), title: 'Prospect attended the appointment' }, '✓ Met'),
-            h('button', { className: 'cad-pastappt-btn cad-pastappt-btn--flykite', onClick: () => resolvePastApptStatus(a, 'fly_kite'), title: "Prospect didn't show up" }, '🪁 Fly Kite'),
+            h('button', { className: 'cad-pastappt-btn cad-pastappt-btn--flykite', onClick: () => resolvePastApptStatus(a, 'fly_kite'), title: "Prospect didn't show up — appointment was real, set count stays" }, '🪁 Fly Kite'),
             h('button', { className: 'cad-pastappt-btn cad-pastappt-btn--postponed', onClick: () => resolvePastApptStatus(a, 'postponed'), title: 'Rescheduled — book a new time' }, '⏰ Postponed'),
-            h('button', { className: 'cad-pastappt-btn cad-pastappt-btn--closed', onClick: () => resolvePastApptStatus(a, 'closed'), title: 'Met + signed / paid' }, '🏁 Closed')
+            h('button', { className: 'cad-pastappt-btn cad-pastappt-btn--closed', onClick: () => resolvePastApptStatus(a, 'closed'), title: 'Met + signed / paid' }, '🏁 Closed'),
+            // 0088: misclick exit — appointment was never real. Different
+            // from Fly Kite: this REVERSES the set count. Tombstones
+            // the appt, deletes the calendar event, reverts lead to
+            // Pending, decrements counters when caller is the setter.
+            h('button', { className: 'cad-pastappt-btn cad-pastappt-btn--misclick', onClick: () => resolvePastApptMisclick(a), title: 'Misclick / never real — delete the appointment AND subtract 1 from the set count' }, '↶ I set wrongly')
           )
         );
       })),
