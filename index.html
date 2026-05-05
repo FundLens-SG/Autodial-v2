@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0092'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0093'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -500,8 +500,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
    on right. Stats land in the visual middle of the strip instead of being
    bunched against the session info on the far left. */
 .cad-session-strip{display:flex;align-items:center;gap:20px}
-.cad-session-info{flex:0 0 auto;min-width:140px}
-.cad-session-stats{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.cad-session-info{flex:0 0 auto;min-width:160px}
+.cad-session-stats{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap}
 .cad-session-stats--center{flex:1;justify-content:center}
 /* Stop button: vivid red CTA so it reads as "session control" instead of
    the legacy ghost-in-the-corner. Same prominence as Start session. */
@@ -532,6 +532,52 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 }
 .cad-session-stat{display:flex;flex-direction:column;gap:3px;min-width:52px}
 .cad-session-stat b{font:700 16px 'JetBrains Mono',ui-monospace,monospace}
+/* ─── 0093: visual rework — session target / rank chip / stat tracking ─── */
+/* Stat strip: each Dialed/NP/CB/NI/Set becomes a mini coloured card with
+   a glyph dot, big mono number, and tiny label — replaces the flat
+   label-on-top "label + b" pair which the user said looked weird. */
+.cad-session-stat--card{min-width:78px;padding:11px 13px;border-radius:13px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);display:flex;flex-direction:column;align-items:flex-start;gap:4px;position:relative;overflow:hidden;transition:border-color .12s,transform .08s,box-shadow .18s}
+.cad-session-stat--card:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:currentColor;opacity:.85}
+.cad-session-stat--card:hover{transform:translateY(-1px);box-shadow:0 6px 16px -8px rgba(0,0,0,.45)}
+.cad-session-stat--card .cad-session-stat__glyph{font-size:13px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:currentColor;display:flex;align-items:center;gap:6px}
+.cad-session-stat--card .cad-session-stat__dot{width:7px;height:7px;border-radius:999px;background:currentColor;box-shadow:0 0 8px currentColor}
+.cad-session-stat--card b{font:800 22px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-t-0);line-height:1}
+.cad-session-stat--card small{color:var(--ad-t-3);font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+.cad-session-stat--card.tone-neutral{color:var(--ad-t-2)}
+.cad-session-stat--card.tone-amber{color:var(--ad-amber);background:linear-gradient(135deg,var(--ad-amber-dim),var(--ad-bg-2) 60%);border-color:oklch(0.80 0.13 75 / .28)}
+.cad-session-stat--card.tone-blue{color:var(--ad-blue);background:linear-gradient(135deg,var(--ad-blue-dim),var(--ad-bg-2) 60%);border-color:oklch(0.72 0.12 240 / .28)}
+.cad-session-stat--card.tone-red{color:var(--ad-red);background:linear-gradient(135deg,var(--ad-red-dim),var(--ad-bg-2) 60%);border-color:oklch(0.68 0.18 25 / .28)}
+.cad-session-stat--card.tone-green{color:var(--ad-green);background:linear-gradient(135deg,var(--ad-green-dim),var(--ad-bg-2) 60%);border-color:oklch(0.74 0.16 150 / .28)}
+.cad-session-stat--card.tone-brass{color:var(--ad-brass-2);background:linear-gradient(135deg,var(--ad-brass-dim),var(--ad-bg-2) 60%);border-color:var(--ad-brass-line)}
+/* Session Target panel — gradient header, big animated progress, glow on
+   the count. The mini-progress used a flat brass→green; replaced with a
+   live-updating gradient that swings from amber → green as the bar
+   approaches 100%. */
+.cad-session-target--rich{position:relative;padding:18px 18px 14px!important;background:linear-gradient(135deg,var(--ad-bg-1) 0%,oklch(0.18 0.04 50 / .6) 100%);border:1px solid var(--ad-brass-line)!important;box-shadow:var(--ad-shadow-1),0 0 0 1px var(--ad-brass-dim) inset,0 16px 40px -22px var(--ad-brass-dim)}
+.cad-session-target--rich:before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--ad-amber),var(--ad-brass),var(--ad-green));border-radius:14px 14px 0 0}
+.cad-session-target__head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.cad-session-target__title{display:inline-flex;align-items:center;gap:8px;font-size:11px;font-weight:850;letter-spacing:.08em;text-transform:uppercase;color:var(--ad-brass-2)}
+.cad-session-target__title-emoji{font-size:18px;line-height:1;filter:drop-shadow(0 2px 6px rgba(214,168,122,.35))}
+.cad-session-target__big{font:850 38px 'JetBrains Mono',ui-monospace,monospace;letter-spacing:-.04em;color:var(--ad-brass-2);text-shadow:0 0 24px rgba(214,168,122,.28);line-height:1}
+.cad-session-target__sub{font-size:11px;color:var(--ad-t-3);margin-top:6px;letter-spacing:.04em}
+.cad-session-target__bar{height:10px;border-radius:999px;background:var(--ad-bg-3);overflow:hidden;margin-top:12px;position:relative}
+.cad-session-target__bar i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--ad-amber),var(--ad-brass) 50%,var(--ad-green));box-shadow:0 0 12px rgba(214,168,122,.4);transition:width .35s ease}
+.cad-session-target__bar.live i{animation:cadSessionPulse 2.4s ease-in-out infinite}
+@keyframes cadSessionPulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.15)}}
+.cad-session-target__pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:999px;background:var(--ad-bg-3);border:1px solid var(--ad-line-2);font-size:11px;font-weight:800;letter-spacing:.04em;color:var(--ad-t-2)}
+.cad-session-target__pill.live{color:var(--ad-green);background:var(--ad-green-dim);border-color:oklch(0.74 0.16 150 / .42)}
+.cad-session-target__pill.live:before{content:"";width:7px;height:7px;border-radius:999px;background:var(--ad-green);box-shadow:0 0 8px var(--ad-green);animation:cadSessionPulse 1.6s ease-in-out infinite}
+/* Rank chip — upgraded so the Warrior/Mythic emoji sits inside a
+   coloured circular badge with rim glow, and the body shows the rank
+   label + a tiny "stars to next tier" bar. Looks like a real
+   gamification element instead of a flat amber pill. */
+.cad-rank-chip--bold{display:inline-flex;align-items:center;gap:10px;padding:7px 13px 7px 7px;border-radius:999px;background:linear-gradient(135deg,rgba(0,0,0,.32),rgba(0,0,0,.18));border:1px solid currentColor;cursor:pointer;transition:transform .08s,filter .12s,box-shadow .18s;box-shadow:0 4px 14px -8px currentColor}
+.cad-rank-chip--bold:hover{transform:translateY(-1px);filter:brightness(1.08)}
+.cad-rank-chip--bold:active{transform:scale(.97)}
+.cad-rank-chip--bold .cad-rank-chip__badge{width:30px;height:30px;border-radius:999px;background:radial-gradient(circle at 32% 30%,rgba(255,255,255,.22),transparent 65%),currentColor;display:flex;align-items:center;justify-content:center;font-size:16px;line-height:1;box-shadow:0 0 0 2px rgba(0,0,0,.32),0 0 14px currentColor;color:#0a0c10}
+.cad-rank-chip--bold .cad-rank-chip__body{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+.cad-rank-chip--bold .cad-rank-chip__label{font-size:12px;font-weight:850;letter-spacing:.02em;color:currentColor;line-height:1}
+.cad-rank-chip--bold .cad-rank-chip__progress{font-size:10px;font-weight:700;color:var(--ad-t-2);font-family:'JetBrains Mono',ui-monospace,monospace}
 .cad-lead-card{padding:28px;display:flex;flex-direction:column;gap:18px}
 .cad-lead-name{font-size:38px;font-weight:650;letter-spacing:-.02em}
 .cad-phone-chip{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;background:var(--ad-bg-2);border:1px solid var(--ad-line-2);font:13px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-t-0)}
@@ -917,7 +963,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0092';
+window.APP_VERSION='2026.05.05.0093';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -16272,22 +16318,26 @@ function App() {
     var cadSetTarget = (type, count) => setSessionTarget({ type, count: cadClampTarget(type, count) });
     var cadSessionTargetPanel = compact => {
       var spec = cadTargetSpecs[cadTargetType] || cadTargetSpecs.dials;
-      return h('div', { className: compact ? 'cad-card' : 'cad-card cad-wide', style: { padding: compact ? 16 : 18 } },
-        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } },
-          h('span', { className: 'cad-label' }, 'Session target'),
-          h('span', { className: 'cad-pill ' + (currentSession ? 'green' : '') }, currentSession ? Math.round(cadTargetPct) + '%' : 'ready')
+      var typeEmoji = { dials: '📞', connected: '🔗', sets: '🎯' };
+      return h('div', { className: (compact ? 'cad-card' : 'cad-card cad-wide') + ' cad-session-target--rich' },
+        h('div', { className: 'cad-session-target__head' },
+          h('span', { className: 'cad-session-target__title' },
+            h('span', { className: 'cad-session-target__title-emoji' }, '🎯'),
+            'Session target'
+          ),
+          h('span', { className: 'cad-session-target__pill ' + (currentSession ? 'live' : '') }, currentSession ? Math.round(cadTargetPct) + '% complete' : 'Ready')
         ),
-        h('div', { className: 'cad-inline', style: { flexWrap: 'wrap', marginBottom: 10 } },
-          Object.entries(cadTargetSpecs).map(([k, s]) => h('button', { className: 'cad-tab ' + (cadTargetType === k ? 'on' : ''), key: k, onClick: () => cadSetTarget(k, cadTargetType === k ? cadTargetCount : s.fallback) }, s.label))
+        h('div', { className: 'cad-inline', style: { flexWrap: 'wrap', marginBottom: 12, gap: 6 } },
+          Object.entries(cadTargetSpecs).map(([k, s]) => h('button', { className: 'cad-tab ' + (cadTargetType === k ? 'on' : ''), key: k, onClick: () => cadSetTarget(k, cadTargetType === k ? cadTargetCount : s.fallback) }, typeEmoji[k] || '•', ' ', s.label))
         ),
         h('div', { className: 'cad-inline', style: { gap: 12, alignItems: 'center' } },
           h('input', { type: 'range', min: spec.min, max: spec.max, step: spec.step, value: cadTargetCount, onChange: e => cadSetTarget(cadTargetType, e.target.value), style: { flex: 1 } }),
-          h('button', { className: 'cad-btn', onClick: () => cadSetTarget(cadTargetType, cadTargetCount - spec.step) }, '-' + spec.step),
-          h('span', { className: 'cad-value-big', style: { minWidth: 44, textAlign: 'center' } }, cadTargetCount),
+          h('button', { className: 'cad-btn', onClick: () => cadSetTarget(cadTargetType, cadTargetCount - spec.step) }, '−' + spec.step),
+          h('span', { className: 'cad-session-target__big', style: { minWidth: 60, textAlign: 'center' } }, cadTargetCount),
           h('button', { className: 'cad-btn', onClick: () => cadSetTarget(cadTargetType, cadTargetCount + spec.step) }, '+' + spec.step)
         ),
-        h('div', { className: 'cad-mini-progress' }, h('i', { style: { width: cadTargetPct + '%' } })),
-        h('p', { className: 'cad-page-note' }, cadTargetNow, ' / ', cadTargetCount, ' ', spec.label.toLowerCase(), cadTargetType === 'sets' ? ' (max 10 per sitting)' : '')
+        h('div', { className: 'cad-session-target__bar ' + (currentSession ? 'live' : '') }, h('i', { style: { width: cadTargetPct + '%' } })),
+        h('p', { className: 'cad-session-target__sub' }, h('b', { style: { color: 'var(--ad-t-1)' } }, cadTargetNow), ' / ', cadTargetCount, ' ', spec.label.toLowerCase(), cadTargetType === 'sets' ? ' · max 10 per sitting' : '')
       );
     };
     var cadScriptEditorPanel = (compact, showSaveButtons) => h('div', { className: 'cad-card cad-editor-card' },
@@ -16443,25 +16493,27 @@ function App() {
                 )
               : h('p', { style: { fontSize: 13, marginTop: 4, color: 'var(--ad-t-2)' } }, 'Ready to start'),
             role === 'main' && rank && h('button', {
-              className: 'cad-rank-chip',
-              style: { color: rank.color, background: 'rgba(0,0,0,.18)', marginTop: 8 },
+              className: 'cad-rank-chip cad-rank-chip--bold',
+              style: { color: rank.color, marginTop: 10 },
               title: 'Main rank · ' + rank.label + ' · ' + monthlyAppts + ' appointments this month · click to tune thresholds',
               onClick: () => { setMainMode('manage'); setTab('settings'); setSettingsSubtab('owner'); },
               type: 'button'
             },
-              h('span', { className: 'cad-rank-chip__emoji' }, rank.emoji),
-              h('span', null, rank.label),
-              h('span', { className: 'cad-mono', style: { opacity: .8 } }, monthlyAppts, ' / ', (cfg.starThresholds || [0, 5, 10, 15, 25, 35, 50])[rank.idx + 1] || '∞')
+              h('span', { className: 'cad-rank-chip__badge' }, rank.emoji),
+              h('span', { className: 'cad-rank-chip__body' },
+                h('span', { className: 'cad-rank-chip__label' }, rank.label),
+                h('span', { className: 'cad-rank-chip__progress' }, monthlyAppts, ' / ', (cfg.starThresholds || [0, 5, 10, 15, 25, 35, 50])[rank.idx + 1] || '∞')
+              )
             )
           ),
           h('div', { className: 'cad-session-stats cad-session-stats--center' },
-            h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Dialed'), h('b', null, sessionDialed)),
-            h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'No pickup'), h('b', { style: { color: 'var(--ad-amber)' } }, sessionNp)),
-            h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Callback'), h('b', { style: { color: 'var(--ad-blue)' } }, sessionCb)),
-            h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'No int.'), h('b', { style: { color: 'var(--ad-red)' } }, sessionNi)),
-            h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Set'), h('b', { style: { color: 'var(--ad-green)' } }, sessionSets)),
+            h('div', { className: 'cad-session-stat cad-session-stat--card tone-neutral' }, h('span', { className: 'cad-session-stat__glyph' }, h('span', { className: 'cad-session-stat__dot' }), 'Dialed'), h('b', null, sessionDialed), h('small', null, 'total')),
+            h('div', { className: 'cad-session-stat cad-session-stat--card tone-amber' }, h('span', { className: 'cad-session-stat__glyph' }, h('span', { className: 'cad-session-stat__dot' }), 'No pickup'), h('b', null, sessionNp), h('small', null, 'NP')),
+            h('div', { className: 'cad-session-stat cad-session-stat--card tone-blue' }, h('span', { className: 'cad-session-stat__glyph' }, h('span', { className: 'cad-session-stat__dot' }), 'Callback'), h('b', null, sessionCb), h('small', null, 'CB')),
+            h('div', { className: 'cad-session-stat cad-session-stat--card tone-red' }, h('span', { className: 'cad-session-stat__glyph' }, h('span', { className: 'cad-session-stat__dot' }), 'No int.'), h('b', null, sessionNi), h('small', null, 'NI')),
+            h('div', { className: 'cad-session-stat cad-session-stat--card tone-green' }, h('span', { className: 'cad-session-stat__glyph' }, h('span', { className: 'cad-session-stat__dot' }), 'Set'), h('b', null, sessionSets), h('small', null, 'booked')),
             // Pay tile remains Admin-only (mains earn no per-session pay).
-            role === 'admin' && h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Pay'), h('b', null, '$' + sessionPay.toFixed(2)))
+            role === 'admin' && h('div', { className: 'cad-session-stat cad-session-stat--card tone-brass' }, h('span', { className: 'cad-session-stat__glyph' }, h('span', { className: 'cad-session-stat__dot' }), 'Pay'), h('b', null, '$' + sessionPay.toFixed(2)), h('small', null, 'session'))
           ),
           currentSession
             ? h('button', { className: 'cad-btn cad-session-stop', onClick: endSessionConfirm }, icon('Square', 14), 'Stop session')
