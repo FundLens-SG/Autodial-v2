@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0088'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0089'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -470,6 +470,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 .cad-dashboard-head{display:flex;align-items:flex-end;justify-content:space-between;gap:24px}
 .cad-title{font-size:28px;font-weight:650;letter-spacing:-.02em;margin:8px 0 0}
 .cad-stat-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+/* 0089: 5-up variant — KPI row plus the new role-aware Pay tile.
+   Auto-fit collapses gracefully on narrower viewports without forcing
+   a separate breakpoint. */
+.cad-stat-grid--five{grid-template-columns:repeat(5,minmax(140px,1fr))}
+@media(max-width:1100px){.cad-stat-grid--five{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}}
+/* Pay tile is interactive (button), so give it a clickable affordance
+   distinct from the static stat cards. Brass tint on hover, slight
+   lift, brass-line border to match the gamification card stripe. */
+.cad-stat--pay{cursor:pointer;text-align:left;border:1px solid var(--ad-brass-line);background:linear-gradient(135deg,var(--ad-brass-dim),var(--ad-bg-1));transition:transform .08s,border-color .12s,box-shadow .18s}
+.cad-stat--pay:hover{transform:translateY(-1px);border-color:var(--ad-brass);box-shadow:0 6px 20px -10px var(--ad-brass-line)}
 .cad-stat{padding:16px 18px;display:flex;flex-direction:column;gap:6px}
 .cad-stat b{font:650 26px 'JetBrains Mono',ui-monospace,monospace;letter-spacing:-.02em}
 .cad-dashboard-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:22px}
@@ -872,7 +882,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0088';
+window.APP_VERSION='2026.05.05.0089';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -8237,6 +8247,9 @@ function App() {
   var [cbQueue, setCbQueue] = useState([]);
   var [notifications, setNotifications] = useState([]);
   var [waTemplates, setWaTemplates] = useState([]);
+  // 0089: tracks the WhatsApp templates inline editor on the calling
+  // settings page. Toggled by clicking the "WhatsApp templates" card.
+  var [waTplPanelOpen, setWaTplPanelOpen] = useState(false);
   var waInitRef = useRef(false);
   var [calShares, setCalShares] = useState([]);
   var [calList, setCalList] = useState([]);
@@ -16332,7 +16345,31 @@ function App() {
         h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => setTab('leads') }, icon('Sheet', 13), 'Open sheet'), h('button', { className: 'cad-btn primary', onClick: () => { setMainMode('call'); setTab('home'); } }, icon('PhoneOutgoing', 13), 'Self-call mode'))
       ),
       cadSyncQueueBanner,
-      h('div', { className: 'cad-stat-grid' }, stat('Sessions today', sessionsToday, (liveRows.length || 0) + ' live · ' + Math.max(0, sessionsToday - liveRows.length) + ' wrapped'), stat('Appts set', apptsToday, demoStats ? '+3 vs yesterday' : 'today', 'var(--ad-green)'), stat('Closed', closedToday, demoStats ? '36% close rate' : 'today'), stat('EFYC', '$' + efycToday.toLocaleString(), 'month · est.')),
+      // 0089: KPI grid + a Pay tile pinned at the end. Role-aware label:
+      //   Main  → "💰 Pay Admin"   shows total unpaid owed to admins
+      //                              (sum of payAdminRows[].unpaid),
+      //                              click → goes to timesheet/pay tab
+      //   Admin → "💰 Pay"          shows admin's own unpaid earnings,
+      //                              click → goes to timesheet/pay tab
+      // Replaces the More-menu Pay tile (which stays as a fallback for
+      // users who navigate that way). Grid switches from 4-up to 5-up
+      // so the existing 4 stats keep their proportions.
+      h('div', { className: 'cad-stat-grid cad-stat-grid--five' },
+        stat('Sessions today', sessionsToday, (liveRows.length || 0) + ' live · ' + Math.max(0, sessionsToday - liveRows.length) + ' wrapped'),
+        stat('Appts set', apptsToday, demoStats ? '+3 vs yesterday' : 'today', 'var(--ad-green)'),
+        stat('Closed', closedToday, demoStats ? '36% close rate' : 'today'),
+        stat('EFYC', '$' + efycToday.toLocaleString(), 'month · est.'),
+        h('button', {
+          className: 'cad-card cad-stat cad-stat--pay',
+          onClick: () => goCadTab('timesheet'),
+          type: 'button',
+          title: role === 'admin' ? 'Your unpaid earnings — click to view timesheet' : 'Total unpaid owed to admins — click to settle pay'
+        },
+          h('span', { className: 'cad-label' }, role === 'admin' ? '💰 Pay' : '💰 Pay Admin'),
+          h('b', { style: { color: 'var(--ad-brass-2)' } }, role === 'admin' ? cadMoney(unpaidEarnings) : cadMoney((payAdminRows || []).reduce((a, r) => a + (r.unpaid || 0), 0))),
+          h('span', { className: 'cad-subtle', style: { fontSize: 11 } }, role === 'admin' ? 'unpaid · click to view' : (payAdminRows || []).filter(r => r.unpaid > 0).length + ' admin' + ((payAdminRows || []).filter(r => r.unpaid > 0).length === 1 ? '' : 's') + ' to pay')
+        )
+      ),
       cadSessionTargetPanel(false),
       h('div', { className: 'cad-page-grid' }, cadScriptEditorPanel(false, true), cadObjectionPanel(false)),
       h('div', { className: 'cad-dashboard-grid' },
@@ -16709,23 +16746,15 @@ function App() {
     // 0080: Lead source picker moved into Team page (was previously on the
     // Workspace tab which is now killed). Sits at the top so Mains can
     // wire the master sheet, then assign it to admins below.
-    var teamLeadSourceCard = role === 'main' && h('div', { className: 'cad-card cad-editor-card' },
-      h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } },
-        h('span', { className: 'cad-label' }, '📒 Master lead source'),
-        h('span', { className: 'cad-pill' + (cfg.sheetId ? ' green' : '') }, cfg.sheetTab || 'no tab')
-      ),
-      h('p', { className: 'cad-page-note' }, 'Pick the workbook + tab that holds your raw leads. Use the "Assign to admins" button below to push this to every admin in one click.'),
-      fieldBlock('Search Google Sheets by name', h('input', { value: sheetQ, placeholder: 'Type sheet name - results update automatically', onChange: e => queueSheetNameSearch(e.target.value) }), sheetSearching ? 'Searching Drive...' : cfg._sheetName ? 'Selected: ' + cfg._sheetName : 'Type at least 2 characters.'),
-      sheetResults.length > 0 && h('div', { className: 'cad-sheet-results', style: { marginTop: 10, marginBottom: 10 } }, sheetResults.map(f => h('button', { className: 'cad-option', key: f.id, onClick: () => { setCfg(s => ({ ...s, sheetId: f.id, _sheetName: f.name || s._sheetName || '' })); setSheetQ(f.name || ''); setSheetResults([]); fetchTabs(f.id); } }, h('span', null, h('b', null, f.name || 'Untitled sheet'), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, f.modifiedTime ? 'Modified ' + new Date(f.modifiedTime).toLocaleString('en-SG') : f.id)), h('span', { className: 'cad-subtle' }, '>')))),
-      sTabs.length > 0 && fieldBlock('Sheet tab', h('select', { value: cfg.sheetTab || '', onChange: e => setCfg(s => ({ ...s, sheetTab: e.target.value })) }, h('option', { value: '' }, 'Select tab'), sTabs.map(t => h('option', { key: t.id || t.title, value: t.title }, t.title, ' (', t.rows, ' rows)')))),
-      h('div', { className: 'cad-action-grid' },
-        h('button', { className: 'cad-btn primary', onClick: fetchLeads, disabled: !cfg.sheetTab || sLoad }, sLoad ? 'Fetching' : '↓ Fetch leads now'),
-        h('button', { className: 'cad-btn', onClick: () => fileRef.current && fileRef.current.click() }, '⬆ Upload file'),
-        h('button', { className: 'cad-btn', disabled: !(cfg.sheetId && cfg.sheetTab) || !adminEntries2.length, onClick: () => assignCurrentLeadSourceToAdmins(adminEntries2.map(([em]) => em)) }, '👥 Assign to admins')
-      )
-    );
+    // 0089: Master Lead Source card moved INTO the Admin Config modal
+    // (see leads section there). Per the user's spec: master leads
+    // configuration belongs with the admin it serves, not as a global
+    // card on the Team page top. The admin-config modal's leads
+    // section now hosts the full sheet picker + tab selector + fetch
+    // button per admin.
+    // teamLeadSourceCard removed — see Admin Config modal "📒 Leads
+    // source" section.
     var teamPage = h('div', { className: 'cad-settings-stack' },
-      teamLeadSourceCard,
       h('div', { className: 'cad-card cad-editor-card' },
         h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, '👥 Team roster'), h('span', { className: 'cad-pill' }, adminEntries2.length, ' admins')),
         h('div', { className: 'cad-form-grid' }, fieldBlock('Admin email', h('input', { value: newAdminEmail, onChange: e => setNewAdminEmail(e.target.value), placeholder: 'admin@example.com' })), h('div', { className: 'cad-inline', style: { alignItems: 'end' } }, h('button', { className: 'cad-btn', onClick: () => fetchHubAdminPool(true), disabled: hubAdminPoolLoading }, hubAdminPoolLoading ? 'Refreshing' : '↻ Refresh pool'), h('button', { className: 'cad-btn primary', onClick: addTeamAdminClaude }, '+ Add admin'))),
@@ -16811,14 +16840,65 @@ function App() {
     // The legacy "Calling script" + "Reference notes" + "Objection list"
     // editor cards are gone — those are edited inline on the call view's
     // script aside (Edit button), so duplicating them here was friction.
+    // 0089: Calling tab cards — Calling script and WhatsApp templates
+    // both clickable.
+    //   • Calling script  → redirects to call view + opens script edit
+    //   • WhatsApp templates → expands inline (cad-wa-tpl-panel below)
+    // The legacy filter relied on a regex that accidentally matched
+    // 'ai' inside "Shermaine" and other script names. Replaced with
+    // an exact whitelist by label so the card list is deterministic.
+    var _callingTabAllowed = new Set(['Calling script', 'WhatsApp templates']);
     var callingPage = h(React.Fragment, null,
-      h('div', { className: 'cad-settings-cards' }, settingsCardData.filter(c => /WhatsApp|whatsapp|template|AI|key/i.test(String(c[0]) + ' ' + String(c[1] || ''))).map(c => h('div', { className: 'cad-card cad-settings-card', key: c[0] },
-        h('div', { className: 'cad-inline' },
-          h('span', { className: 'cad-pill brass' }, icon(c[2], 14)),
-          h('div', null, h('b', { style: { fontSize: 14 } }, c[0]), h('p', { className: 'cad-subtle', style: { fontSize: 12, marginTop: 2 } }, c[1]))
+      h('div', { className: 'cad-settings-cards' }, settingsCardData.filter(c => _callingTabAllowed.has(String(c[0]))).map(c => {
+        var isScript = c[0] === 'Calling script';
+        var isWaTpl = c[0] === 'WhatsApp templates';
+        var onCardClick = isScript
+          ? (() => { setMainMode('call'); setTab('home'); setTimeout(() => setScriptEditing(true), 60); })
+          : isWaTpl
+            ? (() => setWaTplPanelOpen(p => !p))
+            : null;
+        return h('button', { className: 'cad-card cad-settings-card', key: c[0], onClick: onCardClick, type: 'button', style: { width: '100%', textAlign: 'left' } },
+          h('div', { className: 'cad-inline' },
+            h('span', { className: 'cad-pill brass' }, icon(c[2], 14)),
+            h('div', null, h('b', { style: { fontSize: 14 } }, c[0]), h('p', { className: 'cad-subtle', style: { fontSize: 12, marginTop: 2 } }, c[1]))
+          ),
+          h('span', null, isWaTpl ? (waTplPanelOpen ? '▾' : '▸') : '›')
+        );
+      })),
+      // 0089: WhatsApp templates inline editor — expands when the user
+      // clicks the WhatsApp templates card. List of saved templates with
+      // edit-in-place + delete + add. Mirrors the calling-script editor
+      // shape so the user already knows the controls.
+      waTplPanelOpen && h('div', { className: 'cad-card cad-editor-card' },
+        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } },
+          h('span', { className: 'cad-label' }, '💬 WhatsApp templates'),
+          h('div', { className: 'cad-inline' },
+            h('button', { className: 'cad-btn', onClick: () => setWaTemplates(p => [...(p || []), { id: 'tpl_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6), name: 'New template', body: 'Hi {name}, ...' }]) }, '+ Add'),
+            h('button', { className: 'cad-btn ghost', onClick: () => setWaTplPanelOpen(false) }, 'Close')
+          )
         ),
-        h('span', null, '>')
-      ))),
+        h('p', { className: 'cad-page-note' }, 'Use ', h('span', { className: 'cad-mono' }, '{name}'), ', ', h('span', { className: 'cad-mono' }, '{date}'), ', ', h('span', { className: 'cad-mono' }, '{time}'), ', ', h('span', { className: 'cad-mono' }, '{location}'), ' as merge fields. Templates auto-sync to your Drive folder when changed.'),
+        (waTemplates || []).length === 0
+          ? h('p', { className: 'cad-page-note', style: { fontStyle: 'italic' } }, 'No templates yet. Tap "+ Add" to create one.')
+          : h('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } }, (waTemplates || []).map((t, i) => h('div', { className: 'cad-card', key: t.id || i, style: { padding: 12, background: 'var(--ad-bg-2)' } },
+              h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 8, gap: 8 } },
+                h('input', {
+                  value: t.name || '',
+                  onChange: e => setWaTemplates(p => (p || []).map((x, j) => j === i ? { ...x, name: e.target.value } : x)),
+                  placeholder: 'Template name',
+                  style: { flex: 1, minHeight: 32, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--ad-line-2)', background: 'var(--ad-bg-1)', color: 'var(--ad-t-0)', fontSize: 12, fontWeight: 600 }
+                }),
+                h('button', { className: 'cad-btn ghost danger', onClick: () => setWaTemplates(p => (p || []).filter((_x, j) => j !== i)) }, '🗑 Delete')
+              ),
+              h('textarea', {
+                value: t.body || '',
+                onChange: e => setWaTemplates(p => (p || []).map((x, j) => j === i ? { ...x, body: e.target.value } : x)),
+                placeholder: 'Hi {name}, ...',
+                rows: 4,
+                style: { width: '100%', minHeight: 80, padding: 10, borderRadius: 8, border: '1px solid var(--ad-line-2)', background: 'var(--ad-bg-1)', color: 'var(--ad-t-1)', fontSize: 12, lineHeight: 1.5, resize: 'vertical', fontFamily: 'inherit' }
+              })
+            )))
+      ),
       h('div', { className: 'cad-card', style: { padding: 18 } },
         h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 12 } }, h('span', { className: 'cad-label' }, 'AI keys'), h('span', { className: 'cad-pill ' + (connectedKeys ? 'green' : 'amber') }, connectedKeys ? icon('Check', 10) : icon('Clock', 10), connectedKeys + ' connected')),
         keyRows.map((row, i) => h('div', { className: 'cad-kv-row', key: row[0] },
@@ -17352,12 +17432,97 @@ function App() {
           )
         ),
         // ─── Leads (amber stripe) ───────────────────────────────────────
+        // 0089: full master-sheet picker per-admin (was previously a global
+        // card on the Team page top — moved here so each admin's leads
+        // configuration lives with the admin it serves).
         h('div', { className: 'cad-card cad-section-leads', style: { padding: 14, marginTop: 12 } },
-          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label', style: { color: 'var(--ad-amber)' } }, '📒 Leads source'), h('span', { className: 'cad-pill ' + (ac.sheetTab ? 'green' : 'amber') }, ac.sheetTab ? 'Linked' : 'Needs tab')),
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label', style: { color: 'var(--ad-amber)' } }, '📒 Leads source'), h('span', { className: 'cad-pill ' + (ac.timesheetId && ac.sheetTab ? 'green' : 'amber') }, ac.timesheetId && ac.sheetTab ? 'Linked' : 'Needs sheet/tab')),
+          // Quick action: copy your current Main sheet/tab into this admin
+          cfg.sheetId && cfg.sheetTab && h('button', {
+            className: 'cad-btn',
+            style: { width: '100%', marginBottom: 10 },
+            onClick: () => assignCurrentLeadSourceToAdmins([em]),
+            type: 'button'
+          }, ac.timesheetId === cfg.sheetId && ac.sheetTab === cfg.sheetTab ? '✓ Using your Main sheet/tab' : '↪ Use my current Main sheet/tab'),
+          // Sheet search input + dropdown of Drive results
+          h('div', { style: { position: 'relative', marginBottom: 10 } },
+            h('input', {
+              value: ac._tsName || ac.timesheetId || '',
+              placeholder: 'Search Google Sheets by name…',
+              onChange: e => {
+                var v = e.target.value;
+                cadUpdateAdminConfig(em, { _tsName: v });
+                if (v.length >= 2 && gOk) {
+                  clearTimeout(window['_ts' + em]);
+                  window['_ts' + em] = setTimeout(() => {
+                    gDrive.search(v).then(r => cadUpdateAdminConfig(em, { _tsResults: r })).catch(() => {});
+                  }, 400);
+                } else {
+                  cadUpdateAdminConfig(em, { _tsResults: [] });
+                }
+              }
+            }),
+            (ac._tsResults || []).length > 0 && h('div', {
+              style: { position: 'absolute', left: 0, right: 0, top: '100%', zIndex: 10, maxHeight: 200, overflowY: 'auto', background: 'var(--ad-bg-2)', border: '1px solid var(--ad-line-1)', borderRadius: 8, marginTop: 4, boxShadow: '0 8px 24px rgba(0,0,0,.4)' }
+            }, (ac._tsResults || []).slice(0, 6).map(f => h('button', {
+              key: f.id,
+              type: 'button',
+              className: 'cad-option',
+              style: { width: '100%', textAlign: 'left', padding: '10px 12px', borderBottom: '1px solid var(--ad-line-1)' },
+              onClick: () => {
+                cadUpdateAdminConfig(em, { timesheetId: f.id, _tsName: f.name, _tsResults: [], sheetTab: '', _sheetTabs: [] });
+                toast('Loading tabs…');
+                fetch('https://sheets.googleapis.com/v4/spreadsheets/' + f.id + '?fields=sheets.properties', { headers: { Authorization: 'Bearer ' + (localStorage.getItem('ad_gt') || '') } }).then(r => r.json()).then(meta => {
+                  var tabs = (meta.sheets || []).map(s => s.properties.title);
+                  cadUpdateAdminConfig(em, { _sheetTabs: tabs });
+                  toast(tabs.length + ' tabs loaded ✓');
+                }).catch(e => toast('Tab load failed: ' + (e?.message || e), 'err'));
+              }
+            }, h('span', null, h('b', null, '📗 ', f.name || 'Untitled')), f.modifiedTime && h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, 'Modified ' + new Date(f.modifiedTime).toLocaleDateString('en-SG')))))
+          ),
+          // Linked indicator + unlink (only shown once a sheet is wired)
+          ac.timesheetId && h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 8 } },
+            h('span', { className: 'cad-pill green' }, '✓ Linked: ', (ac._tsName || ac.timesheetId).slice(0, 30)),
+            h('button', {
+              className: 'cad-btn ghost',
+              type: 'button',
+              style: { color: 'var(--ad-red)' },
+              onClick: async () => {
+                var ok = await confirmAsync("Unlink this admin's leads sheet? Their calling will stop until a new sheet is linked.", { title: 'Unlink leads sheet?', confirmLabel: 'Unlink', cancelLabel: 'Cancel', danger: true });
+                if (!ok) return;
+                cadUpdateAdminConfig(em, { timesheetId: '', _tsName: '', sheetTab: '', _sheetTabs: [], _leadsUnlinkedAt: Date.now(), _leadAccessRev: Date.now() });
+                toast('Leads sheet unlinked');
+              }
+            }, 'Unlink')
+          ),
+          // Tab + session hours
           h('div', { className: 'cad-form-grid' },
-            cadField('📑 Lead tab name', h('input', { value: ac.sheetTab || '', onChange: e => cadUpdateAdminConfig(em, { sheetTab: e.target.value }), placeholder: cfg.sheetTab || 'Sheet tab name' })),
+            cadField('📑 Lead tab',
+              (ac._sheetTabs || []).length > 0
+                ? h('select', { value: ac.sheetTab || '', onChange: e => cadUpdateAdminConfig(em, { sheetTab: e.target.value }) },
+                    h('option', { value: '' }, 'Select tab…'),
+                    (ac._sheetTabs || []).map(t => h('option', { key: t, value: t }, t)))
+                : h('input', { value: ac.sheetTab || '', onChange: e => cadUpdateAdminConfig(em, { sheetTab: e.target.value }), placeholder: cfg.sheetTab || 'Sheet tab name' })
+            ),
             cadField('⏱ Session hours', h('input', { type: 'number', min: 0.5, step: 0.5, value: ac.sessionDur || cfg.sessionDur || 5, onChange: e => cadUpdateAdminConfig(em, { sessionDur: Number(e.target.value) || 0 }) }))
-          )
+          ),
+          // Reload tabs button (manual refresh after picking a sheet)
+          ac.timesheetId && h('button', {
+            className: 'cad-btn ghost',
+            type: 'button',
+            style: { marginTop: 8 },
+            onClick: async () => {
+              if (!gOk) return toast('Connect Google first', 'err');
+              try {
+                var meta = await (await fetch('https://sheets.googleapis.com/v4/spreadsheets/' + ac.timesheetId + '?fields=sheets.properties', { headers: { Authorization: 'Bearer ' + (localStorage.getItem('ad_gt') || '') } })).json();
+                var tabs = (meta.sheets || []).map(s => s.properties.title);
+                cadUpdateAdminConfig(em, { _sheetTabs: tabs });
+                toast(tabs.length + ' tabs reloaded');
+              } catch (e) {
+                toast('Reload failed: ' + (e?.message || e), 'err');
+              }
+            }
+          }, '↻ Reload tabs')
         ),
         // ─── Calling rules + bars ───────────────────────────────────────
         h('div', { className: 'cad-card cad-section-script', style: { padding: 14, marginTop: 12 } },
