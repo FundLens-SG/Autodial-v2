@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0096'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0097'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -952,6 +952,28 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
   .cad-session-target__big{font-size:24px}
   .cad-rank-chip--bold .cad-rank-chip__progress{display:none}
 }
+/* 0097: script + objection row on the home dashboard — equalize the
+   two panels at a comfortable height with internal scroll. Pre-fix
+   the script's rich editor naturally ran taller than the objection
+   list, leaving the right column with empty whitespace below the
+   handles. Now both cards sit at the same fixed height; their main
+   content areas (rich editor / objection list) flex-grow and scroll
+   internally. */
+.cad-script-obj-row{align-items:stretch}
+.cad-script-obj-row > .cad-card.cad-editor-card{height:520px;display:flex;flex-direction:column;overflow:hidden}
+.cad-script-obj-row > .cad-card.cad-editor-card > *{flex-shrink:0}
+.cad-script-obj-row .cad-rich-editor,
+.cad-script-obj-row .cad-script-read,
+.cad-script-obj-row .cad-objection-list{flex:1 1 0;min-height:0;overflow-y:auto}
+@media(max-width:1100px){
+  .cad-script-obj-row > .cad-card.cad-editor-card{height:460px}
+}
+@media(max-width:900px){
+  .cad-script-obj-row > .cad-card.cad-editor-card{height:auto;max-height:none}
+  .cad-script-obj-row .cad-rich-editor,
+  .cad-script-obj-row .cad-script-read,
+  .cad-script-obj-row .cad-objection-list{max-height:420px}
+}
 </style>
 </head>
 <body>
@@ -1036,7 +1058,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0096';
+window.APP_VERSION='2026.05.05.0097';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -6790,6 +6812,11 @@ function App() {
       _syncDeletedApptIdsCloud(_delIds);
     } catch (_e) {}
     setAppointments(p => p.filter(x => !_apptHardMatch(x, a)));
+    // 0097 fix: tombstone is local-only (_syncDeletedApptIdsCloud is a
+    // documented no-op stub), so also purge from the cloud
+    // shared_appointments table so other devices / next reload don't
+    // resurrect the appt.
+    _purgeCloudAppointment(a).catch(() => {});
     if (a.calEventId && window.gCal) {
       try { await gCal.del(a.calEventId, a.calendarId || 'primary'); } catch (_e) {}
       setWeekEvents(prev => prev.filter(ev => ev.id !== a.calEventId));
@@ -6960,17 +6987,24 @@ function App() {
     if (!a) return;
     var ts = new Date().toISOString();
     // 0094: optimistic UI — update local state and CLOSE the modal
-    // immediately, then fire-and-forget the Sheets sync. Pre-fix, the
-    // modal stayed visible until the API round-trip completed, which
-    // the user described as "takes very long to register".
-    setAppointments(p => (p || []).map(x => x.id === a.id ? { ...x, followUp: 'fly_kite', followUpDate: ts } : x));
+    // immediately, then fire-and-forget the Sheets sync.
+    // 0097 fix: also push the fly_kite status to the admin's cloud
+    // shared_appointments row (when a Main resolves an admin's
+    // appt). Pre-fix, local fly_kite got clobbered by the next cloud
+    // pull because the cloud row still held the old followUp — symptom
+    // was the calendar-deletion modal popping up again on every reload.
+    var updated = { ...a, followUp: 'fly_kite', followUpDate: ts };
+    setAppointments(p => (p || []).map(x => x.id === a.id ? updated : x));
     setPendingCalDeletions(p => (p || []).filter(x => x.id !== a.id));
     toast('🪁 Marked ' + (a.name || 'appointment') + ' as fly kite', 'info');
-    syncApptSheet({ ...a, followUp: 'fly_kite', followUpDate: ts }, {
+    syncApptSheet(updated, {
       followUp: 'Fly Kite',
       notes: ((a.remarks || '') + (a.remarks ? '\n' : '') + '[Calendar deleted ' + new Date().toLocaleString('en-SG') + ' — fly kite]')
     }).catch(() => {});
-  }, [syncApptSheet]);
+    if (a.admin && a.admin.toLowerCase() !== (myEmail || '').toLowerCase()) {
+      _mainWritebackAdminAppt(updated);
+    }
+  }, [syncApptSheet, myEmail, _mainWritebackAdminAppt]);
   var resolveCalDeletionRestore = useCallback(async a => {
     if (!a) return;
     var s = new Date(String(a.apptDate || '') + 'T' + String(a.apptTime || '00:00'));
@@ -7072,6 +7106,14 @@ function App() {
       _syncDeletedApptIdsCloud(_saved);
     } catch (_e) {}
     setAppointments(p => (p || []).filter(x => !_apptHardMatch(x, a)));
+    // 0097 fix: also purge from the cloud shared_appointments row
+    // (per-owner). Pre-fix, the local tombstone was per-device only —
+    // _syncDeletedApptIdsCloud is a documented no-op stub since Phase
+    // 7B2 — so the cloud still held the appt, and the next pull
+    // restored it. _purgeCloudAppointment iterates the appt's owners
+    // (admin / myEmail / _user.email) and removes it from each
+    // owner's live + snapshot rows.
+    _purgeCloudAppointment(a).catch(() => {});
     // 6 + 7: sheet row delete + audit log
     var apptSheetId = a.apptSheetId || myCfg.timesheetId || cfg.sheetId;
     if (apptSheetId && localStorage.getItem('ad_gt')) {
@@ -7154,13 +7196,21 @@ function App() {
                     : status === 'closed' ? 'Closed'
                     : status;
     // 0094: optimistic UI — local state + toast fire immediately, then
-    // sync to Sheets in the background. Pre-fix, the user perceived a
-    // 1-2s lag between tap and visible change while the API call ran.
-    setAppointments(p => (p || []).map(x => _matchAppt(x, a) ? { ...x, followUp: localStatus, followUpDate: ts } : x));
+    // sync to Sheets in the background.
+    // 0097 fix: also write back to the admin's cloud row when a Main
+    // resolves an admin's appt. Pre-fix, fly_kite/met/postponed/closed
+    // were local-only; next pull from admin's shared_appointments
+    // restored the original status and the past-appt banner kept
+    // re-appearing.
+    var updated = { ...a, followUp: localStatus, followUpDate: ts };
+    setAppointments(p => (p || []).map(x => _matchAppt(x, a) ? updated : x));
     var emoji = status === 'met' ? '✓' : status === 'fly_kite' ? '🪁' : status === 'postponed' ? '⏰' : '🏁';
     toast(emoji + ' ' + (a.name || 'appointment') + ' → ' + sheetStatus, 'info');
-    syncApptSheet({ ...a, followUp: localStatus, followUpDate: ts }, { followUp: sheetStatus }).catch(() => {});
-  }, [syncApptSheet]);
+    syncApptSheet(updated, { followUp: sheetStatus }).catch(() => {});
+    if (a.admin && a.admin.toLowerCase() !== (myEmail || '').toLowerCase()) {
+      _mainWritebackAdminAppt(updated);
+    }
+  }, [syncApptSheet, myEmail, _mainWritebackAdminAppt]);
   // 0088: "I set wrongly (delete appointment)" — the misclick path on
   // the past-appt banner. User said: Fly Kite KEEPS the set count
   // (appt was real, prospect didn't show), Misclick REVERSES it
@@ -7227,6 +7277,10 @@ function App() {
       _syncDeletedApptIdsCloud(_saved);
     } catch (_e) {}
     setAppointments(p => (p || []).filter(x => !_apptHardMatch(x, a)));
+    // 0097 fix: also purge from the cloud — the tombstone is local-only
+    // (_syncDeletedApptIdsCloud is a no-op stub since Phase 7B2), so
+    // without this call the next cloud pull restored the appt.
+    _purgeCloudAppointment(a).catch(() => {});
     // Sheet row delete + audit log
     var apptSheetId = a.apptSheetId || myCfg.timesheetId || cfg.sheetId;
     if (apptSheetId && localStorage.getItem('ad_gt')) {
@@ -16539,7 +16593,7 @@ function App() {
         )
       ),
       cadSessionTargetPanel(false),
-      h('div', { className: 'cad-page-grid' }, cadScriptEditorPanel(false, true), cadObjectionPanel(false)),
+      h('div', { className: 'cad-page-grid cad-script-obj-row' }, cadScriptEditorPanel(false, true), cadObjectionPanel(false)),
       h('div', { className: 'cad-dashboard-grid' },
         h('div', { className: 'cad-plan' }, h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, "Today's plan"), h('span', { className: 'cad-subtle', style: { fontSize: 11 } }, '3 things')), planRow('var(--ad-amber)', (pending.length || (demo ? 14 : 0)) + ' leads ready for review', 'Review queue before assigning callers', 'Review', () => setTab('leads')), planRow('var(--ad-blue)', liveRows[0]?.name ? liveRows[0].name + ' is active' : 'No caller active yet', 'Open live calling or message the team', 'Message', () => setTab('settings')), planRow('var(--ad-brass-2)', (todayAppts.length || (demo ? 2 : 0)) + ' booked appts need follow-up', 'Resolve calendar and appointment status', 'Resolve', () => setTab('appts'))),
         h('div', { className: 'cad-card cad-admin-card' }, h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 8 } }, h('span', { className: 'cad-label' }, 'Live now'), h('span', { className: 'cad-pill green' }, h('span', { className: 'cad-dot' }), liveRows.length, ' calling')), liveRows.map((r, i) => h('div', { className: 'cad-admin-row', key: r.name + i }, h('div', { className: 'cad-mini-avatar', style: i ? { background: 'var(--ad-blue)' } : null }, r.initials), h('div', null, h('div', { className: 'cad-inline' }, h('span', { style: { fontSize: 13 } }, r.name), h('span', { className: 'cad-tier' }, icon('Trophy', 9), r.tier)), h('p', { className: 'cad-subtle cad-mono', style: { fontSize: 11, marginTop: 3 } }, 'On call · ', r.time)), h('div', { style: { textAlign: 'right' } }, h('span', { className: 'cad-label' }, 'Dialed'), h('b', { className: 'cad-mono' }, r.dialed)), h('div', { style: { textAlign: 'right' } }, h('span', { className: 'cad-label' }, 'Set'), h('b', { className: 'cad-mono', style: { color: 'var(--ad-green)' } }, r.sets)), h('span', { className: 'cad-subtle' }, '›'))), h('div', { className: 'cad-inline cad-subtle', style: { justifyContent: 'space-between', padding: '12px 4px 4px', fontSize: 12 } }, h('span', null, demo ? 'Linda Tao · ready, not started' : 'Team standing by'), h('button', { className: 'cad-btn ghost', onClick: () => setTab('settings') }, 'Nudge')))
