@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0078'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0079'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -486,8 +486,34 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 .cad-sync-banner.warn{border-color:rgba(248,113,113,.34);background:var(--ad-red-dim);color:#fca5a5}
 .cad-call-body{flex:1;min-height:0;display:flex}
 .cad-call-main{flex:1;min-width:0;padding:22px 28px;display:flex;flex-direction:column;gap:18px;overflow:auto}
-.cad-session-strip{display:flex;align-items:center;justify-content:space-between;gap:20px}
+/* 0079: session strip is a 3-cell flex — info on left, stats centred, CTA
+   on right. Stats land in the visual middle of the strip instead of being
+   bunched against the session info on the far left. */
+.cad-session-strip{display:flex;align-items:center;gap:20px}
+.cad-session-info{flex:0 0 auto;min-width:140px}
 .cad-session-stats{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.cad-session-stats--center{flex:1;justify-content:center}
+/* Stop button: vivid red CTA so it reads as "session control" instead of
+   the legacy ghost-in-the-corner. Same prominence as Start session. */
+.cad-session-stop{background:linear-gradient(180deg,oklch(0.68 0.18 25),oklch(0.58 0.20 25));border-color:oklch(0.58 0.20 25);color:#fff;font-weight:700;box-shadow:0 8px 22px -10px oklch(0.68 0.18 25 / .6)}
+.cad-session-stop:hover{filter:brightness(1.08)}
+/* Keyboard shortcut hint pills above the outcome grid. Replaces the
+   tiny grey "NP · NI auto-advance" hint that nobody noticed. */
+.cad-kb-hint{display:inline-flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--ad-t-2)}
+.cad-kb-hint kbd{display:inline-block;min-width:18px;padding:1px 6px;border-radius:5px;background:var(--ad-bg-3);border:1px solid var(--ad-line-2);color:var(--ad-t-0);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10px;font-weight:700;margin-right:4px}
+/* 5-up outcome grid (NP / CB / NI / Set / Skip) on desktop; collapses to
+   2 cols on mobile. The Skip variant is brass-neutral so it doesn't read
+   as a status outcome. */
+.cad-outcomes--five{grid-template-columns:repeat(5,1fr)}
+.cad-outcome--skip{color:var(--ad-t-1);background:var(--ad-bg-2);border-color:var(--ad-line-2)}
+.cad-outcome--skip:hover{background:var(--ad-bg-3);border-color:var(--ad-line-3)}
+.cad-outcome--skip[disabled]{opacity:.45;cursor:not-allowed}
+@media(max-width:900px){
+  .cad-session-strip{flex-direction:column;align-items:stretch}
+  .cad-session-info{min-width:0}
+  .cad-session-stats--center{justify-content:flex-start}
+  .cad-outcomes--five{grid-template-columns:repeat(2,1fr)}
+}
 .cad-session-stat{display:flex;flex-direction:column;gap:3px;min-width:52px}
 .cad-session-stat b{font:700 16px 'JetBrains Mono',ui-monospace,monospace}
 .cad-lead-card{padding:28px;display:flex;flex-direction:column;gap:18px}
@@ -535,7 +561,25 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-shaky-dot.on{background:var(--ad-amber);box-shadow:0 0 12px rgba(239,184,79,.6);animation:cadShakyPulse 1.6s ease-in-out infinite}
 @keyframes cadShakyPulse{0%,100%{box-shadow:0 0 0 0 rgba(239,184,79,.5)}50%{box-shadow:0 0 0 6px rgba(239,184,79,0)}}
 @media (prefers-reduced-motion: reduce){.cad-shaky-dot.on{animation:none}}
-.cad-objections{padding:12px 14px 16px;display:flex;flex-direction:column;gap:6px;max-height:340px;overflow:auto}.cad-objection{padding:9px 11px;border-radius:9px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:12px;display:flex;justify-content:space-between;gap:10px;text-align:left}.cad-objection.on{border-color:var(--ad-brass-line);background:var(--ad-brass-dim);color:var(--ad-brass-2)}.cad-objection-answer{margin-top:8px;padding:11px;border-radius:10px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:12px;line-height:1.55}
+/* 0079: objections panel — full width, static category heads, click
+   an objection to expand its talk-track inline below the title. The
+   max-height grows because the right answer-pane is gone; let it use
+   all the script-tabs space (parent flex:1 handles the actual ceiling). */
+.cad-objections{padding:12px 14px 16px;display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;overflow:auto}
+.cad-objcat{display:flex;flex-direction:column;gap:6px}
+.cad-objcat-head.static{padding:6px 4px 2px;display:flex;align-items:center;gap:8px;color:var(--ad-t-2);font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
+.cad-objcat-head .cad-objcat-label{flex:1}
+.cad-objcat-head .cad-objcat-count{padding:1px 7px;border-radius:999px;background:var(--ad-bg-3);color:var(--ad-t-3);font-size:10px;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700}
+.cad-objcat-body{display:flex;flex-direction:column;gap:5px}
+.cad-objection-wrap{display:flex;flex-direction:column}
+.cad-objection-wrap.on{background:var(--ad-brass-dim);border-radius:10px;border:1px solid var(--ad-brass-line)}
+.cad-objection{padding:10px 12px;border-radius:9px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;cursor:pointer;width:100%;transition:background .12s,border-color .12s,color .12s}
+.cad-objection:hover{border-color:var(--ad-line-2);background:var(--ad-bg-3)}
+.cad-objection.on{border-color:transparent;background:transparent;color:var(--ad-brass-2);font-weight:600}
+.cad-objection-caret{font-size:11px;opacity:.7}
+.cad-objection-answer-inline{padding:8px 12px 12px;color:var(--ad-t-1);font-size:12.5px;line-height:1.6}
+.cad-objection-answer-inline .cad-rich{margin-top:4px}
+.cad-objection-answer{margin-top:8px;padding:11px;border-radius:10px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:12px;line-height:1.55}
 /* 0077: collapsible objection categories. Replaces the per-row "common/
    uncommon" pill — the category is now the section header, and clicking
    it expands/collapses its objections. The active objection's category
@@ -705,7 +749,7 @@ var a1Col = window.a1Col;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0078';
+window.APP_VERSION='2026.05.05.0079';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -13084,14 +13128,24 @@ function App() {
     var mm = Math.floor((elapsedSec % 3600) / 60);
     var dur = hh > 0 ? hh + 'h ' + mm + 'm' : mm + ' min';
     var slotH = session.selectedSlot ? n(session.selectedSlot.hours, 0) : 0;
-    var apptsBar = session.selectedSlot ? n(session.selectedSlot.apptsBar, 0) : n(myCfg.mThresh, 2);
+    // 0079: appts-bar reads from THIS admin's gamification config first
+    // (myCfg.mThresh / myCfg.tierMins[1]) so the dynamic threshold tracks
+    // each admin's tier requirement, not a global '2'. selectedSlot's
+    // override still wins when a slot is chosen for the session.
+    var dynamicBar = (Array.isArray(myCfg.tierMins) && myCfg.tierMins[1]) ? n(myCfg.tierMins[1], 0) : n(myCfg.mThresh, 2);
+    var apptsBar = session.selectedSlot ? n(session.selectedSlot.apptsBar, 0) : dynamicBar;
     var line1 = 'Duration: ' + dur + (slotH ? ' / ' + slotH + 'h slot' : '');
     var line2 = 'Dialed: ' + dialed + '   Sets: ' + sets + (apptsBar ? ' / ' + apptsBar : '');
     var warn = '';
-    if (slotH && elapsedSec < (slotH * 3600 - 20 * 60)) {
-      warn = '\n\n⚠ You are ending early — credit may drop to actual hours.';
-    } else if (apptsBar && sets < apptsBar) {
-      warn = '\n\n⚠ You are below the ' + apptsBar + '-set bar for full credit.';
+    // 0079: credit warnings only fire for ADMIN role. Mains/Owners don't
+    // earn per-session pay so the "below the N-set bar for full credit"
+    // line was misleading + extra friction. Mains see a clean confirm.
+    if (role === 'admin') {
+      if (slotH && elapsedSec < (slotH * 3600 - 20 * 60)) {
+        warn = '\n\n⚠ You are ending early — credit may drop to actual hours.';
+      } else if (apptsBar && sets < apptsBar) {
+        warn = '\n\n⚠ You are below the ' + apptsBar + '-set bar for full credit.';
+      }
     }
     var ok = await confirmAsync(line1 + '\n' + line2 + warn, {
       title: 'End session?',
@@ -15195,27 +15249,40 @@ function App() {
     })();
     var cadObjGroupRender = () => {
       if (!cadObjections.length) return h('span', { className: 'cad-subtle', style: { fontSize: 12 } }, 'No objection handles saved.');
-      // Auto-expand the category that contains the active objection so
-      // the user can see the source list without an extra click.
-      var activeCat = activeObj ? String(activeObj.category || 'common').toLowerCase() : '';
+      // 0079: categories are now STATIC (always visible, no toggle). Click
+      // an OBJECTION to expand its talk-track inline below the title; click
+      // again to collapse. Removes the legacy collapsed-category UX where
+      // the user had to expand a category before seeing any objections.
+      // The right-side answer pane is gone — answers live inline now.
       return h(React.Fragment, null, cadObjGroups.map(g => {
-        var isOpen = !!openObjCats[g.key] || g.key === activeCat;
-        return h('div', { key: g.key, className: 'cad-objcat' + (isOpen ? ' open' : '') },
-          h('button', {
-            className: 'cad-objcat-head',
-            type: 'button',
-            onClick: () => toggleObjCat(g.key)
-          },
-            h('span', { className: 'cad-objcat-caret' }, isOpen ? '▾' : '▸'),
+        if (!g.items.length) return null;
+        return h('div', { key: g.key, className: 'cad-objcat open' },
+          h('div', { className: 'cad-objcat-head static' },
             h('span', { className: 'cad-objcat-label' }, g.label),
             h('span', { className: 'cad-objcat-count' }, g.items.length)
           ),
-          isOpen && h('div', { className: 'cad-objcat-body' }, g.items.map(o => h('button', {
-            className: 'cad-objection ' + (activeObj?.id === o.id ? 'on' : ''),
-            key: o.id || o.title,
-            type: 'button',
-            onClick: () => cadOpenObjection(o.id)
-          }, h('span', null, o.title || 'Objection'))))
+          h('div', { className: 'cad-objcat-body' }, g.items.map(o => {
+            var isActive = activeObj?.id === o.id;
+            return h('div', { className: 'cad-objection-wrap' + (isActive ? ' on' : ''), key: o.id || o.title },
+              h('button', {
+                className: 'cad-objection ' + (isActive ? 'on' : ''),
+                type: 'button',
+                onClick: () => cadOpenObjection(isActive ? null : o.id)
+              },
+                h('span', null, o.title || 'Objection'),
+                h('span', { className: 'cad-objection-caret' }, isActive ? '▾' : '▸')
+              ),
+              isActive && h('div', { className: 'cad-objection-answer-inline' },
+                h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 6 } },
+                  h('span', { className: 'cad-objection-tools' },
+                    h('button', { className: 'cad-btn ghost', onClick: e => { e.stopPropagation(); cadEditObjection(o); } }, 'Edit'),
+                    h('button', { className: 'cad-btn ghost danger', onClick: e => { e.stopPropagation(); cadRemoveObjection(o); } }, 'Remove')
+                  )
+                ),
+                selectedObjAnswer ? h('div', { className: 'cad-rich', dangerouslySetInnerHTML: { __html: selectedObjAnswer } }) : h('p', { className: 'cad-subtle', style: { fontSize: 12 } }, 'No talk track saved.')
+              )
+            );
+          }))
         );
       }));
     };
@@ -15468,19 +15535,85 @@ function App() {
     var callView = h('div', { className: 'cad-shell' }, topbar, h('div', { className: 'cad-call-body' },
       h('main', { className: 'cad-call-main' },
         cadSessionTargetPanel(true),
-        h('div', { className: 'cad-session-strip' }, h('div', { className: 'cad-session-stats' }, h('div', null, h('span', { className: 'cad-label' }, 'Session'), h('p', { style: { fontSize: 13, marginTop: 4 } }, currentSession ? 'Started ' + new Date(currentSession.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Ready to start', h('span', { className: 'cad-subtle' }, currentSession?.selectedSlot ? ' · Slot' : ''))), h('span', { style: { width: 1, height: 28, background: 'var(--ad-line-1)' } }), h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Dialed'), h('b', null, sessionDialed)), h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'No pickup'), h('b', { style: { color: 'var(--ad-amber)' } }, sessionNp)), h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Callback'), h('b', { style: { color: 'var(--ad-blue)' } }, sessionCb)), h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'No int.'), h('b', { style: { color: 'var(--ad-red)' } }, sessionNi)), h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Set'), h('b', { style: { color: 'var(--ad-green)' } }, sessionSets)),
-            // 0077: Pay tile hidden for Mains/Owner — only Admins earn per
-            // session, so showing $0.00 next to a Main's stats is visual
-            // noise. Mains still see Pay-management surfaces (Pay All button,
-            // payroll dashboard) elsewhere.
+        // 0079: session strip rebuilt. Stats are now CENTERED (the legacy
+        // layout pinned them to the left next to a "Session — Started 09:47"
+        // block, leaving End-session floating on the far right). New layout:
+        //   [Session info] | [centered stats: Dialed/NP/CB/NI/Set/(Pay)] | [Start/Stop]
+        // Start/Stop sits in the same prominence slot regardless of running
+        // state — when there's no session, "Start session" is brass primary;
+        // once running, "Stop session" is a vivid red CTA, NOT a ghost in
+        // the corner.
+        h('div', { className: 'cad-session-strip' },
+          h('div', { className: 'cad-session-info' },
+            h('span', { className: 'cad-label' }, 'Session'),
+            // 0079: live elapsed timer added (was static "Started 09:47").
+            // Falls back to "Ready to start" when no session is running.
+            // The `elapsed` state already ticks every 1s via the existing
+            // useEffect at ~line 11985, but the assimilated view never
+            // rendered it — that's why the user reported "live timer isn't
+            // really going when session starts".
+            currentSession
+              ? h('div', { style: { marginTop: 4 } },
+                  h('p', { className: 'cad-mono', style: { fontSize: 16, fontWeight: 700, color: 'var(--ad-brass-2)', letterSpacing: '-0.01em' } }, fmtTime(elapsed || 0)),
+                  h('p', { className: 'cad-subtle', style: { fontSize: 11, marginTop: 2 } },
+                    'Started ' + new Date(currentSession.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                    currentSession.selectedSlot ? ' · Slot' : ''
+                  )
+                )
+              : h('p', { style: { fontSize: 13, marginTop: 4, color: 'var(--ad-t-2)' } }, 'Ready to start')
+          ),
+          h('div', { className: 'cad-session-stats cad-session-stats--center' },
+            h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Dialed'), h('b', null, sessionDialed)),
+            h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'No pickup'), h('b', { style: { color: 'var(--ad-amber)' } }, sessionNp)),
+            h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Callback'), h('b', { style: { color: 'var(--ad-blue)' } }, sessionCb)),
+            h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'No int.'), h('b', { style: { color: 'var(--ad-red)' } }, sessionNi)),
+            h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Set'), h('b', { style: { color: 'var(--ad-green)' } }, sessionSets)),
+            // Pay tile remains Admin-only (mains earn no per-session pay).
             role === 'admin' && h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Pay'), h('b', null, '$' + sessionPay.toFixed(2)))
-          ), currentSession ? h('button', { className: 'cad-btn ghost danger', onClick: endSessionConfirm }, 'End session →') : h('button', { className: 'cad-btn primary', onClick: () => startDial() }, icon('PhoneOutgoing', 14), 'Start session')),
+          ),
+          currentSession
+            ? h('button', { className: 'cad-btn cad-session-stop', onClick: endSessionConfirm }, icon('Square', 14), 'Stop session')
+            : h('button', { className: 'cad-btn primary', onClick: () => startDial() }, icon('PhoneOutgoing', 14), 'Start session')
+        ),
         h('div', { className: 'cad-card cad-lead-card' }, h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('div', { className: 'cad-inline' }, h('span', { className: 'cad-label' }, 'Now calling'), h('span', { className: 'cad-mono cad-muted', style: { fontSize: 12 } }, queuePos, ' / ', queueTotal || 0), h('div', { className: 'cad-progress', style: { width: 120 } }, h('i', { style: { width: queuePct + '%' } }))), h('div', { className: 'cad-inline' }, h('span', { className: 'cad-pill amber' }, ((activeLead?.npCount || 0) + 1) + ' attempt'), h('span', { className: 'cad-pill' }, icon('Sheet', 10), 'Row ', activeLead?.sheetRow || (demo ? 218 : '-')))), h('div', { className: 'cad-inline', style: { alignItems: 'flex-end', gap: 24 } }, h('div', { style: { flex: 1 } }, h('h2', { className: 'cad-lead-name' }, leadName), h('div', { className: 'cad-inline', style: { marginTop: 8, flexWrap: 'wrap' } }, h('span', { className: 'cad-phone-chip' }, icon('PhoneOutgoing', 14), leadPhone || 'No phone'), leadAge && h('span', { className: 'cad-muted', style: { fontSize: 13 } }, leadAge, demo ? ' · last contacted 2d ago' : ''))), h('button', { className: 'cad-btn primary', style: { height: 52, padding: '0 22px', fontSize: 14 }, onClick: () => running && leadPhone ? dial(leadPhone) : startDial() }, icon('PhoneOutgoing', 16), running ? 'Dial now' : 'Start calling')), h('p', { className: 'cad-note' }, h('span', { className: 'cad-label', style: { marginRight: 8 } }, 'Notes'), leadNotes)),
-        h('div', { className: 'cad-call-actions-sticky' }, h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label' }, 'After-call · keys 1-4'), h('span', { className: 'cad-subtle', style: { fontSize: 11 } }, 'NP · NI auto-advance')), h('div', { className: 'cad-outcomes' }, outcomeButton('np', 'NP', 'No pickup', '1'), outcomeButton('cb', 'CB', 'Callback', '2'), outcomeButton('ni', 'NI', 'No interest', '3'), outcomeButton('set', 'Set', 'Booked', '4'))),
-        h('div', { className: 'cad-inline', style: { flexWrap: 'wrap', gap: 8, alignSelf: 'flex-start' } },
-          running && h('button', { className: 'cad-btn', onClick: pauseDial }, icon('Clock', 14), 'Pause'),
-          h('button', { className: 'cad-btn', disabled: !running || !activeLead || !leadPhone, onClick: skipCurrentLead }, icon('SkipForward', 14), 'Skip lead'),
-          undoInfo && h('button', { className: 'cad-btn primary', onClick: () => doUndo() }, icon('Undo2', 14), 'Undo last')
+        // 0079: outcome row + Skip + Undo collapsed into one sticky block.
+        // Pause is GONE (user said "should not exist") — Stop/Start in the
+        // session strip is the only on/off control. Skip lead is now a peer
+        // of the four outcome buttons (same .cad-outcome surface, neutral
+        // tone), in a 5-up grid. Undo slides in next to Skip when a recent
+        // outcome is undoable. The keyboard-shortcut hint header is now a
+        // proper pill with the "1 · 2 · 3 · 4 · Skip" sequence so the
+        // shortcuts are obvious instead of buried.
+        h('div', { className: 'cad-call-actions-sticky' },
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } },
+            h('span', { className: 'cad-label' }, 'After-call'),
+            h('span', { className: 'cad-kb-hint' },
+              h('span', null, h('kbd', null, '1'), ' NP'),
+              h('span', null, h('kbd', null, '2'), ' CB'),
+              h('span', null, h('kbd', null, '3'), ' NI'),
+              h('span', null, h('kbd', null, '4'), ' Set'),
+              h('span', null, h('kbd', null, 'S'), ' Skip')
+            )
+          ),
+          h('div', { className: 'cad-outcomes cad-outcomes--five' },
+            outcomeButton('np', 'NP', 'No pickup', '1'),
+            outcomeButton('cb', 'CB', 'Callback', '2'),
+            outcomeButton('ni', 'NI', 'No interest', '3'),
+            outcomeButton('set', 'Set', 'Booked', '4'),
+            h('button', {
+              className: 'cad-outcome cad-outcome--skip',
+              disabled: !running || !activeLead || !leadPhone,
+              onClick: skipCurrentLead,
+              type: 'button'
+            },
+              h('span', { className: 'key' }, 'S'),
+              h('span', { className: 'glyph' }, icon('SkipForward', 22)),
+              h('span', { className: 'caption' }, 'Skip lead')
+            )
+          ),
+          undoInfo && h('div', { className: 'cad-inline', style: { marginTop: 10, justifyContent: 'flex-end' } },
+            h('button', { className: 'cad-btn primary', onClick: () => doUndo() }, icon('Undo2', 14), 'Undo last (', undoInfo.status?.toUpperCase?.() || 'last', ')')
+          )
         )
       ),
       h('aside', {
@@ -15555,41 +15688,25 @@ function App() {
             : liveScriptHtml
             ? h('div', { className: 'cad-script-read cad-rich', dangerouslySetInnerHTML: { __html: liveScriptHtml } })
             : h('div', { className: 'cad-script-read' }, h('p', { className: 'cad-subtle' }, 'No calling script saved yet. Tap Edit to write one.')),
-          h('div', { className: 'cad-card', style: { padding: 12, marginTop: 14 } },
-            h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 8 } },
-              h('span', { className: 'cad-label' }, 'Reference'),
-              h('button', { className: 'cad-btn ghost', onClick: () => setRefEditing(p => !p) }, refEditing ? 'Preview' : 'Edit')
-            ),
-            refEditing
-              ? h(React.Fragment, null, cadRichToolbar('ref'), cadRichEditor('ref', refNotes || cfg.refNotes || liveRefHtml || '', true))
-              : liveRefHtml ? h('div', { className: 'cad-rich cad-muted', style: { fontSize: 12, lineHeight: 1.5 }, dangerouslySetInnerHTML: { __html: liveRefHtml } }) : h('p', { className: 'cad-subtle', style: { fontSize: 12 } }, 'No reference notes saved yet.')
-          ),
+          // 0079: Reference card removed entirely. Reference notes live in
+          // settings only — they were duplicating script-body real-estate
+          // and the user explicitly wanted them gone from the call view.
           h('div', { className: 'cad-script-actions' },
             h('button', { className: 'cad-btn', onClick: addObjection }, icon('Sparkles', 13), 'Add objection')
           )
         ),
+        // 0079: Objections panel rebuilt. No Reference tab, no left/right
+        // split. Objections list takes the full width, categories are
+        // static heads (always shown), clicking an objection expands its
+        // talk-track inline. Solves the two big call-mode complaints:
+        // truncated right edge + extra clicks to reveal a list.
         h('div', { className: 'cad-script-tabs' },
           h('div', { className: 'cad-script-tab-head' },
-            h('span', { className: 'cad-script-tab on' }, 'Objections ', h('span', { className: 'cad-mono cad-subtle' }, cadObjections.length)),
-            h('span', { className: 'cad-script-tab' }, 'Reference')
+            h('span', { className: 'cad-script-tab on' }, 'Objections ', h('span', { className: 'cad-mono cad-subtle' }, cadObjections.length))
           ),
-          h('div', { className: 'cad-objections' }, h('div', { className: 'cad-objection-split' },
-            h('div', { className: 'cad-objection-list' },
-              cadObjGroupRender()
-            ),
-            h('div', { className: 'cad-objection-side' },
-              activeObj ? h(React.Fragment, null,
-                h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 8 } },
-                  h('b', null, activeObj.title || 'Objection'),
-                  h('span', { className: 'cad-objection-tools' },
-                    h('button', { className: 'cad-btn ghost', onClick: () => cadEditObjection(activeObj) }, 'Edit'),
-                    h('button', { className: 'cad-btn ghost danger', onClick: () => cadRemoveObjection(activeObj) }, 'Remove')
-                  )
-                ),
-                selectedObjAnswer ? h('div', { className: 'cad-rich', dangerouslySetInnerHTML: { __html: selectedObjAnswer } }) : h('p', { className: 'cad-subtle' }, 'No talk track saved.')
-              ) : h('p', { className: 'cad-subtle' }, 'Pick an objection to show the talk track here.')
-            )
-          ))
+          h('div', { className: 'cad-objections' },
+            cadObjGroupRender()
+          )
         )
       )
     ));
