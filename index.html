@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0094'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0095'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -638,18 +638,32 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
    all the script-tabs space (parent flex:1 handles the actual ceiling). */
 .cad-objections{padding:12px 14px 16px;display:flex;flex-direction:column;gap:10px;flex:1;min-height:0;overflow:auto}
 .cad-objcat{display:flex;flex-direction:column;gap:6px}
-.cad-objcat-head.static{padding:6px 4px 2px;display:flex;align-items:center;gap:8px;color:var(--ad-t-2);font-size:10px;font-weight:850;letter-spacing:.08em;text-transform:uppercase}
-.cad-objcat-head .cad-objcat-label{flex:1}
-.cad-objcat-head .cad-objcat-count{padding:1px 7px;border-radius:999px;background:var(--ad-bg-3);color:var(--ad-t-3);font-size:10px;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700}
-.cad-objcat-body{display:flex;flex-direction:column;gap:5px}
-.cad-objection-wrap{display:flex;flex-direction:column}
-.cad-objection-wrap.on{background:var(--ad-brass-dim);border-radius:10px;border:1px solid var(--ad-brass-line)}
-.cad-objection{padding:10px 12px;border-radius:9px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:12px;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;cursor:pointer;width:100%;transition:background .12s,border-color .12s,color .12s}
-.cad-objection:hover{border-color:var(--ad-line-2);background:var(--ad-bg-3)}
-.cad-objection.on{border-color:transparent;background:transparent;color:var(--ad-brass-2);font-weight:600}
-.cad-objection-caret{font-size:11px;opacity:.7}
-.cad-objection-answer-inline{padding:8px 12px 12px;color:var(--ad-t-1);font-size:12.5px;line-height:1.6}
+/* 0095: lighter category head — no uppercase shouty letters, no
+   heavy border. Just a meta row with a thin divider so the category
+   reads as a section break rather than a button. */
+.cad-objcat-head.static{padding:10px 4px 6px;display:flex;align-items:center;gap:8px;color:var(--ad-t-2);font-size:11.5px;font-weight:700;letter-spacing:.01em;text-transform:none;border-bottom:1px solid var(--ad-line-1);margin-bottom:2px}
+.cad-objcat-head .cad-objcat-label{flex:1;color:var(--ad-t-1)}
+.cad-objcat-head .cad-objcat-count{padding:1px 8px;border-radius:999px;background:transparent;color:var(--ad-t-3);font-size:10px;font-family:'JetBrains Mono',ui-monospace,monospace;font-weight:700;border:1px solid var(--ad-line-1)}
+.cad-objcat-body{display:flex;flex-direction:column;gap:6px}
+/* Single-column home variant — no left border, no inset padding so
+   each objection row reads as a clean lightweight pill. */
+.cad-objection-list--single .cad-objcat-body{margin:0;padding-left:0;border-left:0}
+.cad-objection-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:24px 12px;border:1px dashed var(--ad-line-1);border-radius:12px;background:var(--ad-bg-2)}
+.cad-objection-wrap{display:flex;flex-direction:column;border-radius:10px;transition:background .15s,border-color .15s}
+/* 0095: lighter open-state — no full brass-dim flood, just a thin
+   left rail in brass + tinted bg so the row reads as "expanded"
+   without screaming. */
+.cad-objection-wrap.on{background:linear-gradient(90deg,var(--ad-brass-dim) 0,transparent 60%);border:1px solid var(--ad-brass-line);box-shadow:0 0 0 1px var(--ad-brass-dim) inset}
+.cad-objection{padding:11px 14px;border-radius:10px;background:transparent;border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:13px;display:flex;justify-content:space-between;align-items:center;gap:10px;text-align:left;cursor:pointer;width:100%;transition:background .12s,border-color .12s,color .12s,transform .08s}
+.cad-objection:hover{border-color:var(--ad-brass-line);background:var(--ad-bg-2);transform:translateX(2px)}
+.cad-objection.on{border-color:transparent;background:transparent;color:var(--ad-brass-2);font-weight:600;transform:none}
+.cad-objection.on:hover{transform:none}
+.cad-objection-caret{font-size:12px;opacity:.6;transition:transform .15s,opacity .15s}
+.cad-objection.on .cad-objection-caret{opacity:1;color:var(--ad-brass-2)}
+.cad-objection-answer-inline{padding:4px 14px 14px;color:var(--ad-t-1);font-size:13px;line-height:1.65;animation:cadObjReveal .18s ease-out}
 .cad-objection-answer-inline .cad-rich{margin-top:4px}
+.cad-objection-answer-inline .cad-objection-tools .cad-btn{padding:4px 10px;font-size:11px}
+@keyframes cadObjReveal{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
 .cad-objection-answer{margin-top:8px;padding:11px;border-radius:10px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:12px;line-height:1.55}
 /* 0077: collapsible objection categories. Replaces the per-row "common/
    uncommon" pill — the category is now the section header, and clicking
@@ -693,21 +707,41 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
    "pay / leads / scripts / calendars / gamification" are scannable
    at a glance. The icon + emoji render through inline copy in the JSX. */
 .cad-modal .cad-card{position:relative}
-.cad-section-pay{border-left:3px solid var(--ad-green);padding-left:11px}
-.cad-section-leads{border-left:3px solid var(--ad-amber);padding-left:11px}
-.cad-section-script{border-left:3px solid var(--ad-brass);padding-left:11px}
-.cad-section-cal{border-left:3px solid var(--ad-blue);padding-left:11px}
-.cad-section-gamify{border-left:3px solid oklch(0.72 0.18 320);padding-left:11px}
+/* 0095: lighter admin-config sections — slimmer left rail, subtle
+   tone-tinted bg, less aggressive borders. Keeps the colour-coded
+   personality but stops the modal from feeling like five stacked
+   bordered slabs. */
+.cad-section-pay,.cad-section-leads,.cad-section-script,.cad-section-cal,.cad-section-gamify{border:none!important;border-left:2px solid currentColor!important;border-radius:10px;padding-left:14px!important;padding-top:12px!important;padding-bottom:12px!important;background:linear-gradient(90deg,rgba(255,255,255,.018),transparent 70%)!important;box-shadow:none!important;margin-top:8px!important}
+.cad-section-pay{color:var(--ad-green)}
+.cad-section-leads{color:var(--ad-amber)}
+.cad-section-script{color:var(--ad-brass-2)}
+.cad-section-cal{color:var(--ad-blue)}
+.cad-section-gamify{color:oklch(0.78 0.18 320)}
+/* descendant text resets so the rail tint doesn't bleed into body copy */
+.cad-section-pay,.cad-section-leads,.cad-section-script,.cad-section-cal,.cad-section-gamify{color:initial}
+.cad-section-pay{border-left-color:var(--ad-green)!important}
+.cad-section-leads{border-left-color:var(--ad-amber)!important}
+.cad-section-script{border-left-color:var(--ad-brass)!important}
+.cad-section-cal{border-left-color:var(--ad-blue)!important}
+.cad-section-gamify{border-left-color:oklch(0.72 0.18 320)!important}
 /* 0082: rank-card grid for the Main rank requirements panel. Each card
    has a coloured gradient head (rank emoji + label + achievement
    pct), a body with the threshold input + a tiny progress bar that
    uses the same gradient. Achieved cards lift to a coloured border
    + glow shadow so the user sees their current standing at a glance. */
 .cad-rank-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
-.cad-rank-card{display:flex;flex-direction:column;border-radius:14px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2);overflow:hidden;transition:transform .12s,box-shadow .18s,border-color .18s}
+.cad-rank-card{display:flex;flex-direction:column;border-radius:14px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2);overflow:hidden;transition:transform .12s,box-shadow .18s,border-color .18s;position:relative}
 .cad-rank-card.achieved{transform:translateY(-1px)}
-.cad-rank-card__head{display:flex;align-items:center;gap:12px;padding:12px 14px}
-.cad-rank-card__emoji{font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))}
+/* 0095: corner sparkle for achieved tiers — purely decorative, but
+   gives the gamification panels real "trophy" energy without
+   touching layout. */
+.cad-rank-card.achieved::after{content:"✨";position:absolute;top:6px;right:8px;font-size:14px;opacity:.85;animation:cadSparkle 2.6s ease-in-out infinite;pointer-events:none}
+@keyframes cadSparkle{0%,100%{transform:scale(1) rotate(0);opacity:.85}50%{transform:scale(1.18) rotate(12deg);opacity:1}}
+.cad-rank-card__head{display:flex;align-items:center;gap:12px;padding:14px 16px;position:relative;overflow:hidden}
+.cad-rank-card__head::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 78% 22%,rgba(255,255,255,.18),transparent 55%);pointer-events:none}
+.cad-rank-card__emoji{font-size:32px;line-height:1;filter:drop-shadow(0 2px 6px rgba(0,0,0,.45));position:relative;z-index:1}
+.cad-rank-card.achieved .cad-rank-card__emoji{animation:cadRankBob 3.4s ease-in-out infinite}
+@keyframes cadRankBob{0%,100%{transform:translateY(0)}50%{transform:translateY(-2px)}}
 .cad-rank-card__body{padding:12px 14px;display:flex;flex-direction:column;gap:5px}
 .cad-rank-card__label{color:var(--ad-t-3);font-size:10px;font-weight:850;letter-spacing:.06em;text-transform:uppercase}
 .cad-rank-card__body input{width:100%;min-height:36px;padding:8px 10px;border-radius:9px;border:1px solid var(--ad-line-2);background:var(--ad-bg-1);color:var(--ad-t-0);font-size:13px;font-variant-numeric:tabular-nums}
@@ -963,7 +997,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0094';
+window.APP_VERSION='2026.05.05.0095';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -16358,18 +16392,25 @@ function App() {
         ? h('div', { className: 'cad-script-read cad-rich', dangerouslySetInnerHTML: { __html: liveScriptHtml } })
         : h('div', { className: 'cad-script-read' }, h('p', { className: 'cad-subtle' }, 'No calling script saved yet. Tap Edit to write one.'))
     );
-    var cadObjectionPanel = compact => h('div', { className: 'cad-card cad-editor-card' },
-      h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Objection handles'), h('button', { className: 'cad-btn', onClick: addObjection }, icon('Sparkles', 13), 'Add')),
-      h('div', { className: 'cad-objection-split' },
-        h('div', { className: 'cad-objection-list' },
-          cadObjGroupRender()
-        ),
-        h('div', { className: 'cad-objection-side' },
-          activeObj ? h(React.Fragment, null,
-            h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 8 } }, h('b', null, activeObj.title || 'Objection'), h('span', { className: 'cad-objection-tools' }, h('button', { className: 'cad-btn ghost', onClick: () => cadEditObjection(activeObj) }, 'Edit'), h('button', { className: 'cad-btn ghost danger', onClick: () => cadRemoveObjection(activeObj) }, 'Remove'))),
-            selectedObjAnswer ? h('div', { className: 'cad-rich', dangerouslySetInnerHTML: { __html: selectedObjAnswer } }) : h('p', { className: 'cad-subtle' }, 'No talk track saved.')
-          ) : h('p', { className: 'cad-subtle' }, 'Pick an objection to show the talk track here.')
+    // 0095: home objection panel rework — single column instead of the
+    // split-with-right-pane (the right pane just duplicated the inline
+    // answer, doubling the visual weight). Category heads now read as
+    // light meta-labels rather than shouty uppercase buttons.
+    var cadObjectionPanel = compact => h('div', { className: 'cad-card cad-editor-card cad-objection-card' },
+      h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } },
+        h('span', { className: 'cad-label' }, '🎯 Objection handles'),
+        h('span', { className: 'cad-inline', style: { gap: 8 } },
+          h('span', { className: 'cad-pill' }, cadObjections.length, ' total'),
+          h('button', { className: 'cad-btn', onClick: addObjection }, icon('Sparkles', 13), 'Add')
         )
+      ),
+      h('div', { className: 'cad-objection-list cad-objection-list--single' },
+        cadObjections.length
+          ? cadObjGroupRender()
+          : h('div', { className: 'cad-objection-empty' },
+              h('p', { className: 'cad-subtle' }, 'No objection handles saved yet.'),
+              h('button', { className: 'cad-btn primary', onClick: addObjection }, '+ Add your first objection')
+            )
       )
     );
     var cadReferencePanel = compact => h('div', { className: 'cad-card cad-editor-card' },
@@ -17661,12 +17702,61 @@ function App() {
         h('div', { className: 'cad-card cad-section-gamify', style: { padding: 14, marginTop: 12 } },
           h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label', style: { color: 'oklch(0.78 0.18 320)' } }, '🏆 Rank tiers (per-admin gamification)'), h('span', { className: 'cad-pill' }, '6 tiers')),
           h('p', { className: 'cad-page-note', style: { marginBottom: 10 } }, 'Each tier has its own $/hr and the minimum appointments needed to reach it. Used for the rank-up celebrations on the admin\'s call view.'),
-          h('div', { className: 'cad-admin-rate-grid' }, tierNames.map((name, i) => {
-            var tierEmoji = ['🥉', '🥈', '🥇', '💎', '❤', '👑'][i] || '⭐';
-            return h('div', { className: 'cad-card', style: { padding: 12, borderTop: '3px solid ' + (['#cd7f32', '#c0c0c0', '#ffd700', '#b9f2ff', '#e0115f', '#a020f0'][i] || 'var(--ad-brass)') }, key: name },
-              h('b', null, tierEmoji, ' ', name),
-              cadField('$/hr', h('input', { type: 'number', min: 0, step: 1, value: rates[i] ?? 0, onChange: e => cadUpdateAdminArray(em, 'payRates', i, e.target.value, [8, 10, 12, 16, 18, 20]) })),
-              cadField('Min appts', h('input', { type: 'number', min: 0, step: 1, value: mins[i] ?? 0, onChange: e => cadUpdateAdminArray(em, 'tierMins', i, e.target.value, [0, 20, 40, 80, 150, 200]) }))
+          // 0095: admin tier cards upgraded to match the Main rank-card
+          // visual language — gradient head, big emoji, glow on achieved
+          // tier, mini-progress bar. Was a thin border-top stripe with
+          // no visual punch.
+          h('div', { className: 'cad-rank-grid' }, tierNames.map((name, i) => {
+            var tierEmoji = ['🥉', '🥈', '🥇', '💎', '❤️', '👑'][i] || '⭐';
+            var tierColor = ['#cd7f32', '#c0c0c0', '#ffd700', '#b9f2ff', '#e0115f', '#a020f0'][i] || 'var(--ad-brass)';
+            var tierBg = [
+              'linear-gradient(135deg,#8b5a1c,#cd7f32)',
+              'linear-gradient(135deg,#7e8896,#c0c0c0)',
+              'linear-gradient(135deg,#c79100,#ffd700)',
+              'linear-gradient(135deg,#5b8aa6,#b9f2ff)',
+              'linear-gradient(135deg,#9b0d44,#e0115f)',
+              'linear-gradient(135deg,#6a17a0,#a020f0)'
+            ][i] || 'linear-gradient(135deg,var(--ad-brass),var(--ad-brass-2))';
+            var tierGlow = [
+              'rgba(205,127,50,.32)',
+              'rgba(192,192,192,.32)',
+              'rgba(255,215,0,.36)',
+              'rgba(185,242,255,.32)',
+              'rgba(224,17,95,.36)',
+              'rgba(160,32,240,.36)'
+            ][i] || 'rgba(214,168,122,.30)';
+            var minAppts = mins[i] ?? 0;
+            var monthlyAdminAppts = (() => {
+              try {
+                var ss = (adminSessions || {})[em] || [];
+                var d = new Date();
+                var month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+                return ss.reduce((a, s) => a + (String(s.startTime || s.date || '').startsWith(month) ? (s.sets || 0) : 0), 0);
+              } catch (_e) { return 0; }
+            })();
+            var hit = monthlyAdminAppts >= minAppts;
+            var pct = minAppts > 0 ? Math.min(100, Math.round(monthlyAdminAppts / minAppts * 100)) : 100;
+            return h('div', {
+              className: 'cad-rank-card' + (hit ? ' achieved' : ''),
+              key: name,
+              style: { borderColor: hit ? tierColor : 'var(--ad-line-1)', boxShadow: hit ? '0 0 24px ' + tierGlow : 'none' }
+            },
+              h('div', { className: 'cad-rank-card__head', style: { background: tierBg } },
+                h('span', { className: 'cad-rank-card__emoji' }, tierEmoji),
+                h('div', null,
+                  h('b', { style: { color: '#fff', fontSize: 14, textShadow: '0 1px 2px rgba(0,0,0,.4)' } }, name),
+                  h('p', { style: { fontSize: 10.5, color: 'rgba(255,255,255,.82)', marginTop: 2, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 } }, hit ? '✓ Achieved' : pct + '% there')
+                )
+              ),
+              h('div', { className: 'cad-rank-card__body' },
+                cadField('💵 $/hr', h('input', { type: 'number', min: 0, step: 1, value: rates[i] ?? 0, onChange: e => cadUpdateAdminArray(em, 'payRates', i, e.target.value, [8, 10, 12, 16, 18, 20]) })),
+                cadField('🎯 Min appts', h('input', { type: 'number', min: 0, step: 1, value: minAppts, onChange: e => cadUpdateAdminArray(em, 'tierMins', i, e.target.value, [0, 20, 40, 80, 150, 200]) })),
+                minAppts > 0 && h('div', { className: 'cad-mini-progress', style: { marginTop: 6 } }, h('i', { style: { width: pct + '%', background: tierBg } })),
+                h('p', { className: 'cad-rank-card__progress' },
+                  h('b', { style: { color: hit ? tierColor : 'var(--ad-t-2)' } }, monthlyAdminAppts),
+                  ' / ', minAppts, ' this month'
+                )
+              )
             );
           }))
         ),
