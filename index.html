@@ -7395,6 +7395,32 @@ function App() {
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+
+  // ── ckg leave-guard: ask before navigating away with an active session ──
+  // Closure refs so the guard always sees the latest endSession callable.
+  var endSessionRefForGuard = useRef(null);
+  useEffect(() => {
+    if (typeof window.ckgRegisterLeaveGuard !== 'function') return;
+    window.ckgRegisterLeaveGuard({
+      isDirty: function () {
+        var s = sessionRef.current;
+        return !!(s && !s.ended);
+      },
+      describe: function () {
+        return {
+          title: 'AutoDial session is active',
+          message: 'A calling session is in progress. Stop the session before leaving so it gets recorded properly?',
+          primaryLabel: 'Stop session',
+          primaryAction: async function () {
+            var endFn = endSessionRefForGuard.current;
+            if (typeof endFn === 'function') {
+              try { endFn(); } catch (e) { console.warn('[ckgLeaveGuard] endSession threw:', e?.message || e); }
+            }
+          },
+        };
+      },
+    });
+  }, []);
   var [streak, setStreak] = useState(0);
   var [bestStreak, setBestStreak] = useState(load('bestStreak') || 0);
   var [achievements, setAchievements] = useState(load('achievements') || []);
@@ -13285,6 +13311,12 @@ function App() {
       } catch (_logErr) {}
     }
   };
+  // Keep the ckg leave-guard ref pointing at the freshest endSession
+  // closure so the modal's "Stop session" button always commits with
+  // the latest state (payroll deltas, timesheet writes, etc.).
+  useEffect(() => {
+    if (endSessionRefForGuard) endSessionRefForGuard.current = endSession;
+  });
   // Wraps endSession with a stats-aware confirmation. The raw endSession
   // function commits payroll, writes to the timesheet, and clears state — all
   // irreversible without a manual undo. A single misclick on the End button
