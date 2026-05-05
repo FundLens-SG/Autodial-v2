@@ -2138,15 +2138,58 @@ window.gDrive={
   // ═══ allocated, so a single per-session lookup is enough.
   async ensureCkgToolsFolder(toolName){
     var tool=toolName||'Autodial';
+    // Prefer the shared CKGTools folder helper (loaded by middleware
+    // on /tools/* pages) so we share the cached folder IDs and the
+    // one-time migration logic with the rest of the suite. Falls back
+    // to the local primitive when the shared helper isn't available
+    // (standalone use). The shared helper canonicalises 'autodial' →
+    // 'AutoDial', but for back-compat with legacy 'CKGTools/Autodial'
+    // folders that already exist for some users, we ALSO check the
+    // local cache first so existing files remain reachable.
+    var key='_tool_'+tool;
+    if(this[key]) return this[key];
+    if (window.ckgDriveFolders && typeof window.ckgDriveFolders.ensureToolFolder === 'function') {
+      // Wire the token getter for the shared helper if not already.
+      if (!window._ckgGetDriveToken && typeof gAuth !== 'undefined' && typeof gAuth.token === 'function') {
+        window._ckgGetDriveToken = async function () { try { return await gAuth.token(); } catch (_) { return null; } };
+      }
+      try {
+        var shared = await window.ckgDriveFolders.ensureToolFolder('autodial');
+        if (shared) { this[key] = shared; return shared; }
+      } catch (e) { console.warn('[gDrive.ensureCkgToolsFolder] shared helper failed:', e?.message || e); }
+    }
+    // Local fallback (legacy path)
     if(!this._ckgRootId){
       this._ckgRootId=await this.ensureFolder('CKGTools');
     }
     if(!this._ckgRootId)return'';
-    var key='_tool_'+tool;
     if(!this[key]){
       this[key]=await this.ensureFolder(tool,this._ckgRootId);
     }
     return this[key]||'';
+  },
+  // ═══ Same idea but nests one more level. Used so AutoDial sheets land
+  // ═══ under CKGTools/AutoDial/Sheets, leaving room for future sub-areas
+  // ═══ (CKGTools/AutoDial/Backups, etc.) without flat-folder clutter.
+  async ensureCkgToolsSubfolder(toolName, subName){
+    var tool=toolName||'Autodial';
+    var sub=subName||'';
+    if (!sub) return await this.ensureCkgToolsFolder(tool);
+    var cacheKey='_sub_'+tool+'_'+sub;
+    if (this[cacheKey]) return this[cacheKey];
+    if (window.ckgDriveFolders && typeof window.ckgDriveFolders.ensureSubfolder === 'function') {
+      if (!window._ckgGetDriveToken && typeof gAuth !== 'undefined' && typeof gAuth.token === 'function') {
+        window._ckgGetDriveToken = async function () { try { return await gAuth.token(); } catch (_) { return null; } };
+      }
+      try {
+        var shared = await window.ckgDriveFolders.ensureSubfolder('autodial', sub);
+        if (shared) { this[cacheKey] = shared; return shared; }
+      } catch (e) { console.warn('[gDrive.ensureCkgToolsSubfolder] shared helper failed:', e?.message || e); }
+    }
+    var parent = await this.ensureCkgToolsFolder(tool);
+    if (!parent) return '';
+    this[cacheKey] = await this.ensureFolder(sub, parent);
+    return this[cacheKey] || '';
   },
   // ═══ Find or create a Google Sheet inside the given folder. Returns sheet ID.
   async ensureSheetFile(folderId,name){
@@ -2242,7 +2285,7 @@ window.gScripts={
     // Calling script + Reference notes + Objection handles ALL live in
     // one file (the "AutoDial Scripts" workbook with three tabs), per
     // the user's "should all just be under the same file" requirement.
-    var folderId=await gDrive.ensureCkgToolsFolder('Autodial');
+    var folderId=await gDrive.ensureCkgToolsSubfolder('Autodial','Sheets');
     if(!folderId)return'';
     var sheetId=await gDrive.ensureSheetFile(folderId,'AutoDial Scripts');
     if(!sheetId)return'';
@@ -2392,7 +2435,7 @@ window.gScripts={
 // edit in Sheets if needed.
 window.gWaTpl={
   async ensureFile(){
-    var folderId=await gDrive.ensureCkgToolsFolder('Autodial');
+    var folderId=await gDrive.ensureCkgToolsSubfolder('Autodial','Sheets');
     if(!folderId)return'';
     var sheetId=await gDrive.ensureSheetFile(folderId,'AutoDial WhatsApp Templates');
     if(!sheetId)return'';
@@ -12819,7 +12862,7 @@ function App() {
     try {
       var adminEmails = Object.keys(adminConfigs || {}).filter(em => em && em.includes('@'));
       if (adminEmails.length) {
-        var folderId = await window.gDrive.ensureCkgToolsFolder('Autodial');
+        var folderId = await window.gDrive.ensureCkgToolsSubfolder('Autodial','Sheets');
         await Promise.all(adminEmails.map(async em => {
           try {
             await window.gDrive.shareFileWithEmail(fileId, em, 'reader');
@@ -13186,7 +13229,7 @@ function App() {
     }
     if (!(await confirmAsync('Move your linked AutoDial sheet into "CKGTools / Autodial" in your Drive? You can move it back manually anytime.', { title: 'Organize Drive', confirmLabel: 'Move' }))) return false;
     toast('↻ Organizing Drive…', 'info');
-    var folderId = await window.gDrive.ensureCkgToolsFolder('Autodial');
+    var folderId = await window.gDrive.ensureCkgToolsSubfolder('Autodial','Sheets');
     if (!folderId) {
       toast('Could not create/find CKGTools / Autodial folder', 'err');
       return false;
