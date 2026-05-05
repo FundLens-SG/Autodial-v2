@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0089'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0090'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -798,6 +798,35 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
   .outcome-grid--call{grid-template-columns:1fr 1fr!important}
   .outcome-grid--call .outcome{min-height:76px!important}
 }
+/* 0090: mobile layout fixes — the cad-rail (240px settings sidebar) was
+   eating half the viewport on phones, leaving content text wrapping one
+   word per line; the after-call outcomes were collapsing to a single
+   column instead of the intended 2x2; and the lead-card title row
+   couldn't wrap so the phone-pill + Start-calling button got crammed
+   onto the same line. Reset all three here, AFTER the earlier 900px
+   block so this rule wins the cascade. */
+@media(max-width:900px){
+  .cad-settings{flex-direction:column;min-height:0}
+  .cad-rail{width:auto;flex-direction:row;overflow-x:auto;padding:10px 12px;border-right:none;border-bottom:1px solid var(--ad-line-1);gap:6px}
+  .cad-rail>.cad-label{display:none}
+  .cad-rail .cad-tab{white-space:nowrap;flex:0 0 auto;padding:9px 14px}
+  .cad-settings-main{padding:18px 14px;gap:14px}
+  /* outcomes: explicit 2x2 grid that wins over the line-787 reset */
+  .cad-outcomes,.cad-outcomes--five{grid-template-columns:repeat(2,1fr)}
+  .cad-outcome{min-height:64px;padding:11px 12px;gap:3px}
+  .cad-outcome .glyph{font-size:18px}
+  .cad-outcome .caption{font-size:10px}
+  .cad-outcomes--five .cad-outcome--skip{grid-column:1/-1}
+  /* lead-card title row: stack vertically so the phone-chip + Dial CTA
+     don't fight for the same horizontal slice on a 360px viewport */
+  .cad-lead-card{padding:18px}
+  .cad-lead-card .cad-inline{flex-wrap:wrap;align-items:flex-start!important;gap:12px!important}
+  .cad-lead-card .cad-btn.primary{width:100%;height:48px!important}
+  /* settings head version pill drops below the title block (already in
+     line 787 by flex-direction:column on cad-settings-head, but clarify
+     pill alignment so it doesn't bleed into the description) */
+  .cad-settings-head .cad-pill{align-self:flex-start}
+}
 </style>
 </head>
 <body>
@@ -882,7 +911,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0089';
+window.APP_VERSION='2026.05.05.0090';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
