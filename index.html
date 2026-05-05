@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0079'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0080'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -602,6 +602,31 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-settings input,.cad-settings select{width:100%;min-height:40px;padding:9px 11px;border-radius:10px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font:13px 'Inter',system-ui,sans-serif}.cad-settings input::placeholder{color:var(--ad-t-3)}
 .cad-settings-stack{display:flex;flex-direction:column;gap:14px}.cad-settings-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px}.cad-setup-list{display:flex;flex-direction:column;gap:8px}.cad-setup-item{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2);color:var(--ad-t-1);display:flex;align-items:center;justify-content:space-between;gap:14px;text-align:left}.cad-setup-item.done{background:var(--ad-green-dim);border-color:oklch(0.74 0.16 150 / .28);color:var(--ad-green)}.cad-setup-item b{font-size:13px}.cad-setup-item small{display:block;margin-top:3px;color:var(--ad-t-3);font-size:11px;line-height:1.35}.cad-setup-item.done small{color:color-mix(in oklab,var(--ad-green) 74%,transparent)}
 .cad-admin-list{display:flex;flex-direction:column;gap:8px}.cad-admin-row2{display:grid;grid-template-columns:auto minmax(160px,1fr) auto;gap:12px;align-items:center;padding:12px;border-radius:12px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2);color:var(--ad-t-0)}.cad-admin-row2 .cad-mini-avatar{width:32px;height:32px}
+/* 0080: clickable admin row — hover lifts the border to brass to make the
+   "tap to edit pay/leads/script/calendar" affordance obvious. */
+.cad-admin-row2--clickable{cursor:pointer;text-align:left;width:100%}
+.cad-admin-row2--clickable:hover{border-color:var(--ad-brass-line);background:var(--ad-bg-3)}
+.cad-admin-row2--clickable:focus-visible{outline:2px solid var(--ad-brass);outline-offset:2px}
+/* 0080: Google-connect pill in the top taskbar. Replaces the Workspace
+   settings page Connect button so the connection state is visible from
+   anywhere. Hover/active treatments mirror the cad-pill family but with
+   pointer + a subtle bg shift so it reads as a button, not chrome. */
+.cad-google-pill{cursor:pointer;border:1px solid currentColor;display:inline-flex;align-items:center;gap:6px;padding:4px 10px;font-size:11.5px;font-weight:700;letter-spacing:.02em;transition:filter .12s,transform .08s}
+.cad-google-pill:hover{filter:brightness(1.12)}
+.cad-google-pill:active{transform:scale(.97)}
+/* 0080: Pill colour family extension — blue (calendars) wasn't defined
+   prior to this. Used in admin row's "📅 N cal" indicator. */
+.cad-pill.blue{background:var(--ad-blue-dim);border-color:var(--ad-blue-line,oklch(0.72 0.12 240 / 0.34));color:var(--ad-blue)}
+/* 0080: Per-section header colour stripes inside the admin-config modal.
+   Each section header gets a left-border colour matching its concept so
+   "pay / leads / scripts / calendars / gamification" are scannable
+   at a glance. The icon + emoji render through inline copy in the JSX. */
+.cad-modal .cad-card{position:relative}
+.cad-section-pay{border-left:3px solid var(--ad-green);padding-left:11px}
+.cad-section-leads{border-left:3px solid var(--ad-amber);padding-left:11px}
+.cad-section-script{border-left:3px solid var(--ad-brass);padding-left:11px}
+.cad-section-cal{border-left:3px solid var(--ad-blue);padding-left:11px}
+.cad-section-gamify{border-left:3px solid oklch(0.72 0.18 320);padding-left:11px}
 /* 0078: bump readability of the team roster small-print. The legacy
    .cad-subtle (var(--ad-t-3) = #6c7585) was barely legible against the
    bg-2 card; lift it to t-2 inside admin rows only — other places where
@@ -749,7 +774,7 @@ var a1Col = window.a1Col;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0079';
+window.APP_VERSION='2026.05.05.0080';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -15423,6 +15448,22 @@ function App() {
         cadTopTab('appts', 'Appts'),
         h('button', { className: 'cad-tab ' + (cadMoreKeys.includes(tab) ? 'on' : ''), onClick: () => setShowMoreMenu(true) }, icon('More', 13), 'More'),
         h('button', { className: 'cad-tab cad-icon-tab ' + (tab === 'settings' ? 'on' : ''), title: 'Settings', onClick: () => { if (role === 'main') setMainMode('manage'); setTab('settings'); setSettingsSubtab('prefs'); } }, icon('Settings', 13)),
+        // 0080: Google-connect pill in the top taskbar — replaces the
+        // Workspace settings page that used to host the Connect button.
+        // Mains see "🔗 Google" (green when connected, amber when not);
+        // click triggers connectG (re-auth on connected, fresh OAuth when
+        // disconnected). Admins are read-only — Main controls Google
+        // access for the team — so the pill is informational for them.
+        role !== 'admin' && h('button', {
+          className: 'cad-pill cad-google-pill ' + (gOk ? 'green' : 'amber'),
+          title: gOk ? 'Google connected · click to reconnect (refresh token + re-pull tabs/calendars)' : 'Google not connected · click to authorise',
+          onClick: gOk ? () => connectG() : connectG,
+          type: 'button'
+        }, h('span', { className: 'cad-dot' }), gOk ? 'Google ✓' : 'Connect Google'),
+        role === 'admin' && h('span', {
+          className: 'cad-pill ' + (gOk ? 'green' : 'amber'),
+          title: gOk ? 'Google access propagated from Main' : 'Waiting for Main to share Google access'
+        }, h('span', { className: 'cad-dot' }), gOk ? 'Google ✓' : 'Google · pending'),
         h('div', { className: 'cad-avatar', title: (syncStatus || 'sync') + ' · ' + (window.APP_VERSION || 'local') }, initials)
       )
     );
@@ -15753,21 +15794,28 @@ function App() {
       ['Objection handles', liveObjections.length + ' saved', 'Sparkles'],
       ['WhatsApp templates', waTemplateCount + ' template' + (waTemplateCount === 1 ? '' : 's'), 'Bell']
     ];
+    // 0080: Workspace tab removed entirely. Google-connect is now a one-
+    // button surface in the top taskbar (see avatar row); lead-source
+    // search and calendar destination move into Team → Admin config so
+    // each admin's leads/calendar live next to their pay/share settings.
     var settingsNav = [
       ['setup', 'Setup', 'Check'],
       ['prefs', 'Calling', 'PhoneOutgoing'],
-      ['integr', 'Workspace', 'Sheet'],
       ['team', 'Team', 'Users'],
       ['data', 'Sync', 'Refresh'],
       ['owner', 'Owner', 'Star']
     ].filter(x => x[0] !== 'team' || isManageMode);
-    var activeSettingsKey = settingsSubtab === 'sync' ? 'data' : settingsSubtab;
+    // Legacy 'integr' (Workspace) routes fall through to 'team' so any
+    // saved deep-link / nav state from before 0080 still lands somewhere
+    // useful instead of the setup splash.
+    var activeSettingsKey = settingsSubtab === 'sync' ? 'data'
+                          : settingsSubtab === 'integr' ? 'team'
+                          : settingsSubtab;
     if (!settingsNav.some(x => x[0] === activeSettingsKey)) activeSettingsKey = 'setup';
     var settingsCopy = {
       setup: ['Setup', 'Get the workspace ready without touching call state.'],
-      prefs: ['Calling', 'Scripts, objections, WhatsApp templates, AI keys.'],
-      integr: ['Workspace', 'Google Sheets, Calendar, Drive, and lead source wiring.'],
-      team: ['Team', 'Admin roster, shared sheets, scripts, and assignment status.'],
+      prefs: ['Calling', 'WhatsApp templates and AI keys. Scripts + objections live on the call view itself.'],
+      team: ['Team', 'Admin roster, shared sheets, scripts, calendars, pay, and gamification — all per-admin.'],
       data: ['Sync', 'Health checks, pending writes, pull/flush tools, and cache version.'],
       owner: ['Owner', 'Account authority, role, and system-level controls.']
     };
@@ -15871,15 +15919,34 @@ function App() {
       next[idx] = Number(value) || 0;
       cadUpdateAdminConfig(em, { [key]: next });
     };
+    // 0080: Lead source picker moved into Team page (was previously on the
+    // Workspace tab which is now killed). Sits at the top so Mains can
+    // wire the master sheet, then assign it to admins below.
+    var teamLeadSourceCard = role === 'main' && h('div', { className: 'cad-card cad-editor-card' },
+      h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } },
+        h('span', { className: 'cad-label' }, '📒 Master lead source'),
+        h('span', { className: 'cad-pill' + (cfg.sheetId ? ' green' : '') }, cfg.sheetTab || 'no tab')
+      ),
+      h('p', { className: 'cad-page-note' }, 'Pick the workbook + tab that holds your raw leads. Use the "Assign to admins" button below to push this to every admin in one click.'),
+      fieldBlock('Search Google Sheets by name', h('input', { value: sheetQ, placeholder: 'Type sheet name - results update automatically', onChange: e => queueSheetNameSearch(e.target.value) }), sheetSearching ? 'Searching Drive...' : cfg._sheetName ? 'Selected: ' + cfg._sheetName : 'Type at least 2 characters.'),
+      sheetResults.length > 0 && h('div', { className: 'cad-sheet-results', style: { marginTop: 10, marginBottom: 10 } }, sheetResults.map(f => h('button', { className: 'cad-option', key: f.id, onClick: () => { setCfg(s => ({ ...s, sheetId: f.id, _sheetName: f.name || s._sheetName || '' })); setSheetQ(f.name || ''); setSheetResults([]); fetchTabs(f.id); } }, h('span', null, h('b', null, f.name || 'Untitled sheet'), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, f.modifiedTime ? 'Modified ' + new Date(f.modifiedTime).toLocaleString('en-SG') : f.id)), h('span', { className: 'cad-subtle' }, '>')))),
+      sTabs.length > 0 && fieldBlock('Sheet tab', h('select', { value: cfg.sheetTab || '', onChange: e => setCfg(s => ({ ...s, sheetTab: e.target.value })) }, h('option', { value: '' }, 'Select tab'), sTabs.map(t => h('option', { key: t.id || t.title, value: t.title }, t.title, ' (', t.rows, ' rows)')))),
+      h('div', { className: 'cad-action-grid' },
+        h('button', { className: 'cad-btn primary', onClick: fetchLeads, disabled: !cfg.sheetTab || sLoad }, sLoad ? 'Fetching' : '↓ Fetch leads now'),
+        h('button', { className: 'cad-btn', onClick: () => fileRef.current && fileRef.current.click() }, '⬆ Upload file'),
+        h('button', { className: 'cad-btn', disabled: !(cfg.sheetId && cfg.sheetTab) || !adminEntries2.length, onClick: () => assignCurrentLeadSourceToAdmins(adminEntries2.map(([em]) => em)) }, '👥 Assign to admins')
+      )
+    );
     var teamPage = h('div', { className: 'cad-settings-stack' },
+      teamLeadSourceCard,
       h('div', { className: 'cad-card cad-editor-card' },
-        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Team roster'), h('span', { className: 'cad-pill' }, adminEntries2.length, ' admins')),
-        h('div', { className: 'cad-form-grid' }, fieldBlock('Admin email', h('input', { value: newAdminEmail, onChange: e => setNewAdminEmail(e.target.value), placeholder: 'admin@example.com' })), h('div', { className: 'cad-inline', style: { alignItems: 'end' } }, h('button', { className: 'cad-btn', onClick: () => fetchHubAdminPool(true), disabled: hubAdminPoolLoading }, hubAdminPoolLoading ? 'Refreshing' : 'Refresh pool'), h('button', { className: 'cad-btn primary', onClick: addTeamAdminClaude }, 'Add admin'))),
-        availableAdmins.length > 0 && h('div', { className: 'cad-admin-list' }, availableAdmins.map(p => h('button', { className: 'cad-admin-row2', key: p.email, onClick: () => setNewAdminEmail(p.email) }, h('span', { className: 'cad-mini-avatar' }, (p.name || p.email || 'A')[0].toUpperCase()), h('span', null, h('b', null, p.name || p.email), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, p.email)), adminConfigs[p.email] ? pillState(true, 'Added') : h('span', { className: 'cad-pill' }, 'Pick'))))
+        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, '👥 Team roster'), h('span', { className: 'cad-pill' }, adminEntries2.length, ' admins')),
+        h('div', { className: 'cad-form-grid' }, fieldBlock('Admin email', h('input', { value: newAdminEmail, onChange: e => setNewAdminEmail(e.target.value), placeholder: 'admin@example.com' })), h('div', { className: 'cad-inline', style: { alignItems: 'end' } }, h('button', { className: 'cad-btn', onClick: () => fetchHubAdminPool(true), disabled: hubAdminPoolLoading }, hubAdminPoolLoading ? 'Refreshing' : '↻ Refresh pool'), h('button', { className: 'cad-btn primary', onClick: addTeamAdminClaude }, '+ Add admin'))),
+        availableAdmins.length > 0 && h('div', { className: 'cad-admin-list' }, availableAdmins.map(p => h('button', { className: 'cad-admin-row2', key: p.email, onClick: () => setNewAdminEmail(p.email) }, h('span', { className: 'cad-mini-avatar' }, (p.name || p.email || 'A')[0].toUpperCase()), h('span', null, h('b', null, p.name || p.email), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, p.email)), h('span', { className: 'cad-pill' }, 'Pick'))))
       ),
       h('div', { className: 'cad-card cad-editor-card' },
-        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Admin configs'), h('button', { className: 'cad-btn', disabled: !(cfg.sheetId && cfg.sheetTab) || !adminEntries2.length, onClick: () => assignCurrentLeadSourceToAdmins(adminEntries2.map(([em]) => em)) }, 'Assign current lead source')),
-        adminEntries2.length ? h('div', { className: 'cad-admin-list' }, adminEntries2.map(([em, ac]) => h('div', { className: 'cad-admin-row2', key: em }, h('span', { className: 'cad-mini-avatar' }, (ac.bizName || em || 'A')[0].toUpperCase()), h('span', null, h('b', null, ac.bizName || em), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, em, ' - ', ac.sheetTab || 'no lead tab')), h('span', { className: 'cad-inline' }, pillState(!!(ac.timesheetId && ac.sheetTab), ac.sheetTab ? 'Linked' : 'Needs sheet'), h('span', { className: 'cad-pill ' + (ac.scriptShareVersionId ? 'green' : '') }, ac.scriptShareVersionId ? 'Script' : 'No script'), h('button', { className: 'cad-btn', onClick: () => setAdminDetailEmail(em) }, 'Config'))))) : h('p', { className: 'cad-page-note' }, 'No admins added yet.')
+        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, '⚙ Admin configs'), h('span', { className: 'cad-pill' }, 'tap a row to edit pay/leads/script/calendar')),
+        adminEntries2.length ? h('div', { className: 'cad-admin-list' }, adminEntries2.map(([em, ac]) => h('button', { className: 'cad-admin-row2 cad-admin-row2--clickable', key: em, onClick: () => setAdminDetailEmail(em), type: 'button' }, h('span', { className: 'cad-mini-avatar' }, (ac.bizName || em || 'A')[0].toUpperCase()), h('span', null, h('b', null, ac.bizName || em), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, em, ' · ', ac.sheetTab || 'no lead tab', ' · $', (ac.payRates && ac.payRates[0]) || '—', '/hr base')), h('span', { className: 'cad-inline' }, pillState(!!(ac.timesheetId && ac.sheetTab), ac.sheetTab ? '📒 leads' : 'no leads'), h('span', { className: 'cad-pill ' + (ac.scriptShareVersionId ? 'green' : '') }, ac.scriptShareVersionId ? '📞 script' : 'no script'), h('span', { className: 'cad-pill ' + ((ac.sharedCals || []).length ? 'blue' : '') }, '📅 ', (ac.sharedCals || []).length, ' cal'), h('span', { className: 'cad-subtle' }, '›'))))) : h('p', { className: 'cad-page-note' }, 'No admins added yet. Use the roster above to add one.')
       )
     );
     var diagRows = [
@@ -15911,36 +15978,18 @@ function App() {
         h('div', { className: 'cad-settings-grid' }, (ML_RANKS || []).map((r, i) => fieldBlock(r.label, h('input', { type: 'number', min: 0, step: 1, value: (cfg.starThresholds || [0, 5, 10, 15, 25, 35, 50])[i] ?? 0, onChange: e => setCfg(p => { var next = [...(p.starThresholds || [0, 5, 10, 15, 25, 35, 50])]; next[i] = Math.max(0, parseInt(e.target.value || '0', 10) || 0); return { ...p, starThresholds: next }; }) }), i === 0 ? 'Start rank. Admin-produced appointments do not count for Main self-call rank.' : 'Minimum monthly appointments for ' + r.label)))
       )
     );
+    // 0080: Calling tab stripped to WhatsApp templates + AI keys only.
+    // The legacy "Calling script" + "Reference notes" + "Objection list"
+    // editor cards are gone — those are edited inline on the call view's
+    // script aside (Edit button), so duplicating them here was friction.
     var callingPage = h(React.Fragment, null,
-      h('div', { className: 'cad-settings-cards' }, settingsCardData.map(c => h('div', { className: 'cad-card cad-settings-card', key: c[0] },
+      h('div', { className: 'cad-settings-cards' }, settingsCardData.filter(c => /WhatsApp|whatsapp|template|AI|key/i.test(String(c[0]) + ' ' + String(c[1] || ''))).map(c => h('div', { className: 'cad-card cad-settings-card', key: c[0] },
         h('div', { className: 'cad-inline' },
           h('span', { className: 'cad-pill brass' }, icon(c[2], 14)),
           h('div', null, h('b', { style: { fontSize: 14 } }, c[0]), h('p', { className: 'cad-subtle', style: { fontSize: 12, marginTop: 2 } }, c[1]))
         ),
         h('span', null, '>')
       ))),
-      h('div', { className: 'cad-settings-grid' },
-        h('div', { className: 'cad-card cad-editor-card' },
-          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Calling script'), h('span', { className: 'cad-pill' }, scriptMeta)),
-          h(React.Fragment, null, cadRichToolbar('script'), cadRichEditor('script', scriptContent || cfg.callingScript || '', false)),
-          h('div', { className: 'cad-inline', style: { justifyContent: 'flex-end', flexWrap: 'wrap' } },
-            h('button', { className: 'cad-btn', onClick: () => saveCurrentScriptDraft('Script draft saved') }, 'Save draft'),
-            h('button', { className: 'cad-btn', onClick: saveCurrentScriptVersion }, 'Save version'),
-            h('button', { className: 'cad-btn primary', onClick: saveAsNewScriptVersion }, 'Save as new')
-          )
-        ),
-        h('div', { className: 'cad-card cad-editor-card' },
-          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Reference notes'), h('span', { className: 'cad-pill' }, liveRefHtml ? 'attached' : 'empty')),
-          h(React.Fragment, null, cadRichToolbar('ref'), cadRichEditor('ref', refNotes || cfg.refNotes || '', true)),
-          h('div', { className: 'cad-inline', style: { justifyContent: 'flex-end', flexWrap: 'wrap' } },
-            h('button', { className: 'cad-btn', onClick: () => saveCurrentScriptDraft('Reference notes saved') }, 'Save notes'),
-            h('button', { className: 'cad-btn', onClick: addObjection }, icon('Sparkles', 13), 'Add objection')
-          ),
-          h('div', { className: 'cad-objections', style: { padding: 0, marginTop: 2 } },
-            cadObjGroupRender()
-          )
-        )
-      ),
       h('div', { className: 'cad-card', style: { padding: 18 } },
         h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 12 } }, h('span', { className: 'cad-label' }, 'AI keys'), h('span', { className: 'cad-pill ' + (connectedKeys ? 'green' : 'amber') }, connectedKeys ? icon('Check', 10) : icon('Clock', 10), connectedKeys + ' connected')),
         keyRows.map((row, i) => h('div', { className: 'cad-kv-row', key: row[0] },
@@ -15949,7 +15998,12 @@ function App() {
         ))
       )
     );
-    var settingsPages = { setup: setupPage, prefs: callingPage, integr: workspacePage, team: teamPage, data: syncPage, owner: ownerPage };
+    // 0080: 'integr' (Workspace) page-route preserved as a legacy alias
+    // pointing to teamPage. Anyone deep-linked to Settings → Workspace
+    // ends up in Team where lead-source + per-admin calendars now live.
+    // workspacePage is unreferenced after this; left in scope as a
+    // build-time no-op (dead-code-elimination would strip it anyway).
+    var settingsPages = { setup: setupPage, prefs: callingPage, integr: teamPage, team: teamPage, data: syncPage, owner: ownerPage };
     var settingsView = h('div', { className: 'cad-shell' }, topbar, h('div', { className: 'cad-settings' },
       h('aside', { className: 'cad-rail' },
         h('span', { className: 'cad-label', style: { marginBottom: 10 } }, 'Settings'),
@@ -16447,48 +16501,75 @@ function App() {
         if (enabled) shares.push({ id: cal.id, name: cal.summary || cal.name || cal.id, calendar_name: cal.summary || cal.name || cal.id, busyOnly: busyOnly !== false });
         cadUpdateAdminConfig(em, { sharedCals: shares });
       };
+      // 0080: admin-config modal restructured into colour-stripe sections
+      // (pay / leads / script / calendars / gamification) so the user can
+      // navigate by concept instead of scanning a flat 10-field grid.
       return h(React.Fragment, null,
         h('div', { className: 'cad-modal-head' },
-          h('div', null, h('h3', { className: 'cad-modal-title' }, ac.bizName || em), h('p', { className: 'cad-modal-sub' }, em, ' · admin rules, pay, script, and calendars')),
+          h('div', null, h('h3', { className: 'cad-modal-title' }, '👤 ', ac.bizName || em), h('p', { className: 'cad-modal-sub' }, em, ' · pay · 📒 leads · 📞 script · 📅 calendar · 🏆 rank')),
           h('button', { className: 'cad-btn ghost', onClick: () => setAdminDetailEmail(null) }, 'x')
         ),
+        // ─── Identity (no colour stripe — neutral) ──────────────────────
         h('div', { className: 'cad-form-grid' },
-          cadField('Display name', h('input', { value: ac.bizName || '', onChange: e => cadUpdateAdminConfig(em, { bizName: e.target.value }) })),
-          cadField('PayNow number', h('input', { value: ac.payNow || '', onChange: e => cadUpdateAdminConfig(em, { payNow: e.target.value }), placeholder: 'Admin handphone / UEN' })),
-          cadField('Lead tab', h('input', { value: ac.sheetTab || '', onChange: e => cadUpdateAdminConfig(em, { sheetTab: e.target.value }), placeholder: cfg.sheetTab || 'Sheet tab name' })),
-          cadField('Invoice name', h('input', { value: ac.invoiceName || ac.bizName || '', onChange: e => cadUpdateAdminConfig(em, { invoiceName: e.target.value }) })),
-          cadField('Session hours', h('input', { type: 'number', min: 0.5, step: 0.5, value: ac.sessionDur || cfg.sessionDur || 5, onChange: e => cadUpdateAdminConfig(em, { sessionDur: Number(e.target.value) || 0 }) })),
-          cadField('NP to NI threshold', h('input', { type: 'number', min: 1, max: 20, step: 1, value: ac.npMax || cfg.npMax || 5, onChange: e => cadUpdateAdminConfig(em, { npMax: Math.max(1, parseInt(e.target.value || '5', 10) || 5) }) })),
-          cadField('Appts bar', h('input', { type: 'number', min: 0, max: 10, step: 1, value: ac.mThresh ?? cfg.mThresh ?? 2, onChange: e => cadUpdateAdminConfig(em, { mThresh: Number(e.target.value) || 0 }) })),
-          cadField('Bonus bar', h('input', { type: 'number', min: 0, max: 10, step: 1, value: ac.nThresh ?? cfg.nThresh ?? 3, onChange: e => cadUpdateAdminConfig(em, { nThresh: Number(e.target.value) || 0 }) })),
-          cadField('Bonus multiplier', h('input', { type: 'number', min: 0, step: 0.1, value: ac.bonusMult ?? cfg.bonusMult ?? 1.5, onChange: e => cadUpdateAdminConfig(em, { bonusMult: Number(e.target.value) || 0 }) })),
-          cadField('Met incentive', h('input', { type: 'number', min: 0, step: 1, value: ac.metIncentive ?? cfg.metIncentive ?? 10, onChange: e => cadUpdateAdminConfig(em, { metIncentive: Number(e.target.value) || 0 }) }))
+          cadField('👤 Display name', h('input', { value: ac.bizName || '', onChange: e => cadUpdateAdminConfig(em, { bizName: e.target.value }) })),
+          cadField('🧾 Invoice name', h('input', { value: ac.invoiceName || ac.bizName || '', onChange: e => cadUpdateAdminConfig(em, { invoiceName: e.target.value }) }))
         ),
-        h('div', { className: 'cad-card', style: { padding: 14, marginTop: 12 } },
-          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label' }, 'Shared script'), h('span', { className: 'cad-pill ' + (ac.scriptShareVersionId ? 'green' : '') }, ac.scriptShareVersionId ? 'shared' : 'off')),
+        // ─── Pay (green stripe) ─────────────────────────────────────────
+        h('div', { className: 'cad-card cad-section-pay', style: { padding: 14, marginTop: 12 } },
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label', style: { color: 'var(--ad-green)' } }, '💰 Pay & PayNow'), h('span', { className: 'cad-pill ' + (ac.payNow ? 'green' : '') }, ac.payNow ? 'PayNow set' : 'Add PayNow')),
           h('div', { className: 'cad-form-grid' },
-            h('select', { value: ac.scriptShareVersionId || '', onChange: e => { var v = scriptVersions.find(x => x.id === e.target.value); cadUpdateAdminConfig(em, { scriptShareVersionId: e.target.value, scriptShareName: v?.name || '' }); } }, h('option', { value: '' }, 'No shared script'), scriptVersions.map(v => h('option', { key: v.id, value: v.id }, v.name || new Date(v.ts || Date.now()).toLocaleDateString('en-SG')))),
-            h('button', { className: 'cad-btn', onClick: () => cadUpdateAdminConfig(em, { scriptShareVersionId: cfg.scriptVersionId || shareScriptVersionId || scriptVersions[0]?.id || '', scriptShareName: activeScriptName }) }, 'Use current')
+            cadField('💵 PayNow number', h('input', { value: ac.payNow || '', onChange: e => cadUpdateAdminConfig(em, { payNow: e.target.value }), placeholder: 'Admin handphone / UEN' })),
+            cadField('💎 Met incentive ($)', h('input', { type: 'number', min: 0, step: 1, value: ac.metIncentive ?? cfg.metIncentive ?? 10, onChange: e => cadUpdateAdminConfig(em, { metIncentive: Number(e.target.value) || 0 }) }))
           )
         ),
-        h('div', { className: 'cad-card', style: { padding: 14, marginTop: 12 } },
-          h('span', { className: 'cad-label' }, 'Tier rates and thresholds'),
-          h('div', { className: 'cad-admin-rate-grid' }, tierNames.map((name, i) => h('div', { className: 'cad-card', style: { padding: 12 }, key: name },
-            h('b', null, name),
-            cadField('$/hr', h('input', { type: 'number', min: 0, step: 1, value: rates[i] ?? 0, onChange: e => cadUpdateAdminArray(em, 'payRates', i, e.target.value, [8, 10, 12, 16, 18, 20]) })),
-            cadField('Min appts', h('input', { type: 'number', min: 0, step: 1, value: mins[i] ?? 0, onChange: e => cadUpdateAdminArray(em, 'tierMins', i, e.target.value, [0, 20, 40, 80, 150, 200]) }))
-          )))
+        // ─── Leads (amber stripe) ───────────────────────────────────────
+        h('div', { className: 'cad-card cad-section-leads', style: { padding: 14, marginTop: 12 } },
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label', style: { color: 'var(--ad-amber)' } }, '📒 Leads source'), h('span', { className: 'cad-pill ' + (ac.sheetTab ? 'green' : 'amber') }, ac.sheetTab ? 'Linked' : 'Needs tab')),
+          h('div', { className: 'cad-form-grid' },
+            cadField('📑 Lead tab name', h('input', { value: ac.sheetTab || '', onChange: e => cadUpdateAdminConfig(em, { sheetTab: e.target.value }), placeholder: cfg.sheetTab || 'Sheet tab name' })),
+            cadField('⏱ Session hours', h('input', { type: 'number', min: 0.5, step: 0.5, value: ac.sessionDur || cfg.sessionDur || 5, onChange: e => cadUpdateAdminConfig(em, { sessionDur: Number(e.target.value) || 0 }) }))
+          )
         ),
-        calList.length > 0 && h('div', { className: 'cad-card', style: { padding: 14, marginTop: 12 } },
-          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label' }, 'Shared calendars'), h('span', { className: 'cad-pill' }, (ac.sharedCals || []).length, ' visible')),
+        // ─── Calling rules + bars ───────────────────────────────────────
+        h('div', { className: 'cad-card cad-section-script', style: { padding: 14, marginTop: 12 } },
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label', style: { color: 'var(--ad-brass-2)' } }, '📞 Calling rules + bars'), h('span', { className: 'cad-pill brass' }, 'tunable')),
+          h('div', { className: 'cad-form-grid' },
+            cadField('🚫 NP → NI threshold', h('input', { type: 'number', min: 1, max: 20, step: 1, value: ac.npMax || cfg.npMax || 5, onChange: e => cadUpdateAdminConfig(em, { npMax: Math.max(1, parseInt(e.target.value || '5', 10) || 5) }) })),
+            cadField('🎯 Appts bar (full credit)', h('input', { type: 'number', min: 0, max: 10, step: 1, value: ac.mThresh ?? cfg.mThresh ?? 2, onChange: e => cadUpdateAdminConfig(em, { mThresh: Number(e.target.value) || 0 }) })),
+            cadField('🚀 Bonus bar', h('input', { type: 'number', min: 0, max: 10, step: 1, value: ac.nThresh ?? cfg.nThresh ?? 3, onChange: e => cadUpdateAdminConfig(em, { nThresh: Number(e.target.value) || 0 }) })),
+            cadField('✖ Bonus multiplier', h('input', { type: 'number', min: 0, step: 0.1, value: ac.bonusMult ?? cfg.bonusMult ?? 1.5, onChange: e => cadUpdateAdminConfig(em, { bonusMult: Number(e.target.value) || 0 }) }))
+          ),
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginTop: 14, marginBottom: 8 } }, h('span', { className: 'cad-label', style: { color: 'var(--ad-brass-2)' } }, '📜 Shared script'), h('span', { className: 'cad-pill ' + (ac.scriptShareVersionId ? 'green' : '') }, ac.scriptShareVersionId ? '✓ shared' : 'off')),
+          h('div', { className: 'cad-form-grid' },
+            h('select', { value: ac.scriptShareVersionId || '', onChange: e => { var v = scriptVersions.find(x => x.id === e.target.value); cadUpdateAdminConfig(em, { scriptShareVersionId: e.target.value, scriptShareName: v?.name || '' }); } }, h('option', { value: '' }, 'No shared script'), scriptVersions.map(v => h('option', { key: v.id, value: v.id }, v.name || new Date(v.ts || Date.now()).toLocaleDateString('en-SG')))),
+            h('button', { className: 'cad-btn', onClick: () => cadUpdateAdminConfig(em, { scriptShareVersionId: cfg.scriptVersionId || shareScriptVersionId || scriptVersions[0]?.id || '', scriptShareName: activeScriptName }) }, '↪ Use current')
+          )
+        ),
+        // ─── Gamification: rank tiers (purple stripe) ───────────────────
+        h('div', { className: 'cad-card cad-section-gamify', style: { padding: 14, marginTop: 12 } },
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label', style: { color: 'oklch(0.78 0.18 320)' } }, '🏆 Rank tiers (per-admin gamification)'), h('span', { className: 'cad-pill' }, '6 tiers')),
+          h('p', { className: 'cad-page-note', style: { marginBottom: 10 } }, 'Each tier has its own $/hr and the minimum appointments needed to reach it. Used for the rank-up celebrations on the admin\'s call view.'),
+          h('div', { className: 'cad-admin-rate-grid' }, tierNames.map((name, i) => {
+            var tierEmoji = ['🥉', '🥈', '🥇', '💎', '❤', '👑'][i] || '⭐';
+            return h('div', { className: 'cad-card', style: { padding: 12, borderTop: '3px solid ' + (['#cd7f32', '#c0c0c0', '#ffd700', '#b9f2ff', '#e0115f', '#a020f0'][i] || 'var(--ad-brass)') }, key: name },
+              h('b', null, tierEmoji, ' ', name),
+              cadField('$/hr', h('input', { type: 'number', min: 0, step: 1, value: rates[i] ?? 0, onChange: e => cadUpdateAdminArray(em, 'payRates', i, e.target.value, [8, 10, 12, 16, 18, 20]) })),
+              cadField('Min appts', h('input', { type: 'number', min: 0, step: 1, value: mins[i] ?? 0, onChange: e => cadUpdateAdminArray(em, 'tierMins', i, e.target.value, [0, 20, 40, 80, 150, 200]) }))
+            );
+          }))
+        ),
+        // ─── Calendars (blue stripe) ────────────────────────────────────
+        calList.length > 0 && h('div', { className: 'cad-card cad-section-cal', style: { padding: 14, marginTop: 12 } },
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label', style: { color: 'var(--ad-blue)' } }, '📅 Shared calendars'), h('span', { className: 'cad-pill blue' }, (ac.sharedCals || []).length, ' visible')),
+          h('p', { className: 'cad-page-note', style: { marginBottom: 10 } }, 'Tick a calendar to share its busy windows with this admin (so their slot picker avoids your appointments). "Busy only" hides event titles — admin sees the slot is taken without the meeting details.'),
           h('div', { className: 'cad-cal-admin-list' }, calList.map(c => {
             var current = (ac.sharedCals || []).find(x => x.id === c.id);
             return h('label', { className: 'cad-cal-admin-row', key: c.id },
               h('span', null, h('input', { type: 'checkbox', checked: shareCalIds.has(c.id), onChange: e => updateShare(c, e.target.checked, current?.busyOnly !== false) }), c.summary || c.name || c.id),
-              h('span', null, h('input', { type: 'checkbox', disabled: !current, checked: current ? current.busyOnly !== false : true, onChange: e => updateShare(c, true, e.target.checked) }), 'Busy only')
+              h('span', null, h('input', { type: 'checkbox', disabled: !current, checked: current ? current.busyOnly !== false : true, onChange: e => updateShare(c, true, e.target.checked) }), '🔒 Busy only')
             );
           })),
-          (ac.sharedCals || []).length > 0 && cadField('Write new appointments to', h('select', { value: ac.targetCalendarId || '', onChange: e => cadUpdateAdminConfig(em, { targetCalendarId: e.target.value || undefined }) }, h('option', { value: '' }, 'Admin primary calendar'), (ac.sharedCals || []).map(c => h('option', { key: c.id, value: c.id }, c.name || c.calendar_name || c.id))))
+          (ac.sharedCals || []).length > 0 && cadField('🎯 Write new appointments to', h('select', { value: ac.targetCalendarId || '', onChange: e => cadUpdateAdminConfig(em, { targetCalendarId: e.target.value || undefined }) }, h('option', { value: '' }, 'Admin primary calendar'), (ac.sharedCals || []).map(c => h('option', { key: c.id, value: c.id }, c.name || c.calendar_name || c.id))))
         ),
         h('div', { className: 'cad-modal-actions' },
           h('button', { className: 'cad-btn', onClick: () => setAdminDetailEmail(null) }, 'Done'),
