@@ -1,4 +1,4 @@
-const APP_VERSION = '2026.05.05.0077';
+const APP_VERSION = '2026.05.05.0078';
 const CACHE_NAME = `autodial-v2-${APP_VERSION}`;
 const ASSETS = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png'];
 
