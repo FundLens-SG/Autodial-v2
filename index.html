@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0095'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0096'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -912,6 +912,45 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
      line 787 by flex-direction:column on cad-settings-head, but clarify
      pill alignment so it doesn't bleed into the description) */
   .cad-settings-head .cad-pill{align-self:flex-start}
+  /* 0096: responsive pass on the new 0093 visuals.
+     - Session stats strip: 5 cards at 78px min + 10px gaps = 430px,
+       overflows a 360px phone viewport. Tighten min-width + gap and
+       let them wrap into a tidy 3+2 grid instead of jagged free-flow.
+     - Session target big number: 38px clashes with the slider on
+       narrow widths — drop to 28px so slider keeps room.
+     - Session target row stays one line by shrinking ±buttons.
+     - Rank chip: shrink badge + drop the mono progress on very
+       narrow widths so the chip doesn't blow past the session-info
+       column. */
+  .cad-session-stats{gap:8px}
+  .cad-session-stat--card{min-width:0;flex:1 1 calc(33.333% - 8px);padding:9px 11px}
+  .cad-session-stat--card b{font-size:18px}
+  .cad-session-stat--card .cad-session-stat__glyph{font-size:11px;letter-spacing:.02em}
+  .cad-session-stat--card small{font-size:9px}
+  .cad-session-target--rich{padding:14px 14px 12px!important}
+  .cad-session-target__big{font-size:28px;letter-spacing:-.03em}
+  .cad-session-target__head{margin-bottom:10px;flex-wrap:wrap;gap:8px}
+  .cad-session-target__pill{font-size:10px;padding:4px 9px}
+  .cad-rank-chip--bold{padding:5px 10px 5px 5px;gap:8px}
+  .cad-rank-chip--bold .cad-rank-chip__badge{width:26px;height:26px;font-size:14px}
+  .cad-rank-chip--bold .cad-rank-chip__label{font-size:11px}
+  .cad-rank-chip--bold .cad-rank-chip__progress{font-size:9px}
+  /* Admin rank cards: 32px emoji feels chunky on narrow phones */
+  .cad-rank-card__emoji{font-size:26px}
+  .cad-rank-card__head{padding:11px 13px;gap:10px}
+  /* Past-appt banner: tighten the inset padding so the rows can breathe */
+  .cad-pastappt-banner{padding:14px 16px;gap:10px}
+  .cad-pastappt-banner__title{font-size:16px}
+  /* Objection rows: kill the hover-slide on touch (it can cause a
+     micro-bounce when the user taps) */
+  .cad-objection:hover{transform:none}
+}
+/* 0096: extra-narrow phones (≤420px) — drop session stats to 2-up so
+   the numbers stay legible. Rank chip drops the mono progress entirely. */
+@media(max-width:420px){
+  .cad-session-stat--card{flex:1 1 calc(50% - 6px)}
+  .cad-session-target__big{font-size:24px}
+  .cad-rank-chip--bold .cad-rank-chip__progress{display:none}
 }
 </style>
 </head>
@@ -997,7 +1036,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0095';
+window.APP_VERSION='2026.05.05.0096';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
