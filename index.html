@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0084'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0085'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -662,6 +662,9 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-cal-deletion-action--flykite:hover{border-color:var(--ad-red);background:var(--ad-red-dim)}
 .cad-cal-deletion-action--restore{border-left:3px solid var(--ad-brass)}
 .cad-cal-deletion-action--restore:hover{border-color:var(--ad-brass-line);background:var(--ad-brass-dim)}
+/* 0085: Undo: Set variant — amber stripe (caution, this affects pay) */
+.cad-cal-deletion-action--undo{border-left:3px solid var(--ad-amber)}
+.cad-cal-deletion-action--undo:hover{border-color:var(--ad-amber);background:var(--ad-amber-dim)}
 .cad-cal-deletion-dismiss{margin-top:8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-top:10px;border-top:1px solid var(--ad-line-1)}
 /* 0084: past-appointment followup banner card on Main's home dashboard.
    Persistent (no dismiss), stacked above the greeting block so the
@@ -834,7 +837,7 @@ var a1Col = window.a1Col;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0084';
+window.APP_VERSION='2026.05.05.0085';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -6703,6 +6706,117 @@ function App() {
       toast('Restore failed: ' + (err?.message || err), 'err');
     }
   }, [syncApptSheet]);
+  // 0085: Undo: Set — admin-only branch on the calendar-deletion modal.
+  // Different from Fly Kite (prospect didn't show but the agreement was
+  // real) — this is "the appointment never actually happened, my Set
+  // outcome was a misclick or the prospect retracted."
+  //
+  // Side effects (all need to flow through to pay tracking):
+  //   1. session.sets       —1   (affects in-session Appts/Bonus bar)
+  //   2. totalSets          —1   (affects monthly tier rank)
+  //   3. dailySets          —1   (affects today's incentive count)
+  //   4. lead.status        → 'pending' (with sheet writeback to clear
+  //                           the cell — can't recover prevStatus
+  //                           without an undo record)
+  //   5. appointments[]     filter out (tombstoned via deletedApptIds
+  //                           so cloud pull doesn't re-add)
+  //   6. Appointments Set   row deleted via gSheets.deleteApptRow when
+  //                           apptSheetRange is known
+  //   7. Logs tab           audit row "Set undone (calendar deletion)"
+  //
+  // The Mains-side adminSessions snapshot syncs at session-end (DB
+  // saveSess writes the corrected sets count). Live mid-session counts
+  // are admin-local; Mains see the corrected number on next pull.
+  // mThresh (Appts bar) and nThresh (Bonus bar) are config thresholds
+  // — pay calc reads session.sets at end-of-session through the
+  // existing pay rate computation, so decrementing the live counter
+  // here automatically flows through to the final paycheck.
+  var resolveCalDeletionUndoSet = useCallback(async a => {
+    if (!a) return;
+    if (role !== 'admin') {
+      toast('Undo Set is for admins only', 'err');
+      return;
+    }
+    var ok = await confirmAsync(
+      'Undo "Set" for ' + (a.name || 'this lead') + '?\n\nThis subtracts 1 from your Set count and reverts the lead to Pending. Use only if the appointment was never real.\n\n⚠ Affects your Appts bar (' + (myCfg.mThresh ?? 2) + ') and Bonus bar (' + (myCfg.nThresh ?? 3) + ' × ' + (myCfg.bonusMult ?? 1.5) + 'x) for this session + monthly rank.',
+      { title: '↶ Undo Set?', confirmLabel: 'Undo Set', cancelLabel: 'Keep', danger: true }
+    );
+    if (!ok) return;
+    // 1 + 2: counters
+    setSession(p => p ? { ...p, sets: Math.max(0, (p.sets || 1) - 1) } : p);
+    setTotalSets(p => Math.max(0, (Number(p) || 1) - 1));
+    // 3: daily sets (today only)
+    try {
+      var _ds = JSON.parse(localStorage.getItem('autodial_daily_sets') || '{}');
+      if (_ds.date === getTodaySGT() && _ds.count > 0) {
+        _ds.count--;
+        localStorage.setItem('autodial_daily_sets', JSON.stringify(_ds));
+        setDailySetsStateR(_ds.count);
+      }
+    } catch (_e) {}
+    // 4: lead status revert + sheet writeback
+    var leadPhone = a.phone || '';
+    var leadId = a.leadId || '';
+    var matchedLead = (leadsRef.current || []).find(l =>
+      (leadId && l.id === leadId) ||
+      (leadPhone && normalizePhone(l.phone || '') === normalizePhone(leadPhone))
+    );
+    setLeads(prev => (prev || []).map(l => {
+      var match = (leadId && l.id === leadId) || (leadPhone && normalizePhone(l.phone || '') === normalizePhone(leadPhone));
+      if (!match) return l;
+      return { ...l, status: 'pending', sheetValue: '' };
+    }));
+    if (matchedLead) {
+      try {
+        var leadSheetId = matchedLead._sourceSheetId || cfg.sheetId;
+        var leadSheetTab = matchedLead._sourceSheetTab || cfg.sheetTab || 'Sheet1';
+        if (leadSheetId && leadSheetTab && matchedLead.sheetRow && Number.isFinite(matchedLead.statusCol) && matchedLead.statusCol >= 0 && localStorage.getItem('ad_gt')) {
+          await gSheets.put(leadSheetId, leadSheetTab + '!' + a1Col(matchedLead.statusCol) + matchedLead.sheetRow, '');
+        } else {
+          await queueSheetValue(matchedLead, '');
+        }
+      } catch (_e) {}
+    }
+    // 5: tombstone appointment
+    try {
+      var _delIds = _readDeletedApptIds();
+      if (a.calEventId) _delIds.push(String(a.calEventId));
+      if (a.id) _delIds.push(String(a.id));
+      if (a.phone && a.createdAt) _delIds.push(a.phone + '_' + a.createdAt);
+      var _saved = _writeDeletedApptIds(_delIds);
+      _syncDeletedApptIdsCloud(_saved);
+    } catch (_e) {}
+    setAppointments(p => (p || []).filter(x => !_apptHardMatch(x, a)));
+    // 6 + 7: sheet row delete + audit log
+    var apptSheetId = a.apptSheetId || myCfg.timesheetId || cfg.sheetId;
+    if (apptSheetId && localStorage.getItem('ad_gt')) {
+      if (a.apptSheetRange) {
+        try { await gSheets.deleteApptRow(a.id, a, a.apptSheetRange); } catch (_e) {}
+      }
+      try {
+        gSheets.appendLog(apptSheetId, {
+          admin: userName,
+          action: 'Set undone (calendar deletion)',
+          entity: 'Appointment',
+          entityId: a.autoId || a.id || '',
+          lead: a.name || '',
+          phone: a.phone || '',
+          date: (a.apptDate || '') + (a.apptTime ? ' ' + a.apptTime : ''),
+          notes: 'Admin chose Undo: Set after external calendar deletion. Set count -1, lead reverted to pending, Appts bar/Bonus bar/monthly rank recomputed at session end.'
+        });
+      } catch (_e) {}
+    }
+    // 8: clear from queue + clear any matching undo banner
+    setPendingCalDeletions(p => (p || []).filter(x => x.id !== a.id));
+    if (undoInfo && undoInfo.status === 'set') {
+      var ut = appStateRef.current._lastUndo;
+      if (ut && (ut.calEventId === a.calEventId || ut.leadPhone === a.phone)) {
+        setUndoInfo(null);
+        appStateRef.current._lastUndo = null;
+      }
+    }
+    toast('↶ Set undone for ' + (a.name || 'lead') + ' · −1 from your Set count', 'info');
+  }, [role, myCfg, cfg, userName, queueSheetValue, undoInfo]);
   var dismissCalDeletion = useCallback((a, durationMs) => {
     if (!a?.calEventId) return;
     var d = calDeletionDismissRef.current || {};
@@ -17410,6 +17524,21 @@ function App() {
           h('div', null,
             h('b', null, 'Restore — I deleted by mistake'),
             h('p', null, 'Re-create the calendar event with the same date, time, and notes from the saved record.')
+          )
+        ),
+        // 0085: Undo: Set — admin-only. The appointment never really
+        // happened (misclick on Set, prospect retracted, etc.). Affects
+        // session.sets / totalSets / dailySets / Appts bar / Bonus bar
+        // / monthly rank, all wired through resolveCalDeletionUndoSet.
+        role === 'admin' && h('button', {
+          className: 'cad-cal-deletion-action cad-cal-deletion-action--undo',
+          onClick: () => resolveCalDeletionUndoSet(calDelHead),
+          type: 'button'
+        },
+          h('span', { className: 'cad-cal-deletion-action__emoji' }, '↶'),
+          h('div', null,
+            h('b', null, 'Undo: Set'),
+            h('p', null, 'This appointment was never real (misclick / prospect retracted). Subtract 1 from your Set count, revert lead to Pending, drop the Appointments Set row. Affects your Appts bar (', (myCfg.mThresh ?? 2), ') and Bonus bar (', (myCfg.nThresh ?? 3), ' × ', (myCfg.bonusMult ?? 1.5), 'x) for this session + monthly rank.')
           )
         )
       ),
