@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0091'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0092'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -515,8 +515,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
    2 cols on mobile. The Skip variant is brass-neutral so it doesn't read
    as a status outcome. */
 .cad-outcomes--five{grid-template-columns:repeat(5,1fr)}
-.cad-outcome--skip{color:var(--ad-t-1);background:var(--ad-bg-2);border-color:var(--ad-line-2)}
-.cad-outcome--skip:hover{background:var(--ad-bg-3);border-color:var(--ad-line-3)}
+/* 0092: boost specificity so the 5-up grid wins over the base
+   .cad-outcomes (which sets repeat(4,1fr) on a later line and was
+   pushing Skip onto its own row). Skip is now inline with the four
+   outcomes on desktop, with a clear amber tone so it reads as a
+   real action rather than chrome. */
+.cad-outcomes.cad-outcomes--five{grid-template-columns:repeat(5,1fr)}
+.cad-outcome--skip{color:var(--ad-amber);background:var(--ad-amber-dim);border-color:oklch(0.80 0.13 75 / .42)}
+.cad-outcome--skip:hover{filter:brightness(1.10);border-color:var(--ad-amber)}
 .cad-outcome--skip[disabled]{opacity:.45;cursor:not-allowed}
 @media(max-width:900px){
   .cad-session-strip{flex-direction:column;align-items:stretch}
@@ -532,7 +538,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 .cad-note{padding:12px 14px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);border-radius:10px;color:var(--ad-t-1);font-size:13px;line-height:1.6}
 .cad-outcomes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .cad-call-actions-sticky{position:sticky;bottom:0;z-index:6;margin-top:auto;padding:12px 0 4px;background:linear-gradient(180deg,transparent,var(--ad-bg-0) 18%,var(--ad-bg-0))}
-.cad-outcome{min-height:82px;border-radius:14px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);padding:14px 16px;position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:5px}
+.cad-outcome{min-height:108px;border-radius:14px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);padding:18px 18px;position:relative;display:flex;flex-direction:column;align-items:flex-start;justify-content:center;gap:6px}
 .cad-outcome .key{position:absolute;right:12px;top:10px;color:var(--ad-t-3);font:11px 'JetBrains Mono',ui-monospace,monospace}
 .cad-outcome .glyph{font-size:24px;font-weight:850;line-height:1}.cad-outcome .caption{color:var(--ad-t-2);font-size:11px;font-weight:750;text-transform:uppercase;letter-spacing:.05em}
 .cad-outcome.np{color:var(--ad-amber);background:var(--ad-amber-dim);border-color:oklch(0.80 0.13 75 / .32)}
@@ -616,7 +622,7 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-objcat.open .cad-objcat-body{border-left-color:var(--ad-brass-line)}
 .cad-table{border:1px solid var(--ad-line-1);border-radius:12px;overflow:hidden}.cad-tr{display:grid;grid-template-columns:120px 1.4fr 1fr 1fr .8fr 60px;gap:16px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--ad-line-1);font-size:12px}.cad-tr.head{background:var(--ad-bg-2);color:var(--ad-t-3);text-transform:uppercase;letter-spacing:.08em;font-size:10px;font-weight:800}
 .cad-settings{display:flex;flex:1;min-height:0}.cad-rail{width:240px;border-right:1px solid var(--ad-line-1);padding:22px 16px;display:flex;flex-direction:column;gap:4px}.cad-settings-main{flex:1;padding:26px 32px;display:flex;flex-direction:column;gap:22px;overflow:auto}
-.cad-settings-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}.cad-settings-card{padding:18px;display:flex;align-items:center;justify-content:space-between}.cad-input-like{min-height:42px;padding:0 12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-1);color:var(--ad-t-3);display:flex;align-items:center;gap:10px}
+.cad-settings-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}.cad-settings-card{padding:18px;display:flex;align-items:center;justify-content:space-between;color:var(--ad-t-0)}.cad-settings-card b{color:var(--ad-t-0)}.cad-settings-card .cad-subtle{color:var(--ad-t-2)}.cad-input-like{min-height:42px;padding:0 12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-1);color:var(--ad-t-3);display:flex;align-items:center;gap:10px}
 .cad-editor-card{padding:18px;display:flex;flex-direction:column;gap:12px}.cad-editor-card textarea{width:100%;min-height:150px;resize:vertical;padding:12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font:13px/1.55 'Inter',system-ui,sans-serif}.cad-editor-card textarea.small{min-height:92px}.cad-settings-grid{display:grid;grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:14px}.cad-kv-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0;border-top:1px solid var(--ad-line-1);font-size:13px}.cad-kv-row:first-of-type{border-top:0}.cad-appt-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
 .cad-settings input,.cad-settings select{width:100%;min-height:40px;padding:9px 11px;border-radius:10px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font:13px 'Inter',system-ui,sans-serif}.cad-settings input::placeholder{color:var(--ad-t-3)}
 .cad-settings-stack{display:flex;flex-direction:column;gap:14px}.cad-settings-head{display:flex;align-items:flex-end;justify-content:space-between;gap:18px}.cad-setup-list{display:flex;flex-direction:column;gap:8px}.cad-setup-item{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2);color:var(--ad-t-1);display:flex;align-items:center;justify-content:space-between;gap:14px;text-align:left}.cad-setup-item.done{background:var(--ad-green-dim);border-color:oklch(0.74 0.16 150 / .28);color:var(--ad-green)}.cad-setup-item b{font-size:13px}.cad-setup-item small{display:block;margin-top:3px;color:var(--ad-t-3);font-size:11px;line-height:1.35}.cad-setup-item.done small{color:color-mix(in oklab,var(--ad-green) 74%,transparent)}
@@ -812,10 +818,10 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
   .cad-rail .cad-tab{white-space:nowrap;flex:0 0 auto;padding:9px 14px}
   .cad-settings-main{padding:18px 14px;gap:14px}
   /* outcomes: explicit 2x2 grid that wins over the line-787 reset */
-  .cad-outcomes,.cad-outcomes--five{grid-template-columns:repeat(2,1fr)}
-  .cad-outcome{min-height:64px;padding:11px 12px;gap:3px}
-  .cad-outcome .glyph{font-size:18px}
-  .cad-outcome .caption{font-size:10px}
+  .cad-outcomes,.cad-outcomes--five,.cad-outcomes.cad-outcomes--five{grid-template-columns:repeat(2,1fr)}
+  .cad-outcome{min-height:78px;padding:13px 14px;gap:4px}
+  .cad-outcome .glyph{font-size:20px}
+  .cad-outcome .caption{font-size:11px}
   .cad-outcomes--five .cad-outcome--skip{grid-column:1/-1}
   /* lead-card title row: stack vertically so the phone-chip + Dial CTA
      don't fight for the same horizontal slice on a 360px viewport */
@@ -911,7 +917,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0091';
+window.APP_VERSION='2026.05.05.0092';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -16383,11 +16389,10 @@ function App() {
       // Replaces the More-menu Pay tile (which stays as a fallback for
       // users who navigate that way). Grid switches from 4-up to 5-up
       // so the existing 4 stats keep their proportions.
-      h('div', { className: 'cad-stat-grid cad-stat-grid--five' },
+      h('div', { className: 'cad-stat-grid' },
         stat('Sessions today', sessionsToday, (liveRows.length || 0) + ' live · ' + Math.max(0, sessionsToday - liveRows.length) + ' wrapped'),
         stat('Appts set', apptsToday, demoStats ? '+3 vs yesterday' : 'today', 'var(--ad-green)'),
         stat('Closed', closedToday, demoStats ? '36% close rate' : 'today'),
-        stat('EFYC', '$' + efycToday.toLocaleString(), 'month · est.'),
         h('button', {
           className: 'cad-card cad-stat cad-stat--pay',
           onClick: () => goCadTab('timesheet'),
@@ -17613,7 +17618,6 @@ function App() {
       ),
       h('div', { className: 'cad-more-grid' }, [
         ['cb', 'Callbacks', 'Bell', cbOpen.length + ' open'],
-        isManageMode && ['live', 'Live', 'Zap', filteredLiveFeed.length + ' events'],
         ['timesheet', role === 'admin' ? 'My Pay' : 'Pay', 'Clock', role === 'admin' ? cadMoney(unpaidEarnings) + ' unpaid' : cadMoney(payAdminRows.reduce((a, r) => a + r.unpaid, 0)) + ' unpaid'],
         ['rank', 'Rank', 'Trophy', rank.label],
         ['dial', 'Assist', 'PhoneOutgoing', callAssist ? 'Enabled' : 'Off']
@@ -17984,7 +17988,9 @@ function App() {
     if (tab === 'cal') return withCadModals(calView);
     if (tab === 'appts') return withCadModals(apptsView);
     if (tab === 'cb') return withCadModals(cbView);
-    if (tab === 'live') return withCadModals(liveView);
+    // 0092: Live Activity removed per user request — fall through to home if
+    // anyone deep-links to ?tab=live.
+    if (tab === 'live') return withCadModals(homeView);
     if (tab === 'tracking') return withCadModals(trackingView);
     if (tab === 'timesheet') return withCadModals(timesheetView);
     if (tab === 'rank') return withCadModals(rankView);
@@ -31458,7 +31464,6 @@ function App() {
   }, "More"), (() => {
     var _items = [];
     if (isCallMode) _items.push(['rank', '🏆', 'Rank & stats', 'Your tier, streak, monthly progress']);
-    if (isManageMode) _items.push(['live', '⚡', 'Live activity', 'Real-time team activity feed']);
     _items.push(['tracking', '📊', 'Tracking', 'Team performance analytics']);
     _items.push(['timesheet', '💰', 'Payroll', role === 'admin' ? 'Your sessions and pay' : 'Admin payouts']);
     _items.push(['settings', '⚙️', 'Settings', 'Preferences, integrations, team']);
