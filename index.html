@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0085'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0086'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -834,10 +834,31 @@ if (typeof window.a1Col !== 'function') {
   };
 }
 var a1Col = window.a1Col;
+// 0086: same lexical-scope bug as a1Col had — normalizePhone was
+// defined inside the React block IIFE (~line 5057) but referenced
+// from gSheets.appendAppt's row-find fallback (~lines 1884, 1891)
+// which lives in this earlier auth/Sheets <script> tag. Bare
+// `normalizePhone(...)` call there fell through to window, found
+// nothing, threw ReferenceError, got swallowed by the upstream
+// try/catch — silently breaking the dedupe-by-phone path that
+// prevents duplicate Appointments Set rows when the optimistic
+// match by autoId / calEventId fails. Hoist a global shim here
+// (identical body to the React-block copy) so the lookup
+// resolves against window.normalizePhone before the bare call.
+if (typeof window.normalizePhone !== 'function') {
+  window.normalizePhone = function normalizePhone(v) {
+    var clean = String(v || '').replace(/[^\d+]/g, '');
+    var digits = clean.replace(/[^\d]/g, '');
+    if (digits.length === 8 && /^[89]/.test(digits)) return digits;
+    if ((digits.length === 10 || digits.length === 11) && digits.startsWith('65') && /^65[89]/.test(digits)) return digits.slice(0, 2) + digits.slice(-8);
+    return clean.replace(/^\+/, '');
+  };
+}
+var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0085';
+window.APP_VERSION='2026.05.05.0086';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -6598,6 +6619,12 @@ function App() {
   // Logs tab + cloud appointments[] stay in lockstep with local state.
   var [pendingCalDeletions, setPendingCalDeletions] = useState([]);
   var [calDeletionScanEvents, setCalDeletionScanEvents] = useState(null); // null = never pulled, [] = pulled empty
+  // 0086: ref keeps the pull useEffect deps lean ([gOk, target ids]) while
+  // letting `pull` always read the latest appointments to derive calIds.
+  // Otherwise putting `appointments` in deps would clear + re-create the
+  // 5-min interval on every state change — wasteful.
+  var apptsForCalScanRef = useRef([]);
+  apptsForCalScanRef.current = appointments || [];
   var calDeletionDismissRef = useRef(null);
   if (calDeletionDismissRef.current === null) {
     try { calDeletionDismissRef.current = JSON.parse(localStorage.getItem('ad_calDelDismiss') || '{}') || {}; }
@@ -6613,9 +6640,29 @@ function App() {
       try {
         var minD = new Date(Date.now() - 1 * 86400000);  // -1 day (catches yesterday's appts)
         var maxD = new Date(Date.now() + 60 * 86400000); // +60 days forward (user's max)
-        var calIds = [];
-        if (myCfg.targetCalendarId) calIds.push(myCfg.targetCalendarId);
-        if (cfg.targetCalendarId && !calIds.includes(cfg.targetCalendarId)) calIds.push(cfg.targetCalendarId);
+        // 0086: the scan must include EVERY calendar that owns one of
+        // this user's owned appointments — not just the current target.
+        // Otherwise admins who reconfigured their target after booking
+        // would see false-positive "Calendar event missing" prompts for
+        // every appointment that lives on the old target. Build calIds
+        // from owned-appointment.calendarId values + the configured
+        // targets, deduped.
+        var calIdSet = new Set();
+        if (myCfg.targetCalendarId) calIdSet.add(myCfg.targetCalendarId);
+        if (cfg.targetCalendarId) calIdSet.add(cfg.targetCalendarId);
+        var minMs = minD.getTime();
+        var maxMs = maxD.getTime();
+        // Read appointments off the ref so this pull always sees the
+        // latest list without forcing the surrounding useEffect to
+        // re-create the 5-min interval on every state change.
+        (apptsForCalScanRef.current || []).forEach(a => {
+          if (!a || a._deleted || !a.calEventId) return;
+          if (!_canEditAppt(a)) return; // only my own appts contribute
+          var ts = Date.parse(String(a.apptDate || '') + 'T' + String(a.apptTime || '00:00'));
+          if (!Number.isFinite(ts) || ts < minMs || ts > maxMs) return;
+          if (a.calendarId) calIdSet.add(a.calendarId);
+        });
+        var calIds = Array.from(calIdSet);
         if (!calIds.length) calIds = ['primary'];
         var evs = await gCal.loadRange(calIds, minD, maxD);
         if (!canceled) setCalDeletionScanEvents(evs || []);
