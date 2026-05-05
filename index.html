@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0093'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0094'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -963,7 +963,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0093';
+window.APP_VERSION='2026.05.05.0094';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -6883,18 +6883,20 @@ function App() {
       try { localStorage.setItem('ad_calDelDismiss', JSON.stringify(d)); } catch (_e) {}
     }
   }, [running]);
-  var resolveCalDeletionFlyKite = useCallback(async a => {
+  var resolveCalDeletionFlyKite = useCallback(a => {
     if (!a) return;
     var ts = new Date().toISOString();
+    // 0094: optimistic UI — update local state and CLOSE the modal
+    // immediately, then fire-and-forget the Sheets sync. Pre-fix, the
+    // modal stayed visible until the API round-trip completed, which
+    // the user described as "takes very long to register".
     setAppointments(p => (p || []).map(x => x.id === a.id ? { ...x, followUp: 'fly_kite', followUpDate: ts } : x));
-    try {
-      await syncApptSheet({ ...a, followUp: 'fly_kite', followUpDate: ts }, {
-        followUp: 'Fly Kite',
-        notes: ((a.remarks || '') + (a.remarks ? '\n' : '') + '[Calendar deleted ' + new Date().toLocaleString('en-SG') + ' — fly kite]')
-      });
-    } catch (_e) {}
     setPendingCalDeletions(p => (p || []).filter(x => x.id !== a.id));
     toast('🪁 Marked ' + (a.name || 'appointment') + ' as fly kite', 'info');
+    syncApptSheet({ ...a, followUp: 'fly_kite', followUpDate: ts }, {
+      followUp: 'Fly Kite',
+      notes: ((a.remarks || '') + (a.remarks ? '\n' : '') + '[Calendar deleted ' + new Date().toLocaleString('en-SG') + ' — fly kite]')
+    }).catch(() => {});
   }, [syncApptSheet]);
   var resolveCalDeletionRestore = useCallback(async a => {
     if (!a) return;
@@ -6944,14 +6946,13 @@ function App() {
   // here automatically flows through to the final paycheck.
   var resolveCalDeletionUndoSet = useCallback(async a => {
     if (!a) return;
-    if (role !== 'admin') {
-      toast('Undo Set is for admins only', 'err');
-      return;
-    }
-    var ok = await confirmAsync(
-      'Undo "Set" for ' + (a.name || 'this lead') + '?\n\nThis subtracts 1 from your Set count and reverts the lead to Pending. Use only if the appointment was never real.\n\n⚠ Affects your Appts bar (' + (myCfg.mThresh ?? 2) + ') and Bonus bar (' + (myCfg.nThresh ?? 3) + ' × ' + (myCfg.bonusMult ?? 1.5) + 'x) for this session + monthly rank.',
-      { title: '↶ Undo Set?', confirmLabel: 'Undo Set', cancelLabel: 'Keep', danger: true }
-    );
+    // 0094: opened to mains too — mains can delete an appt they created
+    // by accident. The pay-bar copy (mThresh/nThresh) only matters for
+    // admins; we hide that line in the confirm prompt for mains.
+    var copy = role === 'admin'
+      ? 'Undo "Set" for ' + (a.name || 'this lead') + '?\n\nThis subtracts 1 from your Set count and reverts the lead to Pending. Use only if the appointment was never real.\n\n⚠ Affects your Appts bar (' + (myCfg.mThresh ?? 2) + ') and Bonus bar (' + (myCfg.nThresh ?? 3) + ' × ' + (myCfg.bonusMult ?? 1.5) + 'x) for this session + monthly rank.'
+      : 'Delete "' + (a.name || 'this appointment') + '"?\n\nThis was a misclick — the appointment was never real. Removes the calendar event, deletes the appointments-sheet row, reverts the lead to Pending, and decrements your Set count.\n\nUse "Fly Kite" instead if the appointment WAS real but the prospect didn\'t show.';
+    var ok = await confirmAsync(copy, { title: role === 'admin' ? '↶ Undo Set?' : '↶ Delete by accident?', confirmLabel: role === 'admin' ? 'Undo Set' : 'Delete appointment', cancelLabel: 'Keep', danger: true });
     if (!ok) return;
     // 1 + 2: counters
     setSession(p => p ? { ...p, sets: Math.max(0, (p.sets || 1) - 1) } : p);
@@ -7070,7 +7071,7 @@ function App() {
     if (target.phone && x.phone === target.phone && target.apptDate && x.apptDate === target.apptDate && target.apptTime && x.apptTime === target.apptTime) return true;
     return false;
   };
-  var resolvePastApptStatus = useCallback(async (a, status) => {
+  var resolvePastApptStatus = useCallback((a, status) => {
     if (!a || !status) return;
     var ts = new Date().toISOString();
     var localStatus = status; // keep canonical: 'met' | 'fly_kite' | 'postponed' | 'closed'
@@ -7079,10 +7080,13 @@ function App() {
                     : status === 'postponed' ? 'Postponed'
                     : status === 'closed' ? 'Closed'
                     : status;
+    // 0094: optimistic UI — local state + toast fire immediately, then
+    // sync to Sheets in the background. Pre-fix, the user perceived a
+    // 1-2s lag between tap and visible change while the API call ran.
     setAppointments(p => (p || []).map(x => _matchAppt(x, a) ? { ...x, followUp: localStatus, followUpDate: ts } : x));
-    try { await syncApptSheet({ ...a, followUp: localStatus, followUpDate: ts }, { followUp: sheetStatus }); } catch (_e) {}
     var emoji = status === 'met' ? '✓' : status === 'fly_kite' ? '🪁' : status === 'postponed' ? '⏰' : '🏁';
     toast(emoji + ' ' + (a.name || 'appointment') + ' → ' + sheetStatus, 'info');
+    syncApptSheet({ ...a, followUp: localStatus, followUpDate: ts }, { followUp: sheetStatus }).catch(() => {});
   }, [syncApptSheet]);
   // 0088: "I set wrongly (delete appointment)" — the misclick path on
   // the past-appt banner. User said: Fly Kite KEEPS the set count
@@ -17034,10 +17038,38 @@ function App() {
       duplicatePhones: Object.values(leadPhoneCounts).filter(c => c > 1).reduce((a, c) => a + c, 0),
       review: (leads || []).filter(l => l.needsReview || l._fuzzyMatched || !l.name).length
     };
+    // 0094: duplicates stat is now a clickable card — tap to remove the
+    // duplicates (keeps the first occurrence per phone, drops the rest).
+    // Pre-fix the count just sat there with no path to act on it.
+    var cadRemoveDuplicatePhones = () => {
+      var seen = new Set();
+      var kept = [];
+      var dropped = 0;
+      (leads || []).forEach(l => {
+        var k = normalizePhone ? normalizePhone(l.phone || '') : String(l.phone || '').replace(/\D/g, '');
+        if (!k) { kept.push(l); return; }
+        if (seen.has(k)) { dropped++; return; }
+        seen.add(k);
+        kept.push(l);
+      });
+      if (!dropped) return toast('No duplicate phones to remove', 'info');
+      confirmAsync('Remove ' + dropped + ' duplicate phone row' + (dropped === 1 ? '' : 's') + '?\n\nKeeps the first occurrence of each phone number; drops the rest from your local lead list. The source sheet is not touched — re-importing will bring them back.', { title: 'Remove duplicates?', confirmLabel: 'Remove ' + dropped, cancelLabel: 'Keep', danger: true })
+        .then(ok => {
+          if (!ok) return;
+          setLeads(kept);
+          toast('🗑 Removed ' + dropped + ' duplicate phone row' + (dropped === 1 ? '' : 's'));
+        });
+    };
     var cadLeadDiagnostics = leads.length ? h('div', { className: 'cad-stat-grid cad-import-stats' },
       stat('Callable', leadImportStats.callable, 'ready for queue', 'var(--ad-green)'),
       stat('Missing phone', leadImportStats.missingPhone, 'cannot call', leadImportStats.missingPhone ? 'var(--ad-red)' : null),
-      stat('Duplicates', leadImportStats.duplicatePhones, 'phone rows', leadImportStats.duplicatePhones ? 'var(--ad-amber)' : null),
+      leadImportStats.duplicatePhones
+        ? h('button', { className: 'cad-card cad-stat', onClick: cadRemoveDuplicatePhones, type: 'button', style: { textAlign: 'left', cursor: 'pointer', borderColor: 'oklch(0.80 0.13 75 / .42)' }, title: 'Click to remove duplicate phone rows (keeps first occurrence)' },
+            h('span', { className: 'cad-label' }, 'Duplicates'),
+            h('b', { style: { color: 'var(--ad-amber)' } }, leadImportStats.duplicatePhones),
+            h('span', { className: 'cad-subtle', style: { fontSize: 11 } }, '🗑 click to remove')
+          )
+        : stat('Duplicates', 0, 'phone rows'),
       stat('Review marks', leadImportStats.review, 'fuzzy or weak rows', leadImportStats.review ? 'var(--ad-blue)' : null)
     ) : null;
     var leadsView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
@@ -18010,19 +18042,21 @@ function App() {
             h('p', null, 'Re-create the calendar event with the same date, time, and notes from the saved record.')
           )
         ),
-        // 0085: Undo: Set — admin-only. The appointment never really
-        // happened (misclick on Set, prospect retracted, etc.). Affects
-        // session.sets / totalSets / dailySets / Appts bar / Bonus bar
-        // / monthly rank, all wired through resolveCalDeletionUndoSet.
-        role === 'admin' && h('button', {
+        // 0094: Delete-by-accident option, available to mains AND admins
+        // (was admin-only). Same underlying flow — counter decrement,
+        // lead revert, sheet row drop, audit log — but the copy varies
+        // by role since pay-bar thresholds only matter for admins.
+        h('button', {
           className: 'cad-cal-deletion-action cad-cal-deletion-action--undo',
           onClick: () => resolveCalDeletionUndoSet(calDelHead),
           type: 'button'
         },
-          h('span', { className: 'cad-cal-deletion-action__emoji' }, '↶'),
+          h('span', { className: 'cad-cal-deletion-action__emoji' }, '🗑'),
           h('div', null,
-            h('b', null, 'Undo: Set'),
-            h('p', null, 'This appointment was never real (misclick / prospect retracted). Subtract 1 from your Set count, revert lead to Pending, drop the Appointments Set row. Affects your Appts bar (', (myCfg.mThresh ?? 2), ') and Bonus bar (', (myCfg.nThresh ?? 3), ' × ', (myCfg.bonusMult ?? 1.5), 'x) for this session + monthly rank.')
+            h('b', null, role === 'admin' ? 'Undo: Set' : 'Delete — I created this by accident'),
+            h('p', null, role === 'admin'
+              ? ['This appointment was never real (misclick / prospect retracted). Subtract 1 from your Set count, revert lead to Pending, drop the Appointments Set row. Affects your Appts bar (', (myCfg.mThresh ?? 2), ') and Bonus bar (', (myCfg.nThresh ?? 3), ' × ', (myCfg.bonusMult ?? 1.5), 'x) for this session + monthly rank.']
+              : 'Misclick — the appointment was never real. Removes the calendar event, deletes the appointments-sheet row, reverts the lead to Pending, and decrements your Set count.')
           )
         )
       ),
