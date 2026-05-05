@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0081'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0082'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -627,6 +627,27 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-section-script{border-left:3px solid var(--ad-brass);padding-left:11px}
 .cad-section-cal{border-left:3px solid var(--ad-blue);padding-left:11px}
 .cad-section-gamify{border-left:3px solid oklch(0.72 0.18 320);padding-left:11px}
+/* 0082: rank-card grid for the Main rank requirements panel. Each card
+   has a coloured gradient head (rank emoji + label + achievement
+   pct), a body with the threshold input + a tiny progress bar that
+   uses the same gradient. Achieved cards lift to a coloured border
+   + glow shadow so the user sees their current standing at a glance. */
+.cad-rank-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.cad-rank-card{display:flex;flex-direction:column;border-radius:14px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2);overflow:hidden;transition:transform .12s,box-shadow .18s,border-color .18s}
+.cad-rank-card.achieved{transform:translateY(-1px)}
+.cad-rank-card__head{display:flex;align-items:center;gap:12px;padding:12px 14px}
+.cad-rank-card__emoji{font-size:26px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.35))}
+.cad-rank-card__body{padding:12px 14px;display:flex;flex-direction:column;gap:5px}
+.cad-rank-card__label{color:var(--ad-t-3);font-size:10px;font-weight:850;letter-spacing:.06em;text-transform:uppercase}
+.cad-rank-card__body input{width:100%;min-height:36px;padding:8px 10px;border-radius:9px;border:1px solid var(--ad-line-2);background:var(--ad-bg-1);color:var(--ad-t-0);font-size:13px;font-variant-numeric:tabular-nums}
+.cad-rank-card__progress{font-size:11px;color:var(--ad-t-2);margin-top:4px}
+/* 0082: calling-page rank chip — pinned to the session strip when role
+   is Main. Click jumps to Settings → Owner so the user can tweak
+   thresholds without leaving call mode. Coloured per current rank. */
+.cad-rank-chip{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:999px;font-size:11.5px;font-weight:700;letter-spacing:.02em;cursor:pointer;border:1px solid currentColor;transition:filter .12s,transform .08s}
+.cad-rank-chip:hover{filter:brightness(1.12)}
+.cad-rank-chip:active{transform:scale(.97)}
+.cad-rank-chip__emoji{font-size:14px}
 /* 0078: bump readability of the team roster small-print. The legacy
    .cad-subtle (var(--ad-t-3) = #6c7585) was barely legible against the
    bg-2 card; lift it to t-2 inside admin rows only — other places where
@@ -774,7 +795,7 @@ var a1Col = window.a1Col;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0081';
+window.APP_VERSION='2026.05.05.0082';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -881,8 +902,56 @@ window._uidByEmail=async function(email){
 function authMsg(t,type){console.warn('[Auth] (legacy authMsg)',t)}
 function authClear(){}
 function authShow(v){}
-function toast(m,t){var e=document.createElement('div');e.className='toast t-'+(t||'ok');e.textContent=m;document.getElementById('toast-area').appendChild(e);setTimeout(function(){e.style.opacity='0';e.style.transition='opacity .3s';setTimeout(function(){e.remove()},300)},3000)}
-window.toast=toast;
+// 0082: toast helper hardened to reduce noise.
+//   1. Dedupe: identical (msg,tone) pairs within 1.2s collapse into one
+//      surface — prevents the "Script draft saved … Reference notes saved
+//      … Auto-saved" cascade when one save fires several syncs.
+//   2. Suppress progress chatter: messages that start with '↻' (the
+//      legacy "doing background work" prefix) are downgraded to a single
+//      shared 'progress' bucket — only the LATEST progress message is
+//      visible. Errors and explicit success toasts always fire.
+//   3. Cap concurrent toasts at 4. Older ones fade early when the cap is
+//      hit so the user never sees a wall of stacked toasts.
+window.__toastLast = window.__toastLast || {};
+window.__toastQueue = window.__toastQueue || [];
+function toast(m, t) {
+  var msg = String(m || '');
+  var tone = t || 'ok';
+  var now = Date.now();
+  var key = tone + ':' + msg;
+  // Dedupe identical toasts within 1.2s
+  if (window.__toastLast[key] && (now - window.__toastLast[key]) < 1200) return;
+  window.__toastLast[key] = now;
+  var area = document.getElementById('toast-area');
+  if (!area) return;
+  // Progress toasts ('↻ doing thing…') replace any prior progress toast
+  // instead of stacking. Errors and success toasts always show.
+  var isProgress = msg.indexOf('↻') === 0 && tone !== 'err';
+  if (isProgress) {
+    Array.from(area.querySelectorAll('.toast.t-progress')).forEach(function(prev){
+      prev.style.opacity = '0';
+      setTimeout(function(){ prev.remove(); }, 200);
+    });
+  }
+  var e = document.createElement('div');
+  e.className = 'toast t-' + (isProgress ? 'progress' : tone);
+  e.textContent = msg;
+  area.appendChild(e);
+  // Cap: max 4 visible toasts. Oldest fades when we exceed.
+  var visible = area.querySelectorAll('.toast');
+  if (visible.length > 4) {
+    var oldest = visible[0];
+    oldest.style.opacity = '0';
+    setTimeout(function(){ oldest.remove(); }, 200);
+  }
+  var lifetime = tone === 'err' ? 4500 : isProgress ? 1800 : 3000;
+  setTimeout(function(){
+    e.style.opacity = '0';
+    e.style.transition = 'opacity .3s';
+    setTimeout(function(){ e.remove(); }, 300);
+  }, lifetime);
+}
+window.toast = toast;
 
 // ══════ TIP CELEBRATION SOUND — Web Audio API (no external libs) ══════
 window._audioCtx=null;
@@ -15650,11 +15719,11 @@ function App() {
           h('div', { className: 'cad-session-info' },
             h('span', { className: 'cad-label' }, 'Session'),
             // 0079: live elapsed timer added (was static "Started 09:47").
-            // Falls back to "Ready to start" when no session is running.
-            // The `elapsed` state already ticks every 1s via the existing
-            // useEffect at ~line 11985, but the assimilated view never
-            // rendered it — that's why the user reported "live timer isn't
-            // really going when session starts".
+            // 0082: rank chip pinned next to the session info for Mains —
+            // shows current rank emoji + label + stars-to-next, click
+            // jumps to Settings → Owner to tune the thresholds. Admins
+            // get their tier-rank chip in the gamification card on the
+            // Home dashboard, so the call view stays uncluttered for them.
             currentSession
               ? h('div', { style: { marginTop: 4 } },
                   h('p', { className: 'cad-mono', style: { fontSize: 16, fontWeight: 700, color: 'var(--ad-brass-2)', letterSpacing: '-0.01em' } }, fmtTime(elapsed || 0)),
@@ -15663,7 +15732,18 @@ function App() {
                     currentSession.selectedSlot ? ' · Slot' : ''
                   )
                 )
-              : h('p', { style: { fontSize: 13, marginTop: 4, color: 'var(--ad-t-2)' } }, 'Ready to start')
+              : h('p', { style: { fontSize: 13, marginTop: 4, color: 'var(--ad-t-2)' } }, 'Ready to start'),
+            role === 'main' && rank && h('button', {
+              className: 'cad-rank-chip',
+              style: { color: rank.color, background: 'rgba(0,0,0,.18)', marginTop: 8 },
+              title: 'Main rank · ' + rank.label + ' · ' + monthlyAppts + ' appointments this month · click to tune thresholds',
+              onClick: () => { setMainMode('manage'); setTab('settings'); setSettingsSubtab('owner'); },
+              type: 'button'
+            },
+              h('span', { className: 'cad-rank-chip__emoji' }, rank.emoji),
+              h('span', null, rank.label),
+              h('span', { className: 'cad-mono', style: { opacity: .8 } }, monthlyAppts, ' / ', (cfg.starThresholds || [0, 5, 10, 15, 25, 35, 50])[rank.idx + 1] || '∞')
+            )
           ),
           h('div', { className: 'cad-session-stats cad-session-stats--center' },
             h('div', { className: 'cad-session-stat' }, h('span', { className: 'cad-label' }, 'Dialed'), h('b', null, sessionDialed)),
@@ -16042,9 +16122,51 @@ function App() {
         h('div', { className: 'cad-kv-row' }, h('span', null, 'Worker'), h('span', { className: 'cad-mono cad-muted' }, WORKER_URL ? 'configured' : 'not configured'))
       ),
       h('div', { className: 'cad-card cad-editor-card' }, h('span', { className: 'cad-label' }, 'Owner tools'), h('p', { className: 'cad-page-note' }, isCreatorUser ? 'Creator and hub user management remain available in the live hub. This Claude page keeps the operational status visible without changing account permissions.' : 'This section is restricted to the account owner.')),
-      h('div', { className: 'cad-card cad-editor-card' },
-        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Main rank requirements'), h('span', { className: 'cad-pill' }, 'custom')),
-        h('div', { className: 'cad-settings-grid' }, (ML_RANKS || []).map((r, i) => fieldBlock(r.label, h('input', { type: 'number', min: 0, step: 1, value: (cfg.starThresholds || [0, 5, 10, 15, 25, 35, 50])[i] ?? 0, onChange: e => setCfg(p => { var next = [...(p.starThresholds || [0, 5, 10, 15, 25, 35, 50])]; next[i] = Math.max(0, parseInt(e.target.value || '0', 10) || 0); return { ...p, starThresholds: next }; }) }), i === 0 ? 'Start rank. Admin-produced appointments do not count for Main self-call rank.' : 'Minimum monthly appointments for ' + r.label)))
+      // 0082: Main rank requirements rebuilt as visual tier cards. Each
+      // card uses ML_RANKS gradient + emoji + glow, shows the current
+      // monthly progress vs threshold, and lets the user tune the bar
+      // inline. Resets monthly so the bar is meaningful on a per-month
+      // basis (the existing _lastStarReset cycle in the legacy app
+      // already handles the actual reset; this just communicates it).
+      h('div', { className: 'cad-card cad-editor-card cad-section-gamify' },
+        h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } },
+          h('span', { className: 'cad-label', style: { color: 'oklch(0.78 0.18 320)' } }, '🏆 Main rank requirements'),
+          h('span', { className: 'cad-pill brass' }, '↻ resets each month')
+        ),
+        h('p', { className: 'cad-page-note', style: { marginBottom: 14 } }, 'These bars apply to your OWN self-call appointments. Admin-produced appointments don\'t count toward your Main rank — they have their own ladder in Team → Admin config → Rank tiers.'),
+        h('div', { className: 'cad-rank-grid' }, (ML_RANKS || []).map((r, i) => {
+          var thresh = (cfg.starThresholds || [0, 5, 10, 15, 25, 35, 50])[i] ?? 0;
+          var current = monthlyAppts || 0;
+          var hit = current >= thresh;
+          var pct = thresh > 0 ? Math.min(100, Math.round(current / thresh * 100)) : 100;
+          return h('div', {
+            className: 'cad-rank-card' + (hit ? ' achieved' : ''),
+            key: r.key,
+            style: { borderColor: hit ? r.color : 'var(--ad-line-1)', boxShadow: hit ? '0 0 24px ' + r.glow : 'none' }
+          },
+            h('div', { className: 'cad-rank-card__head', style: { background: r.bg } },
+              h('span', { className: 'cad-rank-card__emoji' }, r.emoji),
+              h('div', null,
+                h('b', { style: { color: '#fff', fontSize: 14, textShadow: '0 1px 2px rgba(0,0,0,.35)' } }, r.label),
+                h('p', { style: { fontSize: 10.5, color: 'rgba(255,255,255,.78)', marginTop: 2, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 } }, hit ? '✓ Achieved' : pct + '% to go')
+              )
+            ),
+            h('div', { className: 'cad-rank-card__body' },
+              h('label', { className: 'cad-rank-card__label' }, 'Min appointments / month'),
+              h('input', {
+                type: 'number', min: 0, step: 1, value: thresh,
+                onChange: e => setCfg(p => { var next = [...(p.starThresholds || [0, 5, 10, 15, 25, 35, 50])]; next[i] = Math.max(0, parseInt(e.target.value || '0', 10) || 0); return { ...p, starThresholds: next }; })
+              }),
+              thresh > 0 && h('div', { className: 'cad-mini-progress', style: { marginTop: 8 } },
+                h('i', { style: { width: pct + '%', background: r.bg } })
+              ),
+              h('p', { className: 'cad-rank-card__progress' },
+                h('b', { style: { color: hit ? r.color : 'var(--ad-t-2)' } }, current),
+                ' / ', thresh, ' this month'
+              )
+            )
+          );
+        }))
       )
     );
     // 0080: Calling tab stripped to WhatsApp templates + AI keys only.
