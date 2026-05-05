@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0083'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0084'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -648,6 +648,45 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-rank-chip:hover{filter:brightness(1.12)}
 .cad-rank-chip:active{transform:scale(.97)}
 .cad-rank-chip__emoji{font-size:14px}
+/* 0084: calendar-deletion modal — two big choice cards (fly-kite + restore)
+   stacked, each with its own colour stripe. Dismiss row at the bottom is
+   tertiary so the user instinctively picks one of the two main actions. */
+.cad-cal-deletion-actions{display:flex;flex-direction:column;gap:10px;margin-bottom:14px}
+.cad-cal-deletion-action{display:flex;align-items:flex-start;gap:14px;padding:14px 16px;border-radius:14px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);text-align:left;cursor:pointer;transition:transform .08s,border-color .12s,background .12s,box-shadow .18s;width:100%}
+.cad-cal-deletion-action:hover{transform:translateY(-1px)}
+.cad-cal-deletion-action:active{transform:scale(.98)}
+.cad-cal-deletion-action__emoji{font-size:28px;line-height:1;flex-shrink:0;filter:drop-shadow(0 1px 3px rgba(0,0,0,.35))}
+.cad-cal-deletion-action b{display:block;font-size:14px;font-weight:700;margin-bottom:4px}
+.cad-cal-deletion-action p{font-size:12px;color:var(--ad-t-2);line-height:1.5;margin:0}
+.cad-cal-deletion-action--flykite{border-left:3px solid var(--ad-red)}
+.cad-cal-deletion-action--flykite:hover{border-color:var(--ad-red);background:var(--ad-red-dim)}
+.cad-cal-deletion-action--restore{border-left:3px solid var(--ad-brass)}
+.cad-cal-deletion-action--restore:hover{border-color:var(--ad-brass-line);background:var(--ad-brass-dim)}
+.cad-cal-deletion-dismiss{margin-top:8px;display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding-top:10px;border-top:1px solid var(--ad-line-1)}
+/* 0084: past-appointment followup banner card on Main's home dashboard.
+   Persistent (no dismiss), stacked above the greeting block so the
+   operator can't miss it. Each row = appt + four pill buttons that
+   resolve followUp instantly (Met / Fly Kite / Postponed / Closed). */
+.cad-pastappt-banner{padding:18px 20px;display:flex;flex-direction:column;gap:14px;background:linear-gradient(135deg,oklch(0.32 0.04 50 / .35),var(--ad-bg-1));border:1px solid var(--ad-amber-line,oklch(0.80 0.13 75 / .34));border-radius:16px}
+.cad-pastappt-banner__head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
+.cad-pastappt-banner__title{font-size:18px;font-weight:700;letter-spacing:-0.01em;margin:0;color:var(--ad-amber)}
+.cad-pastappt-banner__sub{margin:4px 0 0;font-size:13px;color:var(--ad-t-2);line-height:1.5}
+.cad-pastappt-list{display:flex;flex-direction:column;gap:8px}
+.cad-pastappt-row{display:grid;grid-template-columns:minmax(180px,1.4fr) auto;gap:14px;align-items:center;padding:12px 14px;border-radius:12px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2)}
+.cad-pastappt-row__name{font-weight:700;font-size:13px}
+.cad-pastappt-row__meta{font-size:11px;color:var(--ad-t-2);margin-top:3px}
+.cad-pastappt-actions{display:flex;flex-wrap:wrap;gap:6px;justify-content:flex-end}
+.cad-pastappt-btn{display:inline-flex;align-items:center;gap:5px;padding:6px 11px;border-radius:999px;border:1px solid currentColor;background:transparent;font-size:12px;font-weight:700;letter-spacing:.02em;cursor:pointer;transition:filter .12s,transform .08s}
+.cad-pastappt-btn:hover{filter:brightness(1.18)}
+.cad-pastappt-btn:active{transform:scale(.96)}
+.cad-pastappt-btn--met{color:var(--ad-green);background:var(--ad-green-dim)}
+.cad-pastappt-btn--flykite{color:var(--ad-red);background:var(--ad-red-dim)}
+.cad-pastappt-btn--postponed{color:var(--ad-amber);background:var(--ad-amber-dim)}
+.cad-pastappt-btn--closed{color:var(--ad-brass-2);background:var(--ad-brass-dim)}
+@media(max-width:900px){
+  .cad-pastappt-row{grid-template-columns:1fr}
+  .cad-pastappt-actions{justify-content:flex-start}
+}
 /* 0078: bump readability of the team roster small-print. The legacy
    .cad-subtle (var(--ad-t-3) = #6c7585) was barely legible against the
    bg-2 card; lift it to t-2 inside admin rows only — other places where
@@ -795,7 +834,7 @@ var a1Col = window.a1Col;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0083';
+window.APP_VERSION='2026.05.05.0084';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -6532,6 +6571,179 @@ function App() {
     if (!owner) return true; // legacy / unattributed local appt
     return owner === me;
   };
+  // 0084: appointment-state reconciliation system. Two flows.
+  //
+  // FEATURE A — external calendar deletion detection
+  //   When a user deletes an appointment event directly in Google Calendar
+  //   (NOT through AutoDial), our local appt record + Sheet row are now
+  //   out of sync with reality. The deletion detector polls a 60-day
+  //   window via gCal.loadRange (separate from the 7-day weekEvents pull
+  //   that drives the cal grid), compares calEventIds to appointments[]
+  //   and queues a prompt for the OWNER (gated by _canEditAppt) asking:
+  //     🪁 Fly kite     — prospect didn't show; mark followUp:'fly_kite'
+  //     ↩ Restore        — re-create the calendar event from saved record
+  //     × Dismiss        — 5min / 1h / "until next session" cooldown
+  //
+  // FEATURE B — past-appointment followup queue (Mains only)
+  //   Appointments whose start time has passed AND followUp is still
+  //   'pending' / empty surface as a persistent banner on the Main's
+  //   home dashboard. Each row gets four pill buttons:
+  //     ✓ Met · 🪁 Fly kite · ⏰ Postponed · 🏁 Closed
+  //   Persistent until the Main resolves every entry — no dismiss.
+  //
+  // Both flows pipe their resolutions through syncApptSheet so Sheets +
+  // Logs tab + cloud appointments[] stay in lockstep with local state.
+  var [pendingCalDeletions, setPendingCalDeletions] = useState([]);
+  var [calDeletionScanEvents, setCalDeletionScanEvents] = useState(null); // null = never pulled, [] = pulled empty
+  var calDeletionDismissRef = useRef(null);
+  if (calDeletionDismissRef.current === null) {
+    try { calDeletionDismissRef.current = JSON.parse(localStorage.getItem('ad_calDelDismiss') || '{}') || {}; }
+    catch (_e) { calDeletionDismissRef.current = {}; }
+  }
+  // 60-day forward window scan. Pulls on: app load (gOk transition false→true),
+  // window focus, and every 5 minutes while gOk is true. Separate from the
+  // weekEvents pull so the wider range doesn't overload the cal grid render.
+  useEffect(() => {
+    if (!gOk) return;
+    var canceled = false;
+    var pull = async () => {
+      try {
+        var minD = new Date(Date.now() - 1 * 86400000);  // -1 day (catches yesterday's appts)
+        var maxD = new Date(Date.now() + 60 * 86400000); // +60 days forward (user's max)
+        var calIds = [];
+        if (myCfg.targetCalendarId) calIds.push(myCfg.targetCalendarId);
+        if (cfg.targetCalendarId && !calIds.includes(cfg.targetCalendarId)) calIds.push(cfg.targetCalendarId);
+        if (!calIds.length) calIds = ['primary'];
+        var evs = await gCal.loadRange(calIds, minD, maxD);
+        if (!canceled) setCalDeletionScanEvents(evs || []);
+      } catch (_e) {
+        // Pull failed — leave previous scan in place rather than wiping
+        // (a transient network blip shouldn't trigger false-positive
+        // deletion prompts for every appointment).
+      }
+    };
+    pull();
+    var intervalId = setInterval(pull, 5 * 60 * 1000); // 5 min
+    var onFocus = () => pull();
+    window.addEventListener('focus', onFocus);
+    return () => {
+      canceled = true;
+      clearInterval(intervalId);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [gOk, myCfg.targetCalendarId, cfg.targetCalendarId]);
+  // Detection logic — runs whenever the scan list or appointments change.
+  useEffect(() => {
+    if (!calDeletionScanEvents || !appointments?.length) return;
+    var winStart = Date.now() - 1 * 86400000;
+    var winEnd = Date.now() + 60 * 86400000;
+    var pulledIds = new Set((calDeletionScanEvents || []).map(e => e?.id).filter(Boolean));
+    var dismissed = calDeletionDismissRef.current || {};
+    var nowMs = Date.now();
+    var suspected = (appointments || []).filter(a => {
+      if (a?._deleted) return false;
+      if (!a?.calEventId) return false;
+      var fu = String(a?.followUp || '').toLowerCase();
+      if (fu === 'fly_kite' || fu === 'fly kite' || fu === 'flykite' || fu === 'closed' || fu === 'cancelled') return false;
+      if (pulledIds.has(a.calEventId)) return false;
+      if (!_canEditAppt(a)) return false;
+      var ts = Date.parse(String(a.apptDate || '') + 'T' + String(a.apptTime || '00:00'));
+      if (!Number.isFinite(ts) || ts < winStart || ts > winEnd) return false;
+      var dInfo = dismissed[a.calEventId];
+      if (dInfo) {
+        if (dInfo.until === 'session') return false; // wait for next session start
+        if (Number.isFinite(dInfo.until) && nowMs < dInfo.until) return false;
+      }
+      return true;
+    });
+    setPendingCalDeletions(suspected);
+  }, [calDeletionScanEvents, appointments, role, myEmail]);
+  // Clear "until next session" dismissals when a new session starts.
+  useEffect(() => {
+    if (!running) return;
+    var d = calDeletionDismissRef.current || {};
+    var changed = false;
+    Object.keys(d).forEach(k => { if (d[k]?.until === 'session') { delete d[k]; changed = true; } });
+    if (changed) {
+      calDeletionDismissRef.current = d;
+      try { localStorage.setItem('ad_calDelDismiss', JSON.stringify(d)); } catch (_e) {}
+    }
+  }, [running]);
+  var resolveCalDeletionFlyKite = useCallback(async a => {
+    if (!a) return;
+    var ts = new Date().toISOString();
+    setAppointments(p => (p || []).map(x => x.id === a.id ? { ...x, followUp: 'fly_kite', followUpDate: ts } : x));
+    try {
+      await syncApptSheet({ ...a, followUp: 'fly_kite', followUpDate: ts }, {
+        followUp: 'Fly Kite',
+        notes: ((a.remarks || '') + (a.remarks ? '\n' : '') + '[Calendar deleted ' + new Date().toLocaleString('en-SG') + ' — fly kite]')
+      });
+    } catch (_e) {}
+    setPendingCalDeletions(p => (p || []).filter(x => x.id !== a.id));
+    toast('🪁 Marked ' + (a.name || 'appointment') + ' as fly kite', 'info');
+  }, [syncApptSheet]);
+  var resolveCalDeletionRestore = useCallback(async a => {
+    if (!a) return;
+    var s = new Date(String(a.apptDate || '') + 'T' + String(a.apptTime || '00:00'));
+    if (!Number.isFinite(s.getTime())) return toast('Cannot restore: appointment date/time missing', 'err');
+    var dur = Number(a.duration) || 60;
+    var e = new Date(s.getTime() + dur * 60000);
+    var title = 'Appt: ' + (a.name || '') + (a.location ? ' @ ' + a.location : '');
+    var desc = ['Client: ' + (a.name || ''), 'Phone: ' + (a.phone || ''), a.remarks ? 'Notes: ' + a.remarks : ''].filter(Boolean).join('\n');
+    var calId = a.calendarId || 'primary';
+    try {
+      var newEvt = await gCal.create(title, desc, s.toISOString(), e.toISOString(), null, calId);
+      var newId = newEvt?.id || '';
+      if (!newId) throw new Error('No event id returned');
+      setAppointments(p => (p || []).map(x => x.id === a.id ? { ...x, calEventId: newId, _restoredAt: Date.now() } : x));
+      try { await syncApptSheet({ ...a, calEventId: newId }, { calEventId: newId }); } catch (_e) {}
+      setPendingCalDeletions(p => (p || []).filter(x => x.id !== a.id));
+      toast('↩ Restored calendar event for ' + (a.name || 'appointment'), 'info');
+    } catch (err) {
+      toast('Restore failed: ' + (err?.message || err), 'err');
+    }
+  }, [syncApptSheet]);
+  var dismissCalDeletion = useCallback((a, durationMs) => {
+    if (!a?.calEventId) return;
+    var d = calDeletionDismissRef.current || {};
+    var until = durationMs === 'session' ? 'session' : Date.now() + (Number(durationMs) || 5 * 60000);
+    d[a.calEventId] = { until: until, ts: Date.now() };
+    calDeletionDismissRef.current = d;
+    try { localStorage.setItem('ad_calDelDismiss', JSON.stringify(d)); } catch (_e) {}
+    setPendingCalDeletions(p => (p || []).filter(x => x.id !== a.id));
+  }, []);
+  // FEATURE B — past-appointment followup queue. Mains only. Filters
+  // appointments whose scheduled time + duration buffer (default 30 min)
+  // has passed AND whose followUp is still pending. Sorted oldest-first.
+  var pastUnresolvedAppts = useMemo(() => {
+    if (role !== 'main') return [];
+    var nowMs = Date.now();
+    return (appointments || []).filter(a => {
+      if (a?._deleted) return false;
+      if (a?.needsDetails) return false; // separate flow: incompleteApptAlerts
+      var fu = String(a?.followUp || '').toLowerCase();
+      if (fu && fu !== 'pending') return false;
+      var ts = Date.parse(String(a.apptDate || '') + 'T' + String(a.apptTime || '00:00'));
+      if (!Number.isFinite(ts)) return false;
+      var dur = Number(a.duration) || 60;
+      // 30-min grace after end so we don't prompt while the appt is in progress
+      return (ts + (dur + 30) * 60000) < nowMs;
+    }).sort((a, b) => Date.parse(a.apptDate + 'T' + a.apptTime) - Date.parse(b.apptDate + 'T' + b.apptTime));
+  }, [appointments, role]);
+  var resolvePastApptStatus = useCallback(async (a, status) => {
+    if (!a || !status) return;
+    var ts = new Date().toISOString();
+    var localStatus = status; // keep canonical: 'met' | 'fly_kite' | 'postponed' | 'closed'
+    var sheetStatus = status === 'met' ? 'Met'
+                    : status === 'fly_kite' ? 'Fly Kite'
+                    : status === 'postponed' ? 'Postponed'
+                    : status === 'closed' ? 'Closed'
+                    : status;
+    setAppointments(p => (p || []).map(x => x.id === a.id ? { ...x, followUp: localStatus, followUpDate: ts } : x));
+    try { await syncApptSheet({ ...a, followUp: localStatus, followUpDate: ts }, { followUp: sheetStatus }); } catch (_e) {}
+    var emoji = status === 'met' ? '✓' : status === 'fly_kite' ? '🪁' : status === 'postponed' ? '⏰' : '🏁';
+    toast(emoji + ' ' + (a.name || 'appointment') + ' → ' + sheetStatus, 'info');
+  }, [syncApptSheet]);
   var _openRescheduleFlow = a => {
     if (!a) return;
     if (!_canEditAppt(a)) {
@@ -15732,7 +15944,37 @@ function App() {
         h('button', { className: 'cad-btn', onClick: flushSheetQueue }, 'Flush now')
       )
     ) : null;
+    // 0084: Feature B — past-appointment followup banner. Renders only
+    // for Mains, only when there are past appts whose followUp is still
+    // 'pending'. No dismiss; the user resolves each row by tapping one
+    // of the four pill buttons. Once the list is empty the card vanishes.
+    var pastApptBanner = (role === 'main' && pastUnresolvedAppts.length) ? h('div', { className: 'cad-pastappt-banner' },
+      h('div', { className: 'cad-pastappt-banner__head' },
+        h('div', null,
+          h('h2', { className: 'cad-pastappt-banner__title' }, '⏰ ', pastUnresolvedAppts.length, ' past appointment', pastUnresolvedAppts.length === 1 ? '' : 's', ' need', pastUnresolvedAppts.length === 1 ? 's' : '', ' follow-up'),
+          h('p', { className: 'cad-pastappt-banner__sub' }, 'Tap an outcome to resolve. Stays here until every row is answered.')
+        )
+      ),
+      h('div', { className: 'cad-pastappt-list' }, pastUnresolvedAppts.slice(0, 12).map(a => {
+        var ts = Date.parse(String(a.apptDate || '') + 'T' + String(a.apptTime || '00:00'));
+        var when = Number.isFinite(ts) ? new Date(ts).toLocaleString('en-SG', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : (a.apptDate + ' ' + a.apptTime);
+        return h('div', { className: 'cad-pastappt-row', key: a.id || a.calEventId || (a.phone + '_' + a.apptDate + '_' + a.apptTime) },
+          h('div', null,
+            h('div', { className: 'cad-pastappt-row__name' }, a.name || a.leadName || 'Lead'),
+            h('div', { className: 'cad-pastappt-row__meta' }, when, ' · set by ', a.admin || a.adminName || 'unknown')
+          ),
+          h('div', { className: 'cad-pastappt-actions' },
+            h('button', { className: 'cad-pastappt-btn cad-pastappt-btn--met', onClick: () => resolvePastApptStatus(a, 'met'), title: 'Prospect attended the appointment' }, '✓ Met'),
+            h('button', { className: 'cad-pastappt-btn cad-pastappt-btn--flykite', onClick: () => resolvePastApptStatus(a, 'fly_kite'), title: "Prospect didn't show up" }, '🪁 Fly Kite'),
+            h('button', { className: 'cad-pastappt-btn cad-pastappt-btn--postponed', onClick: () => resolvePastApptStatus(a, 'postponed'), title: 'Rescheduled — book a new time' }, '⏰ Postponed'),
+            h('button', { className: 'cad-pastappt-btn cad-pastappt-btn--closed', onClick: () => resolvePastApptStatus(a, 'closed'), title: 'Met + signed / paid' }, '🏁 Closed')
+          )
+        );
+      })),
+      pastUnresolvedAppts.length > 12 && h('p', { className: 'cad-subtle', style: { fontSize: 11, textAlign: 'center', margin: 0 } }, '+', pastUnresolvedAppts.length - 12, ' more — resolve these first to see the rest')
+    ) : null;
     var dashboard = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
+      pastApptBanner,
       h('div', { className: 'cad-dashboard-head' },
         h('div', null,
           h('div', { className: 'cad-inline' }, h('span', { className: 'cad-label' }, new Date().toLocaleDateString('en-SG', { weekday: 'long', month: 'short', day: 'numeric' })), h('span', { className: 'cad-pill amber' }, h('span', { className: 'cad-mono' }, '12'), '-day streak')),
@@ -17127,7 +17369,58 @@ function App() {
         undoInfo && h('button', { className: 'cad-btn primary', onClick: () => doUndo() }, 'Undo now')
       )
     ) : null;
-    var modalStack = h(React.Fragment, null, undoBar, moreModal, adminConfigModal, cbModal, calAddPickerModal, apptModal, slotModal, waModal, payQrModalClaude, importModal, colPickerModal, dialogModal);
+    // 0084: Feature A modal — surfaces when calDeletionScanEvents
+    // detects an appointment whose calEventId is no longer in Google
+    // Calendar. Single-modal queue (one prompt at a time, with "N of M"
+    // counter). Three actions + dismiss-with-duration menu.
+    var calDelHead = pendingCalDeletions[0];
+    var _calDelDateLabel = calDelHead ? (() => {
+      var ts = Date.parse(String(calDelHead.apptDate || '') + 'T' + String(calDelHead.apptTime || '00:00'));
+      if (!Number.isFinite(ts)) return calDelHead.apptDate + ' ' + calDelHead.apptTime;
+      return new Date(ts).toLocaleString('en-SG', { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    })() : '';
+    var calDeletionModal = cadModal(!!calDelHead, '', () => dismissCalDeletion(calDelHead, 5 * 60000), calDelHead && h(React.Fragment, null,
+      h('div', { className: 'cad-modal-head' },
+        h('div', null,
+          h('span', { className: 'cad-pill amber' }, '📅 Calendar event missing'),
+          h('h3', { className: 'cad-modal-title', style: { marginTop: 10 } }, (calDelHead.name || 'Lead') + "'s appointment"),
+          h('p', { className: 'cad-modal-sub' }, _calDelDateLabel, ' is no longer on your Google Calendar.', pendingCalDeletions.length > 1 ? ' (1 of ' + pendingCalDeletions.length + ')' : '')
+        ),
+        h('button', { className: 'cad-btn ghost', onClick: () => dismissCalDeletion(calDelHead, 5 * 60000) }, 'x')
+      ),
+      h('p', { className: 'cad-modal-sub', style: { marginBottom: 14 } }, 'What happened?'),
+      h('div', { className: 'cad-cal-deletion-actions' },
+        h('button', {
+          className: 'cad-cal-deletion-action cad-cal-deletion-action--flykite',
+          onClick: () => resolveCalDeletionFlyKite(calDelHead),
+          type: 'button'
+        },
+          h('span', { className: 'cad-cal-deletion-action__emoji' }, '🪁'),
+          h('div', null,
+            h('b', null, 'Fly kite'),
+            h('p', null, "Prospect didn't show up. Mark the appointment as fly-kite; lead status stays Set.")
+          )
+        ),
+        h('button', {
+          className: 'cad-cal-deletion-action cad-cal-deletion-action--restore',
+          onClick: () => resolveCalDeletionRestore(calDelHead),
+          type: 'button'
+        },
+          h('span', { className: 'cad-cal-deletion-action__emoji' }, '↩'),
+          h('div', null,
+            h('b', null, 'Restore — I deleted by mistake'),
+            h('p', null, 'Re-create the calendar event with the same date, time, and notes from the saved record.')
+          )
+        )
+      ),
+      h('div', { className: 'cad-modal-actions cad-cal-deletion-dismiss' },
+        h('span', { className: 'cad-subtle', style: { fontSize: 11, marginRight: 'auto' } }, 'Or dismiss for:'),
+        h('button', { className: 'cad-btn ghost', onClick: () => dismissCalDeletion(calDelHead, 5 * 60000) }, '5 min'),
+        h('button', { className: 'cad-btn ghost', onClick: () => dismissCalDeletion(calDelHead, 60 * 60000) }, '1 hour'),
+        h('button', { className: 'cad-btn ghost', onClick: () => dismissCalDeletion(calDelHead, 'session') }, 'Until next session')
+      )
+    ));
+    var modalStack = h(React.Fragment, null, undoBar, moreModal, adminConfigModal, cbModal, calAddPickerModal, apptModal, slotModal, waModal, payQrModalClaude, importModal, colPickerModal, calDeletionModal, dialogModal);
     var withCadModals = view => h(React.Fragment, null, view, modalStack);
     if ((mainMode === 'call' && tab === 'home') || tab === 'dial') return withCadModals(tab === 'dial' ? dialView : callView);
     if (tab === 'leads') return withCadModals(leadsView);
