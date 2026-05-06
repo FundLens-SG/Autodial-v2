@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0097'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0098'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -952,6 +952,110 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
   .cad-session-target__big{font-size:24px}
   .cad-rank-chip--bold .cad-rank-chip__progress{display:none}
 }
+/* 0098: dopamine layer — SET! stamp, streak chip, victory modal,
+   number pop, velocity meter, ambient gradient by tier, lead-card
+   slide-in, pay-tile shimmer, empty-state polish. Augments the
+   existing confetti/celebrate/streak infrastructure rather than
+   replacing it. */
+/* 0098: outcome buttons gate behind an active session. Pre-session
+   state is dim + cursor:not-allowed so agents can't dirty their
+   stats by mis-tapping. The transition into running fires a brass
+   shimmer across the five buttons in a staggered sweep — a clear
+   visible "go" signal that's more reliable than the session timer
+   ticking up. */
+.cad-outcomes--idle .cad-outcome{opacity:.42;cursor:not-allowed;filter:grayscale(.55);pointer-events:none;background:var(--ad-bg-2);color:var(--ad-t-3);border-color:var(--ad-line-1)}
+.cad-outcomes--idle .cad-outcome .glyph,
+.cad-outcomes--idle .cad-outcome .key{color:var(--ad-t-3)}
+.cad-outcomes--armed .cad-outcome{position:relative;overflow:hidden;animation:cadOutcomeArm .55s ease-out forwards}
+.cad-outcomes--armed .cad-outcome:nth-child(1){animation-delay:0ms}
+.cad-outcomes--armed .cad-outcome:nth-child(2){animation-delay:80ms}
+.cad-outcomes--armed .cad-outcome:nth-child(3){animation-delay:160ms}
+.cad-outcomes--armed .cad-outcome:nth-child(4){animation-delay:240ms}
+.cad-outcomes--armed .cad-outcome:nth-child(5){animation-delay:320ms}
+.cad-outcomes--armed .cad-outcome::before{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 0%,transparent 35%,rgba(214,168,122,.55) 50%,transparent 65%,transparent 100%);background-size:300% 100%;animation:cadOutcomeShine .6s ease-out;pointer-events:none}
+.cad-outcomes--armed .cad-outcome:nth-child(1)::before{animation-delay:0ms}
+.cad-outcomes--armed .cad-outcome:nth-child(2)::before{animation-delay:80ms}
+.cad-outcomes--armed .cad-outcome:nth-child(3)::before{animation-delay:160ms}
+.cad-outcomes--armed .cad-outcome:nth-child(4)::before{animation-delay:240ms}
+.cad-outcomes--armed .cad-outcome:nth-child(5)::before{animation-delay:320ms}
+@keyframes cadOutcomeArm{0%{filter:brightness(.9)}50%{filter:brightness(1.4)}100%{filter:brightness(1)}}
+@keyframes cadOutcomeShine{0%{background-position:-200% 0;opacity:0}20%{opacity:1}80%{opacity:1}100%{background-position:200% 0;opacity:0}}
+/* SET! stamp — fires when the cad outcome button registers a Set */
+.cad-outcome.set{position:relative;overflow:visible}
+.cad-set-stamp{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);z-index:600;font:900 64px 'JetBrains Mono',ui-monospace,monospace;letter-spacing:.04em;color:var(--ad-green);text-shadow:0 0 24px rgba(74,222,128,.7),0 0 60px rgba(74,222,128,.45),0 4px 16px rgba(0,0,0,.65);pointer-events:none;animation:cadSetStamp 1s cubic-bezier(.2,.9,.3,1.4) forwards;-webkit-text-stroke:2px rgba(0,0,0,.45)}
+.cad-set-stamp::after{content:"";position:absolute;inset:-30px;border-radius:50%;background:radial-gradient(circle,rgba(74,222,128,.32),transparent 65%);z-index:-1}
+@keyframes cadSetStamp{0%{opacity:0;transform:translate(-50%,-50%) scale(.4) rotate(-12deg)}30%{opacity:1;transform:translate(-50%,-50%) scale(1.2) rotate(-6deg)}55%{transform:translate(-50%,-50%) scale(1) rotate(-3deg)}100%{opacity:0;transform:translate(-50%,-65%) scale(1.05) rotate(-3deg)}}
+/* Streak chip — sits next to the rank chip in session-info */
+.cad-streak-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;border:1px solid currentColor;font-size:11px;font-weight:850;letter-spacing:.02em;background:linear-gradient(135deg,rgba(0,0,0,.35),rgba(0,0,0,.18));margin-top:8px;color:var(--ad-t-3);transition:color .25s,box-shadow .25s,border-color .25s,filter .25s}
+.cad-streak-chip__flame{font-size:13px;line-height:1}
+.cad-streak-chip__count{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:12px;color:var(--ad-t-1)}
+.cad-streak-chip.lvl-1{color:var(--ad-amber);box-shadow:0 0 12px rgba(239,184,79,.3)}
+.cad-streak-chip.lvl-2{color:var(--ad-amber);box-shadow:0 0 18px rgba(239,184,79,.45);animation:firePulse 1.6s ease-in-out infinite}
+.cad-streak-chip.lvl-3{color:#ff6b3d;box-shadow:0 0 22px rgba(255,107,61,.55);animation:firePulse 1.2s ease-in-out infinite}
+.cad-streak-chip.lvl-4{color:#ff3b8a;box-shadow:0 0 26px rgba(255,59,138,.6);animation:firePulse 1s ease-in-out infinite}
+.cad-streak-chip.lvl-5{color:#c084fc;box-shadow:0 0 30px rgba(192,132,252,.7);animation:firePulse .8s ease-in-out infinite}
+.cad-streak-chip.lvl-1 .cad-streak-chip__count,
+.cad-streak-chip.lvl-2 .cad-streak-chip__count,
+.cad-streak-chip.lvl-3 .cad-streak-chip__count,
+.cad-streak-chip.lvl-4 .cad-streak-chip__count,
+.cad-streak-chip.lvl-5 .cad-streak-chip__count{color:currentColor}
+/* Victory modal — Spotify-Wrapped-style end-of-session summary */
+.cad-victory-overlay{position:fixed;inset:0;z-index:550;background:rgba(3,5,8,.86);backdrop-filter:blur(16px);display:flex;align-items:center;justify-content:center;padding:24px;animation:cadObjReveal .25s ease-out}
+.cad-victory{width:min(520px,100%);border-radius:22px;background:linear-gradient(160deg,oklch(0.22 0.08 50 / .7) 0%,var(--ad-bg-1) 60%);border:1px solid var(--ad-brass-line);box-shadow:0 30px 80px -20px rgba(214,168,122,.35),0 0 0 1px var(--ad-brass-dim) inset;padding:30px 26px 24px;color:var(--ad-t-0);position:relative;overflow:hidden;animation:cadVictoryPop .55s cubic-bezier(.2,.85,.3,1.05)}
+.cad-victory::before{content:"";position:absolute;top:-50%;left:-25%;width:150%;height:200%;background:radial-gradient(ellipse at 50% 30%,rgba(214,168,122,.18),transparent 55%);pointer-events:none;animation:cadVictorySpin 8s linear infinite}
+@keyframes cadVictoryPop{0%{opacity:0;transform:scale(.85) translateY(20px)}100%{opacity:1;transform:scale(1) translateY(0)}}
+@keyframes cadVictorySpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
+.cad-victory__head{position:relative;text-align:center;margin-bottom:22px}
+.cad-victory__kicker{font-size:11px;font-weight:850;letter-spacing:.18em;text-transform:uppercase;color:var(--ad-brass-2);opacity:.75}
+.cad-victory__hero{font:850 84px 'JetBrains Mono',ui-monospace,monospace;letter-spacing:-.04em;line-height:1;background:linear-gradient(135deg,#fff 0%,var(--ad-brass-2) 60%,var(--ad-amber) 100%);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;text-shadow:0 0 40px rgba(214,168,122,.25);margin:6px 0 4px}
+.cad-victory__hero-label{font-size:13px;font-weight:700;color:var(--ad-t-2);text-transform:uppercase;letter-spacing:.08em}
+.cad-victory__stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:18px;position:relative}
+.cad-victory__stat{padding:12px 10px;border-radius:11px;background:rgba(0,0,0,.28);border:1px solid var(--ad-line-1);text-align:center}
+.cad-victory__stat-num{font:800 22px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-t-0);line-height:1}
+.cad-victory__stat-label{font-size:9.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--ad-t-3);margin-top:5px}
+.cad-victory__promo{margin-top:8px;padding:14px 16px;border-radius:13px;background:linear-gradient(135deg,oklch(0.45 0.18 320 / .35),oklch(0.30 0.12 320 / .15));border:1px solid oklch(0.78 0.18 320 / .42);text-align:center;animation:cadVictoryShimmer 2.4s ease-in-out infinite;position:relative}
+.cad-victory__promo b{display:block;font-size:14px;color:#fff;margin-bottom:4px}
+.cad-victory__promo small{display:block;font-size:11px;color:rgba(255,255,255,.78)}
+@keyframes cadVictoryShimmer{0%,100%{box-shadow:0 0 18px rgba(192,132,252,.32)}50%{box-shadow:0 0 30px rgba(192,132,252,.55)}}
+.cad-victory__actions{display:flex;gap:10px;justify-content:flex-end;margin-top:18px;position:relative}
+/* Number pop — fires on stat-card value change */
+.cad-num-pop{animation:cadNumPop .45s cubic-bezier(.2,.9,.3,1.4)}
+@keyframes cadNumPop{0%{transform:scale(1)}30%{transform:scale(1.18);filter:brightness(1.25)}100%{transform:scale(1);filter:brightness(1)}}
+/* Velocity meter — small dial showing dials/min vs target */
+.cad-velocity{display:inline-flex;align-items:center;gap:9px;padding:7px 11px 7px 7px;border-radius:999px;border:1px solid var(--ad-line-2);background:linear-gradient(135deg,rgba(0,0,0,.28),rgba(0,0,0,.14));font-size:11px;font-weight:800;color:var(--ad-t-2)}
+.cad-velocity__dial{width:30px;height:30px;border-radius:50%;background:conic-gradient(var(--ad-amber) 0deg,var(--ad-brass) calc(var(--cad-vel,0)*1deg),var(--ad-bg-3) calc(var(--cad-vel,0)*1deg));position:relative;flex-shrink:0}
+.cad-velocity__dial::after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--ad-bg-1)}
+.cad-velocity__dial::before{content:"";position:absolute;left:50%;top:5px;width:2px;height:9px;background:currentColor;transform-origin:1px 10px;transform:translateX(-50%) rotate(calc(var(--cad-vel,0)*1deg - 90deg));z-index:1;border-radius:2px;box-shadow:0 0 6px currentColor}
+.cad-velocity__num{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:13px;color:var(--ad-t-1);line-height:1}
+.cad-velocity__unit{font-size:9px;color:var(--ad-t-3);letter-spacing:.04em;text-transform:uppercase}
+.cad-velocity.hot{color:var(--ad-green);box-shadow:0 0 14px rgba(74,222,128,.32)}
+.cad-velocity.cold{color:var(--ad-red)}
+/* Ambient body gradient — shifts by current rank tier. Stays at 6%
+   opacity so it never overpowers the foreground. */
+body::before{content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;background:radial-gradient(ellipse at 18% 10%,rgba(214,168,122,.07),transparent 55%),radial-gradient(ellipse at 82% 90%,rgba(74,222,128,.05),transparent 60%);transition:background 1.4s ease}
+body[data-tier="warrior"]::before{background:radial-gradient(ellipse at 18% 10%,rgba(160,121,44,.10),transparent 55%),radial-gradient(ellipse at 82% 90%,rgba(214,168,122,.06),transparent 60%)}
+body[data-tier="elite"]::before{background:radial-gradient(ellipse at 18% 10%,rgba(65,105,225,.10),transparent 55%),radial-gradient(ellipse at 82% 90%,rgba(96,165,250,.06),transparent 60%)}
+body[data-tier="master"]::before{background:radial-gradient(ellipse at 18% 10%,rgba(155,89,182,.10),transparent 55%),radial-gradient(ellipse at 82% 90%,rgba(192,132,252,.06),transparent 60%)}
+body[data-tier="grandmaster"]::before{background:radial-gradient(ellipse at 18% 10%,rgba(230,126,34,.10),transparent 55%),radial-gradient(ellipse at 82% 90%,rgba(245,158,11,.06),transparent 60%)}
+body[data-tier="epic"]::before{background:radial-gradient(ellipse at 18% 10%,rgba(233,30,99,.10),transparent 55%),radial-gradient(ellipse at 82% 90%,rgba(244,114,182,.06),transparent 60%)}
+body[data-tier="legend"]::before{background:radial-gradient(ellipse at 18% 10%,rgba(255,193,7,.10),transparent 55%),radial-gradient(ellipse at 82% 90%,rgba(255,215,0,.06),transparent 60%)}
+body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,rgba(255,68,68,.10),transparent 55%),radial-gradient(ellipse at 82% 90%,rgba(213,0,0,.06),transparent 60%)}
+/* Lead card slide-in — driven by React `key` change so the whole card
+   remounts and re-runs the animation each time the active lead
+   advances. */
+.cad-lead-card{animation:cadLeadSlideIn .28s cubic-bezier(.2,.85,.3,1.05)}
+@keyframes cadLeadSlideIn{from{opacity:0;transform:translateX(28px)}to{opacity:1;transform:translateX(0)}}
+/* Pay tile gold ripple — fires when the unpaid number ticks up */
+.cad-stat--pay{position:relative;overflow:hidden}
+.cad-stat--pay.pay-shimmer::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 0%,transparent 35%,rgba(214,168,122,.55) 50%,transparent 65%,transparent 100%);background-size:300% 100%;animation:cadPayShimmer 1.4s ease-out;pointer-events:none}
+@keyframes cadPayShimmer{0%{background-position:-200% 0;opacity:0}15%{opacity:1}85%{opacity:1}100%{background-position:200% 0;opacity:0}}
+/* Empty-state SVG glyph polish — replaces grey "No X" text with a
+   centred icon block + softer copy. */
+.cad-empty-glyph{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,var(--ad-bg-2),var(--ad-bg-3));border:1px solid var(--ad-line-1);display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:var(--ad-brass-2);box-shadow:0 8px 24px -16px var(--ad-brass-dim)}
+.cad-empty-glyph svg{width:30px;height:30px;opacity:.85}
+.cad-empty h3{margin:0;font-size:16px;font-weight:700;color:var(--ad-t-1)}
+.cad-empty p{margin:6px 0 0;font-size:12.5px;color:var(--ad-t-3);line-height:1.55}
+
 /* 0097: script + objection row on the home dashboard — equalize the
    two panels at a comfortable height with internal scroll. Pre-fix
    the script's rich editor naturally ran taller than the objection
@@ -1058,7 +1162,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0097';
+window.APP_VERSION='2026.05.05.0098';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -6982,6 +7086,13 @@ function App() {
       calDeletionDismissRef.current = d;
       try { localStorage.setItem('ad_calDelDismiss', JSON.stringify(d)); } catch (_e) {}
     }
+    // 0098: idle → running transition fires the brass shimmer across
+    // the after-call buttons. 750ms is enough for the longest staggered
+    // sweep (320ms delay + 600ms duration = 920ms — clamp at 800 so the
+    // armed class falls off shortly after the last button finishes).
+    setOutcomesArmed(true);
+    var t = setTimeout(() => setOutcomesArmed(false), 1100);
+    return () => clearTimeout(t);
   }, [running]);
   var resolveCalDeletionFlyKite = useCallback(a => {
     if (!a) return;
@@ -8253,6 +8364,14 @@ function App() {
   var [promotionLog, setPromotionLog] = useState(load('promo') || []);
   var [milestone, setMilestone] = useState(null);
   var [confetti, setConfetti] = useState(false);
+  // 0098: dopamine layer state — SET! stamp on the outcome button (transient,
+  // 900ms), end-of-session victory modal payload (cleared on dismiss),
+  // pay-shimmer trigger for the brass tile, and an "armed" pulse on the
+  // outcome buttons that fires the moment a session starts (idle→running).
+  var [setStampShow, setSetStampShow] = useState(false);
+  var [victoryData, setVictoryData] = useState(null);
+  var [payRipple, setPayRipple] = useState(false);
+  var [outcomesArmed, setOutcomesArmed] = useState(false);
   var _sessionValueKeys = v => {
     if (v === undefined || v === null || v === '') return [];
     var out = [String(v)];
@@ -9059,6 +9178,21 @@ function App() {
     if (!_SB || !target) return false;
     var owners = [...new Set([target.admin, myEmail, window._user?.email].filter(x => x && String(x).includes('@')).map(x => String(x).toLowerCase()))];
     var changed = false;
+    // 0098 fix: also purge from the relational autodial.appointments
+    // table. There are TWO cloud surfaces:
+    //   1. shared_appointments (JSONB blob per owner+scope)  ← already handled below
+    //   2. appointments (relational table with row-per-appt) ← was missed in 0097
+    // Without #2 the appt resurrects on the next DB.getAppts pull on
+    // any device, which is exactly the JohnToh / Chen Ni Wong symptom.
+    try {
+      var dbRes = await DB.deleteApptUndo({
+        rowId: target.dbApptId || target.rowId,
+        calEventId: target.calEventId,
+        phone: target.phone,
+        admin: target.admin || myEmail
+      });
+      if (dbRes?.ok) changed = true;
+    } catch (_e) {}
     for (var oi = 0; oi < owners.length; oi++) {
       var owner = owners[oi];
       try {
@@ -9286,6 +9420,22 @@ function App() {
       addSyncTrail('Set undo cleanup for ' + (info.name || lead?.name || u.leadName || 'lead'), steps);
       toast('Set undone. Cleanup details added below.');
     } else {
+      // 0098 fix: pre-fix, undo for NP/NI/CB only reverted the lead row +
+      // showed a toast — session.dialed and session.{np,ni,cb} stayed
+      // incremented forever, so the user would see "DIALED 1, NO PICKUP 1"
+      // even after clicking Undo back to the same lead. handleOutcome at
+      // ~14391 always increments dialed, plus the per-status counter, so
+      // a symmetric undo decrements both.
+      if (session && !session.ended && (u.status === 'np' || u.status === 'ni' || u.status === 'cb')) {
+        setSession(p => p ? {
+          ...p,
+          dialed: Math.max(0, (p.dialed || 1) - 1),
+          np: u.status === 'np' ? Math.max(0, (p.np || 1) - 1) : (p.np || 0),
+          ni: u.status === 'ni' ? Math.max(0, (p.ni || 1) - 1) : (p.ni || 0),
+          cb: u.status === 'cb' ? Math.max(0, (p.cb || 1) - 1) : (p.cb || 0)
+        } : p);
+        step('Session counter reverted', true, 'dialed −1, ' + u.status + ' −1');
+      }
       addSyncTrail('Undo for ' + (info.name || lead?.name || 'lead'), steps);
       toast('Undone - back to ' + info.name);
     }
@@ -16600,7 +16750,10 @@ function App() {
       ),
       h('div', { className: 'cad-card cad-wide' }, h('div', { className: 'cad-inline', style: { gap: 18 } }, h('div', { className: 'cad-logo', style: { width: 52, height: 52, borderRadius: 14 } }, icon('Trophy', 24)), h('div', null, h('div', { className: 'cad-inline' }, h('b', null, 'Team is ', demo ? 4 : Math.max(0, 60 - totalSets), ' sets from'), h('span', { className: 'cad-tier' }, 'Brass tier')), h('p', { className: 'cad-subtle', style: { fontSize: 12, marginTop: 6 } }, 'Reached at 60 sets this month · resets in 27 days'))), h('div', { style: { width: 280 } }, h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', fontSize: 11 } }, h('span', { className: 'cad-subtle' }, 'Bronze · 30'), h('b', { style: { color: 'var(--ad-brass-2)' } }, demo ? '56 / 60' : totalSets + ' / 60'), h('span', { className: 'cad-subtle' }, 'Gold · 90')), h('div', { className: 'cad-progress', style: { height: 8, marginTop: 8 } }, h('i', { style: { width: (demo ? 62 : Math.min(100, totalSets / 60 * 100)) + '%' } }))))
     ));
-    var outcomeButton = (status, glyph, caption, keyHint) => h('button', { className: 'cad-outcome ' + status, onClick: () => status === 'cb' ? (setShowCb(true), setCbDate(''), setCbTime('')) : handleOutcome(status) }, h('span', { className: 'key' }, keyHint), h('span', { className: 'glyph' }, glyph), h('span', { className: 'caption' }, caption));
+    // 0098: outcome buttons disabled when no session is running, so a
+    // mis-tap (or accidental keyboard shortcut, since the same handler
+    // fires on hotkey) can't dirty the session stats.
+    var outcomeButton = (status, glyph, caption, keyHint) => h('button', { className: 'cad-outcome ' + status, disabled: !running, onClick: () => status === 'cb' ? (setShowCb(true), setCbDate(''), setCbTime('')) : handleOutcome(status), type: 'button' }, h('span', { className: 'key' }, keyHint), h('span', { className: 'glyph' }, glyph), h('span', { className: 'caption' }, caption));
     var callView = h('div', { className: 'cad-shell' }, topbar, h('div', { className: 'cad-call-body' },
       h('main', { className: 'cad-call-main' },
         cadSessionTargetPanel(true),
@@ -16677,7 +16830,13 @@ function App() {
               h('span', null, h('kbd', null, 'S'), ' Skip')
             )
           ),
-          h('div', { className: 'cad-outcomes cad-outcomes--five' },
+          // 0098: outcome buttons gate behind an active session. Pre-session,
+          // the cad-outcomes--idle modifier dims them + blocks pointer events
+          // (handled in CSS), and disabled is set on each button so keyboard
+          // shortcuts also can't dirty stats. The cad-outcomes--armed
+          // modifier fires once for ~1.1s when the session activates,
+          // shimmering each button in sequence.
+          h('div', { className: 'cad-outcomes cad-outcomes--five' + (running ? '' : ' cad-outcomes--idle') + (outcomesArmed && running ? ' cad-outcomes--armed' : '') },
             outcomeButton('np', 'NP', 'No pickup', '1'),
             outcomeButton('cb', 'CB', 'Callback', '2'),
             outcomeButton('ni', 'NI', 'No interest', '3'),
@@ -18000,6 +18159,10 @@ function App() {
         // skip the celebration (the appointment already existed).
         if (!rescheduleTargetAppt) {
           try { setConfetti && setConfetti(true); setTimeout(() => setConfetti && setConfetti(false), 2400); } catch (_e) {}
+          // 0098: SET! stamp — sits on top of the call view for ~900ms, in
+          // addition to the existing confetti rain. Visual punch right at
+          // the moment the agent earned it.
+          try { setSetStampShow(true); setTimeout(() => setSetStampShow(false), 950); } catch (_e) {}
           var _setCount = (currentSession && currentSession.sets || 0) + 1;
           var _streakBadge = _setCount >= 20 ? '🔱 ' : _setCount >= 10 ? '👑 ' : _setCount >= 5 ? '🔥 ' : _setCount >= 3 ? '🎩 ' : '🎉 ';
           var _firstName = (lead.name || '').split(/\s+/)[0] || 'lead';
