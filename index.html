@@ -1056,6 +1056,89 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
 .cad-empty h3{margin:0;font-size:16px;font-weight:700;color:var(--ad-t-1)}
 .cad-empty p{margin:6px 0 0;font-size:12.5px;color:var(--ad-t-3);line-height:1.55}
 
+/* 0098: HERO CTA card — the home dashboard's new front door. Replaces
+   the tool-shed layout (script + objection grid + 4-up KPI strip) with
+   a single-decision hero block: target chooser + giant Start/Stop CTA.
+   When idle, the green Start button has a slow ambient pulse so the
+   page reads as actionable. When live, the card flips to a red Stop
+   button + running timer + tiny "Open call view" hint. */
+.cad-hero-cta{padding:30px 32px;border-radius:20px;border:1px solid var(--ad-brass-line);background:linear-gradient(135deg,var(--ad-bg-1) 0%,oklch(0.18 0.04 50 / .55) 100%);box-shadow:var(--ad-shadow-1),0 0 0 1px var(--ad-brass-dim) inset;position:relative;overflow:hidden;margin-bottom:18px}
+.cad-hero-cta::before{content:"";position:absolute;top:0;left:0;right:0;height:4px;background:linear-gradient(90deg,var(--ad-amber),var(--ad-brass),var(--ad-green));border-radius:20px 20px 0 0;z-index:1}
+.cad-hero-cta::after{content:"";position:absolute;top:-50%;right:-25%;width:70%;height:200%;background:radial-gradient(ellipse,rgba(214,168,122,.12),transparent 60%);pointer-events:none;animation:cadVictorySpin 18s linear infinite}
+.cad-hero-cta--live{border-color:var(--ad-red);background:linear-gradient(135deg,var(--ad-bg-1) 0%,oklch(0.20 0.10 25 / .35) 100%)}
+.cad-hero-cta--live::before{background:linear-gradient(90deg,var(--ad-red),oklch(0.62 0.18 25),var(--ad-amber))}
+.cad-hero-cta__title{font-size:28px;font-weight:780;letter-spacing:-.025em;margin:0 0 4px;color:var(--ad-t-0);position:relative}
+.cad-hero-cta__title em{font-style:normal;background:linear-gradient(135deg,var(--ad-brass-2),var(--ad-amber));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.cad-hero-cta__sub{font-size:13.5px;color:var(--ad-t-2);margin:0 0 16px;line-height:1.5;position:relative}
+.cad-hero-cta__btn{width:100%;min-height:80px;border-radius:18px;font:850 19px 'Inter',system-ui,sans-serif;letter-spacing:-.01em;display:flex;align-items:center;justify-content:center;gap:14px;cursor:pointer;border:none;transition:transform .08s,filter .12s,box-shadow .25s;margin-top:14px;position:relative;overflow:hidden}
+.cad-hero-cta__btn--start{background:linear-gradient(135deg,#22c55e,#10b981);color:#0a0c10;box-shadow:0 14px 36px -10px rgba(34,197,94,.55),0 0 0 1px rgba(255,255,255,.18) inset;animation:cadHeroBtnPulse 2.6s ease-in-out infinite}
+.cad-hero-cta__btn--start:hover{transform:translateY(-2px);filter:brightness(1.08);box-shadow:0 20px 48px -10px rgba(34,197,94,.78),0 0 0 1px rgba(255,255,255,.28) inset;animation:none}
+.cad-hero-cta__btn--start:active{transform:translateY(0) scale(.985)}
+.cad-hero-cta__btn--start::after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 30%,rgba(255,255,255,.22) 50%,transparent 70%);background-size:300% 100%;animation:cadPayShimmer 4.5s ease-in-out infinite;pointer-events:none}
+.cad-hero-cta__btn--stop{background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;box-shadow:0 14px 36px -10px rgba(248,113,113,.55),0 0 0 1px rgba(255,255,255,.14) inset}
+.cad-hero-cta__btn--stop:hover{filter:brightness(1.08);transform:translateY(-2px)}
+.cad-hero-cta__btn--stop:active{transform:translateY(0) scale(.985)}
+.cad-hero-cta__btn--disabled{background:linear-gradient(135deg,var(--ad-bg-2),var(--ad-bg-3));color:var(--ad-t-3);box-shadow:none;animation:none;cursor:not-allowed;border:1px solid var(--ad-line-2)}
+.cad-hero-cta__btn--disabled::after{display:none}
+@keyframes cadHeroBtnPulse{0%,100%{box-shadow:0 14px 36px -10px rgba(34,197,94,.55),0 0 0 1px rgba(255,255,255,.18) inset}50%{box-shadow:0 20px 48px -10px rgba(34,197,94,.85),0 0 0 1px rgba(255,255,255,.28) inset}}
+.cad-hero-cta__hint{font-size:11.5px;color:var(--ad-t-3);text-align:center;margin:10px 0 0;letter-spacing:.02em}
+.cad-hero-cta__head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;position:relative;flex-wrap:wrap;gap:10px}
+.cad-hero-cta__pulse{display:inline-flex;align-items:center;gap:9px;font-size:12px;font-weight:850;color:var(--ad-red);letter-spacing:.12em;text-transform:uppercase}
+.cad-hero-cta__pulse i{width:10px;height:10px;border-radius:50%;background:var(--ad-red);box-shadow:0 0 14px var(--ad-red);animation:cadSessionPulse 1.4s ease-in-out infinite}
+.cad-hero-cta__timer{font:800 30px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-brass-2);letter-spacing:-.02em}
+.cad-hero-cta__target{padding:14px 16px;border-radius:13px;background:rgba(0,0,0,.22);border:1px solid var(--ad-line-1);position:relative;margin-bottom:4px}
+.cad-hero-cta__target-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.cad-hero-cta__target-tabs .cad-tab{font-size:12px;padding:6px 12px}
+.cad-hero-cta__target-row{display:flex;gap:14px;align-items:center}
+.cad-hero-cta__target-row input[type=range]{flex:1;min-width:0}
+.cad-hero-cta__target-num{font:850 38px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-brass-2);letter-spacing:-.04em;min-width:74px;text-align:center;text-shadow:0 0 24px rgba(214,168,122,.28)}
+.cad-hero-cta__target-row .cad-btn{min-height:36px;padding:0 12px}
+/* Live-mode metrics row inside the hero */
+.cad-hero-cta__metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px;position:relative}
+.cad-hero-cta__metric{padding:12px 10px;border-radius:11px;background:rgba(0,0,0,.30);border:1px solid var(--ad-line-1);text-align:center}
+.cad-hero-cta__metric b{display:block;font:800 22px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-t-0);line-height:1}
+.cad-hero-cta__metric small{font-size:10px;color:var(--ad-t-3);font-weight:700;letter-spacing:.05em;text-transform:uppercase;display:block;margin-top:5px}
+.cad-hero-cta__metric.tone-amber b{color:var(--ad-amber)}
+.cad-hero-cta__metric.tone-blue b{color:var(--ad-blue)}
+.cad-hero-cta__metric.tone-red b{color:var(--ad-red)}
+.cad-hero-cta__metric.tone-green b{color:var(--ad-green)}
+/* Quick-ref cards — light replacement for the heavy script + objection
+   panels that used to dominate the home. Tap to jump to call view
+   where editing lives. */
+.cad-hero-quickref{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:18px}
+.cad-hero-quickref__card{display:flex;align-items:center;gap:14px;padding:16px;border-radius:14px;text-align:left;color:var(--ad-t-0);background:var(--ad-bg-1);border:1px solid var(--ad-line-1);cursor:pointer;transition:border-color .12s,transform .08s,background .12s}
+.cad-hero-quickref__card:hover{border-color:var(--ad-brass-line);transform:translateY(-2px);background:var(--ad-bg-2)}
+.cad-hero-quickref__card .cad-pill{flex-shrink:0;font-size:18px;width:42px;height:42px;display:flex;align-items:center;justify-content:center;padding:0}
+.cad-hero-quickref__card>div{flex:1;min-width:0}
+.cad-hero-quickref__card b{display:block;font-size:13.5px;color:var(--ad-t-0);font-weight:700}
+.cad-hero-quickref__card .cad-subtle{font-size:11px;color:var(--ad-t-3);margin-top:3px;line-height:1.4;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cad-hero-quickref__chev{color:var(--ad-t-3);font-size:18px;flex-shrink:0}
+@media(max-width:900px){
+  .cad-hero-cta{padding:22px 20px}
+  .cad-hero-cta__title{font-size:22px}
+  .cad-hero-cta__btn{min-height:64px;font-size:17px}
+  .cad-hero-cta__metrics{grid-template-columns:repeat(3,1fr)}
+  .cad-hero-cta__timer{font-size:24px}
+  .cad-hero-cta__target-num{font-size:30px;min-width:54px}
+  .cad-hero-quickref{grid-template-columns:1fr}
+}
+/* 0098: outcome buttons disabled-state when no session is running.
+   Greyed out + locked icon. When `running` flips true, JSX adds
+   .cad-outcomes--armed for ~1.1s to trigger a staggered brass-sheen
+   sweep across the five buttons so the agent sees the system has
+   gone live. Pre-fix the buttons looked active even when clicking
+   did nothing. */
+.cad-outcomes--idle .cad-outcome{opacity:.42;cursor:not-allowed;filter:grayscale(.55)}
+.cad-outcomes--idle .cad-outcome:hover{transform:none;filter:grayscale(.55)}
+.cad-outcomes--idle .cad-outcome::before{content:"🔒";position:absolute;top:8px;right:10px;font-size:11px;opacity:.6}
+.cad-outcomes--armed .cad-outcome{animation:cadOutcomeArmed .6s ease-out both}
+.cad-outcomes--armed .cad-outcome:nth-child(1){animation-delay:0ms}
+.cad-outcomes--armed .cad-outcome:nth-child(2){animation-delay:80ms}
+.cad-outcomes--armed .cad-outcome:nth-child(3){animation-delay:160ms}
+.cad-outcomes--armed .cad-outcome:nth-child(4){animation-delay:240ms}
+.cad-outcomes--armed .cad-outcome:nth-child(5){animation-delay:320ms}
+@keyframes cadOutcomeArmed{0%{filter:grayscale(.55) brightness(.7);box-shadow:none}45%{filter:grayscale(0) brightness(1.25);box-shadow:0 0 0 2px rgba(214,168,122,.55),0 0 22px rgba(214,168,122,.5)}100%{filter:grayscale(0) brightness(1);box-shadow:none}}
+
 /* 0097: script + objection row on the home dashboard — equalize the
    two panels at a comfortable height with internal scroll. Pre-fix
    the script's rich editor naturally ran taller than the objection
@@ -13793,6 +13876,16 @@ function App() {
   var monthlyAppts = getMonthlyAppts(appointments, myEmail);
   var rank = getRank(monthlyAppts, cfg.starThresholds);
   var nextRank = getNextRank(monthlyAppts, cfg.starThresholds);
+  // 0098: paint a subtle ambient gradient on the body that follows the
+  // current rank tier (Warrior bronze → Mythic crimson). The CSS rules
+  // are in the stylesheet — body[data-tier="<key>"]::before. Only
+  // touches the document.body once per tier change to avoid layout
+  // thrash. Mains-only (admins use the per-tier admin config colours).
+  useEffect(() => {
+    if (role !== 'main') return;
+    try { document.body.setAttribute('data-tier', rank?.key || 'warrior'); } catch (_e) {}
+    return () => { try { document.body.removeAttribute('data-tier'); } catch (_e) {} };
+  }, [rank?.key, role]);
   var monthName = new Date().toLocaleDateString('en-SG', {
     month: 'long',
     year: 'numeric'
@@ -16707,6 +16800,92 @@ function App() {
       })),
       pastUnresolvedAppts.length > 12 && h('p', { className: 'cad-subtle', style: { fontSize: 11, textAlign: 'center', margin: 0 } }, '+', pastUnresolvedAppts.length - 12, ' more — resolve these first to see the rest')
     ) : null;
+    // 0098: home dashboard restructured from "tool shed" to "front door".
+    // The script + objection grid that used to dominate the page is gone
+    // (those panels live on the call view where they belong); replaced
+    // with a single-decision HERO block — target chooser + giant
+    // Start/Stop CTA — and a 3-up quick-reference strip for fast jumps
+    // into script/objections/callbacks. KPIs drop below the hero so
+    // the page reads as actionable, not informational.
+    var heroCTA = (() => {
+      var spec = cadTargetSpecs[cadTargetType] || cadTargetSpecs.dials;
+      var typeEmoji = { dials: '📞', connected: '🔗', sets: '🎯' };
+      var pendingCount = (pending || []).length;
+      var lastSession = (sessionLog || [])[0];
+      var lastSessionLabel = lastSession
+        ? (lastSession.sets || 0) + ' Set · ' + Math.max(1, Math.floor((Date.now() - (lastSession.startTime || Date.now())) / 60000)) + 'min ago'
+        : 'fresh start — no prior sessions';
+      if (running) {
+        return h('div', { className: 'cad-hero-cta cad-hero-cta--live' },
+          h('div', { className: 'cad-hero-cta__head' },
+            h('span', { className: 'cad-hero-cta__pulse' }, h('i'), 'Live session'),
+            h('span', { className: 'cad-hero-cta__timer' }, fmtTime(elapsed || 0))
+          ),
+          h('div', { className: 'cad-hero-cta__metrics' },
+            h('div', { className: 'cad-hero-cta__metric' }, h('b', null, sessionDialed || 0), h('small', null, 'Dialed')),
+            h('div', { className: 'cad-hero-cta__metric tone-amber' }, h('b', null, sessionNp || 0), h('small', null, 'NP')),
+            h('div', { className: 'cad-hero-cta__metric tone-blue' }, h('b', null, sessionCb || 0), h('small', null, 'CB')),
+            h('div', { className: 'cad-hero-cta__metric tone-red' }, h('b', null, sessionNi || 0), h('small', null, 'NI')),
+            h('div', { className: 'cad-hero-cta__metric tone-green' }, h('b', null, sessionSets || 0), h('small', null, 'Set'))
+          ),
+          h('button', { className: 'cad-hero-cta__btn cad-hero-cta__btn--stop', onClick: endSessionConfirm, type: 'button' }, icon('Square', 18), 'Stop session'),
+          h('p', { className: 'cad-hero-cta__hint' }, 'Continue dialing on the call view → ',
+            h('button', { className: 'cad-btn ghost', onClick: () => { setMainMode('call'); setTab('home'); }, type: 'button', style: { fontSize: 11, padding: '3px 10px', marginLeft: 6 } }, 'Open call view')
+          )
+        );
+      }
+      return h('div', { className: 'cad-hero-cta' },
+        h('h1', { className: 'cad-hero-cta__title' }, 'Ready to ', h('em', null, 'call.')),
+        h('p', { className: 'cad-hero-cta__sub' }, pendingCount, ' callable lead', pendingCount === 1 ? '' : 's', ' waiting · last session: ', lastSessionLabel),
+        h('div', { className: 'cad-hero-cta__target' },
+          h('div', { className: 'cad-hero-cta__target-tabs' },
+            Object.entries(cadTargetSpecs).map(([k, s]) => h('button', { className: 'cad-tab ' + (cadTargetType === k ? 'on' : ''), key: k, onClick: () => cadSetTarget(k, cadTargetType === k ? cadTargetCount : s.fallback), type: 'button' }, typeEmoji[k] || '•', ' ', s.label))
+          ),
+          h('div', { className: 'cad-hero-cta__target-row' },
+            h('input', { type: 'range', min: spec.min, max: spec.max, step: spec.step, value: cadTargetCount, onChange: e => cadSetTarget(cadTargetType, e.target.value) }),
+            h('button', { className: 'cad-btn', onClick: () => cadSetTarget(cadTargetType, cadTargetCount - spec.step), type: 'button' }, '−' + spec.step),
+            h('span', { className: 'cad-hero-cta__target-num' }, cadTargetCount),
+            h('button', { className: 'cad-btn', onClick: () => cadSetTarget(cadTargetType, cadTargetCount + spec.step), type: 'button' }, '+' + spec.step)
+          )
+        ),
+        h('button', {
+          className: 'cad-hero-cta__btn cad-hero-cta__btn--start' + (pendingCount === 0 ? ' cad-hero-cta__btn--disabled' : ''),
+          disabled: pendingCount === 0,
+          onClick: () => { if (pendingCount === 0) return; setMainMode('call'); setTab('home'); setTimeout(() => { try { startDial(); } catch (_e) {} }, 80); },
+          type: 'button'
+        },
+          icon('PhoneOutgoing', 22),
+          pendingCount === 0 ? 'No leads in queue' : 'Start calling session'
+        ),
+        h('p', { className: 'cad-hero-cta__hint' }, '🎯 Target: ', cadTargetCount, ' ', spec.label.toLowerCase(), pendingCount === 0 ? ' · open the leads tab to load some' : ' · session begins on the call view')
+      );
+    })();
+    var heroQuickRef = h('div', { className: 'cad-hero-quickref' },
+      h('button', { className: 'cad-hero-quickref__card', onClick: () => { setMainMode('call'); setTab('home'); setTimeout(() => { try { setScriptEditing(true); } catch (_e) {} }, 60); }, type: 'button' },
+        h('span', { className: 'cad-pill brass' }, '📜'),
+        h('div', null,
+          h('b', null, 'Calling script'),
+          h('span', { className: 'cad-subtle' }, (scriptVersions || []).length, ' version', (scriptVersions || []).length === 1 ? '' : 's', ' · ', activeScriptName || 'untitled')
+        ),
+        h('span', { className: 'cad-hero-quickref__chev' }, '›')
+      ),
+      h('button', { className: 'cad-hero-quickref__card', onClick: () => { setMainMode('call'); setTab('home'); }, type: 'button' },
+        h('span', { className: 'cad-pill amber' }, '💬'),
+        h('div', null,
+          h('b', null, 'Objection handles'),
+          h('span', { className: 'cad-subtle' }, (cadObjections || []).length, ' saved · live during calls')
+        ),
+        h('span', { className: 'cad-hero-quickref__chev' }, '›')
+      ),
+      h('button', { className: 'cad-hero-quickref__card', onClick: () => setTab('cb'), type: 'button' },
+        h('span', { className: 'cad-pill blue' }, '🔔'),
+        h('div', null,
+          h('b', null, 'Callbacks'),
+          h('span', { className: 'cad-subtle' }, (cbOpen || []).length, ' open · ', (cbOverdue || []).length, ' overdue')
+        ),
+        h('span', { className: 'cad-hero-quickref__chev' }, '›')
+      )
+    );
     var dashboard = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
       pastApptBanner,
       h('div', { className: 'cad-dashboard-head' },
@@ -16715,18 +16894,15 @@ function App() {
           h('h1', { className: 'cad-title' }, (new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening'), ', ', (userName || 'Joel').split(' ')[0], '.'),
           h('p', { className: 'cad-muted', style: { fontSize: 14, marginTop: 4 } }, knownAdmins.length || (demo ? 3 : 0), ' admins ready · ', liveRows.length, ' are on a call right now.')
         ),
-        h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => setTab('leads') }, icon('Sheet', 13), 'Open sheet'), h('button', { className: 'cad-btn primary', onClick: () => { setMainMode('call'); setTab('home'); } }, icon('PhoneOutgoing', 13), 'Self-call mode'))
+        h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => setTab('leads') }, icon('Sheet', 13), 'Open sheet'))
       ),
       cadSyncQueueBanner,
-      // 0089: KPI grid + a Pay tile pinned at the end. Role-aware label:
-      //   Main  → "💰 Pay Admin"   shows total unpaid owed to admins
-      //                              (sum of payAdminRows[].unpaid),
-      //                              click → goes to timesheet/pay tab
-      //   Admin → "💰 Pay"          shows admin's own unpaid earnings,
-      //                              click → goes to timesheet/pay tab
-      // Replaces the More-menu Pay tile (which stays as a fallback for
-      // users who navigate that way). Grid switches from 4-up to 5-up
-      // so the existing 4 stats keep their proportions.
+      // HERO CTA: target chooser + Start/Stop is the dominant element.
+      heroCTA,
+      // QUICK-REF: small cards replace the heavy script + objection grid.
+      heroQuickRef,
+      // KPI grid moved BELOW the hero — informational, not the primary
+      // content. Pay tile (0089) preserved as a clickable card.
       h('div', { className: 'cad-stat-grid' },
         stat('Sessions today', sessionsToday, (liveRows.length || 0) + ' live · ' + Math.max(0, sessionsToday - liveRows.length) + ' wrapped'),
         stat('Appts set', apptsToday, demoStats ? '+3 vs yesterday' : 'today', 'var(--ad-green)'),
@@ -16742,8 +16918,6 @@ function App() {
           h('span', { className: 'cad-subtle', style: { fontSize: 11 } }, role === 'admin' ? 'unpaid · click to view' : (payAdminRows || []).filter(r => r.unpaid > 0).length + ' admin' + ((payAdminRows || []).filter(r => r.unpaid > 0).length === 1 ? '' : 's') + ' to pay')
         )
       ),
-      cadSessionTargetPanel(false),
-      h('div', { className: 'cad-page-grid cad-script-obj-row' }, cadScriptEditorPanel(false, true), cadObjectionPanel(false)),
       h('div', { className: 'cad-dashboard-grid' },
         h('div', { className: 'cad-plan' }, h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, "Today's plan"), h('span', { className: 'cad-subtle', style: { fontSize: 11 } }, '3 things')), planRow('var(--ad-amber)', (pending.length || (demo ? 14 : 0)) + ' leads ready for review', 'Review queue before assigning callers', 'Review', () => setTab('leads')), planRow('var(--ad-blue)', liveRows[0]?.name ? liveRows[0].name + ' is active' : 'No caller active yet', 'Open live calling or message the team', 'Message', () => setTab('settings')), planRow('var(--ad-brass-2)', (todayAppts.length || (demo ? 2 : 0)) + ' booked appts need follow-up', 'Resolve calendar and appointment status', 'Resolve', () => setTab('appts'))),
         h('div', { className: 'cad-card cad-admin-card' }, h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 8 } }, h('span', { className: 'cad-label' }, 'Live now'), h('span', { className: 'cad-pill green' }, h('span', { className: 'cad-dot' }), liveRows.length, ' calling')), liveRows.map((r, i) => h('div', { className: 'cad-admin-row', key: r.name + i }, h('div', { className: 'cad-mini-avatar', style: i ? { background: 'var(--ad-blue)' } : null }, r.initials), h('div', null, h('div', { className: 'cad-inline' }, h('span', { style: { fontSize: 13 } }, r.name), h('span', { className: 'cad-tier' }, icon('Trophy', 9), r.tier)), h('p', { className: 'cad-subtle cad-mono', style: { fontSize: 11, marginTop: 3 } }, 'On call · ', r.time)), h('div', { style: { textAlign: 'right' } }, h('span', { className: 'cad-label' }, 'Dialed'), h('b', { className: 'cad-mono' }, r.dialed)), h('div', { style: { textAlign: 'right' } }, h('span', { className: 'cad-label' }, 'Set'), h('b', { className: 'cad-mono', style: { color: 'var(--ad-green)' } }, r.sets)), h('span', { className: 'cad-subtle' }, '›'))), h('div', { className: 'cad-inline cad-subtle', style: { justifyContent: 'space-between', padding: '12px 4px 4px', fontSize: 12 } }, h('span', null, demo ? 'Linda Tao · ready, not started' : 'Team standing by'), h('button', { className: 'cad-btn ghost', onClick: () => setTab('settings') }, 'Nudge')))
@@ -18413,7 +18587,12 @@ function App() {
         h('button', { className: 'cad-btn ghost', onClick: () => dismissCalDeletion(calDelHead, 'session') }, 'Until next session')
       )
     ));
-    var modalStack = h(React.Fragment, null, undoBar, moreModal, adminConfigModal, cbModal, calAddPickerModal, apptModal, slotModal, waModal, payQrModalClaude, importModal, colPickerModal, calDeletionModal, dialogModal);
+    // 0098: SET! stamp overlay — augments the existing confetti rain when
+    // an outcome lands as Set. Mounts at the modal-stack layer so it
+    // floats above every cad view. Auto-clears via the 950ms timeout in
+    // handleOutcome.
+    var setStampOverlay = setStampShow ? h('div', { className: 'cad-set-stamp', 'aria-hidden': 'true' }, 'SET!') : null;
+    var modalStack = h(React.Fragment, null, undoBar, moreModal, adminConfigModal, cbModal, calAddPickerModal, apptModal, slotModal, waModal, payQrModalClaude, importModal, colPickerModal, calDeletionModal, dialogModal, setStampOverlay);
     var withCadModals = view => h(React.Fragment, null, view, modalStack);
     if ((mainMode === 'call' && tab === 'home') || tab === 'dial') return withCadModals(tab === 'dial' ? dialView : callView);
     if (tab === 'leads') return withCadModals(leadsView);
