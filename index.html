@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0107'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0108'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -278,7 +278,14 @@ button.free-slot{appearance:none;text-align:left}
 .bp{width:100%;padding:14px;background:linear-gradient(135deg,var(--accent),#a37a4d);color:#fff;font-size:15px;font-weight:700;box-shadow:0 8px 24px rgba(214,168,122,.3)}
 .bp:hover{box-shadow:0 12px 32px rgba(214,168,122,.4);transform:translateY(-1px)}
 .bs{width:100%;padding:12px;background:transparent;color:var(--text2);border:1px solid var(--border2)!important;font-size:13px;font-weight:600;margin-top:8px}
-.tw{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none}
+/* 0108: lifted toast container above the undo bar (bottom:22px) and the
+   sticky outcome row. Pre-fix, the merged "Skipped X → dialing Y" toast
+   landed right on top of the undo bar AND the outcome 4 (Set) button,
+   blocking taps. body[data-undo-bar="1"] gets bumped further so toasts
+   never collide with the undo bar floating CTA. */
+.tw{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:6px;max-width:calc(100vw - 32px)}
+body[data-undo-bar="1"] .tw{bottom:96px}
+@media(max-width:900px){.tw{bottom:80px}body[data-undo-bar="1"] .tw{bottom:140px}}
 .toast{padding:12px 20px;border-radius:12px;font-size:12px;font-weight:600;box-shadow:0 8px 32px rgba(0,0,0,.4);animation:fadeIn .25s;margin-top:6px;backdrop-filter:blur(20px)}
 .t-ok{background:rgba(63,185,80,.15);border:1px solid rgba(63,185,80,.3);color:var(--green)}
 .t-err{background:rgba(248,81,73,.15);border:1px solid rgba(248,81,73,.3);color:var(--red)}
@@ -828,7 +835,7 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-admin-row2 b{color:var(--ad-t-0);font-size:13px;font-weight:700}
 .cad-admin-row2 .cad-subtle{color:var(--ad-t-2)}
 .cad-admin-row2 small{color:var(--ad-t-2)}.cad-action-grid{display:grid;grid-template-columns:repeat(3,minmax(120px,1fr));gap:10px}.cad-page-note{font-size:12px;color:var(--ad-t-2);line-height:1.55;margin:0}.cad-section-title{font-size:14px;font-weight:760;margin:0}
-.cad-admin-rate-grid{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:10px;margin-top:10px}.cad-cal-admin-list{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto}.cad-cal-admin-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:9px 10px;border-radius:10px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2);font-size:12px}.cad-cal-admin-row span{display:flex;align-items:center;gap:8px}.cad-cal-admin-row input[type=checkbox]{width:auto!important;min-height:0!important}
+.cad-admin-rate-grid{display:grid;grid-template-columns:repeat(3,minmax(150px,1fr));gap:10px;margin-top:10px}.cad-cal-admin-list{display:flex;flex-direction:column;gap:6px;max-height:260px;overflow:auto}.cad-cal-admin-row{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;padding:9px 10px;border-radius:10px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2);font-size:12px;color:var(--ad-t-0)}.cad-cal-admin-row span{display:flex;align-items:center;gap:8px;color:var(--ad-t-0)}.cad-cal-admin-row span:last-child{color:var(--ad-t-2)}.cad-cal-admin-row input[type=checkbox]{width:auto!important;min-height:0!important;accent-color:var(--ad-brass)}
 .cad-page-grid{display:grid;grid-template-columns:repeat(2,minmax(280px,1fr));gap:14px}.cad-page-grid.three{grid-template-columns:repeat(3,minmax(220px,1fr))}.cad-list-stack{display:flex;flex-direction:column;gap:8px}.cad-list-row{display:grid;grid-template-columns:minmax(180px,1.2fr) minmax(110px,.7fr) minmax(160px,1fr) auto;gap:14px;align-items:center;padding:12px 14px;border-radius:12px;border:1px solid var(--ad-line-1);background:var(--ad-bg-1);font-size:12px}.cad-list-row.slim{grid-template-columns:minmax(180px,1.3fr) minmax(120px,.8fr) auto}.cad-list-row.tone-red{border-color:oklch(0.68 0.18 25 / .28);background:var(--ad-red-dim)}.cad-list-row.tone-amber{border-color:oklch(0.80 0.13 75 / .28);background:var(--ad-amber-dim)}.cad-list-row.tone-blue{border-color:oklch(0.72 0.12 240 / .28);background:var(--ad-blue-dim)}.cad-list-row.tone-green{border-color:oklch(0.74 0.16 150 / .28);background:var(--ad-green-dim)}.cad-action-strip{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px}.cad-toggle{width:48px;height:26px;border-radius:999px;border:1px solid var(--ad-line-2);background:var(--ad-bg-3);position:relative;padding:3px;transition:.18s}.cad-toggle:before{content:"";display:block;width:18px;height:18px;border-radius:999px;background:var(--ad-t-2);transition:.18s}.cad-toggle.on{background:var(--ad-brass-dim);border-color:var(--ad-brass-line)}.cad-toggle.on:before{transform:translateX(20px);background:var(--ad-brass)}.cad-mini-progress{height:8px;border-radius:999px;background:var(--ad-bg-3);overflow:hidden}.cad-mini-progress i{display:block;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--ad-brass),var(--ad-green))}.cad-more-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.cad-more-grid .cad-option{min-height:68px;align-items:flex-start}.cad-value-big{font:750 28px 'JetBrains Mono',ui-monospace,monospace;letter-spacing:-.03em}.cad-tab-menu{position:relative}
 .cad-leads-head{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:18px;align-items:end}
 .cad-search{min-height:42px;width:100%;padding:0 14px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-1);color:var(--ad-t-0);font-size:13px}
@@ -1169,6 +1176,17 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
 .cad-hero-cta__target{padding:14px 16px;border-radius:13px;background:rgba(0,0,0,.22);border:1px solid var(--ad-line-1);position:relative;margin-bottom:4px}
 .cad-hero-cta__target-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .cad-hero-cta__target-tabs .cad-tab{font-size:12px;padding:6px 12px}
+/* 0108: multi-select target tabs. Three visual states:
+   - unselected: faded, dashed border
+   - selected (.on): brass background w/ ✓ check
+   - selected + active (.cad-tab--active): brass + green ring + glow,
+     the one whose count is in the slider/big-number below */
+.cad-tab--toggle{transition:filter .14s,box-shadow .18s,border-color .14s,background .14s,opacity .14s}
+.cad-hero-cta__target-tabs .cad-tab--toggle:not(.on){background:transparent;color:var(--ad-t-3);border:1px dashed var(--ad-line-2);opacity:.78}
+.cad-hero-cta__target-tabs .cad-tab--toggle:not(.on):hover{opacity:1;border-color:var(--ad-brass-line);color:var(--ad-t-1)}
+.cad-hero-cta__target-tabs .cad-tab--toggle.on{border:1px solid var(--ad-brass)}
+.cad-hero-cta__target-tabs .cad-tab--toggle.on.cad-tab--active{box-shadow:0 0 0 2px var(--ad-green) inset,0 0 16px rgba(74,222,128,.32);background:linear-gradient(135deg,var(--ad-brass),#10b981)}
+.cad-tab__check{display:inline-flex;align-items:center;font-size:11px;font-weight:850}
 .cad-hero-cta__target-row{display:flex;gap:14px;align-items:center}
 .cad-hero-cta__target-row input[type=range]{flex:1;min-width:0}
 .cad-hero-cta__target-num{font:850 38px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-brass-2);letter-spacing:-.04em;min-width:74px;text-align:center;text-shadow:0 0 24px rgba(214,168,122,.28)}
@@ -1346,7 +1364,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0107';
+window.APP_VERSION='2026.05.05.0108';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -9565,10 +9583,14 @@ function App() {
         setShowNextPreview(false);
         setShowPostCall(null);
         toast('↩️ Back to ' + (u.leadName || curLeads2[targetIdx].name || 'lead'));
+        // 0108: was setTimeout 200ms before redialing — user said "loads
+        // damn long". Drop to 0ms (next tick) so the redial fires as soon
+        // as React commits the new curIdx. The dial helper reads phone
+        // directly from the lead arg so no need to wait for re-render.
         setTimeout(() => {
           var l = leadsRef.current[targetIdx];
           if (l?.phone) dial(l.phone);
-        }, 200);
+        }, 0);
       } catch (_e) {}
       setUndoInfo(null);
       setUndoHistory(p => p.filter(x => x.ts !== info.ts));
@@ -14488,6 +14510,28 @@ function App() {
     s.bonusMult = n(myCfg.bonusMult, 1.5);
     s.hourlyRate = isAdminCallingSession ? hourlyRate : 0;
     s.tier = isAdminCallingSession ? tier.label : '';
+    // 0108: target-hit celebration. Walk every selected target type and
+    // check if its goal was met. If any was, fire confetti + a congrats
+    // toast naming the hit target(s). Pure feedback — no pay/bar effects.
+    try {
+      var _st = sessionTarget || {};
+      var _selected = Array.isArray(_st.selected) && _st.selected.length ? _st.selected : (_st.type ? [_st.type] : []);
+      var _counts = (_st.counts && typeof _st.counts === 'object') ? _st.counts : {};
+      var _hits = [];
+      _selected.forEach(type => {
+        var goal = Number(_counts[type] != null ? _counts[type] : (_st.type === type ? _st.count : 0)) || 0;
+        if (goal <= 0) return;
+        var actual = type === 'connected' ? Math.max(0, (s.dialed || 0) - (s.np || 0)) : type === 'sets' ? (s.sets || 0) : (s.dialed || 0);
+        if (actual >= goal) {
+          var lbl = type === 'connected' ? 'connected' : type === 'sets' ? 'appts' : 'dials';
+          _hits.push(actual + ' ' + lbl + ' (goal: ' + goal + ')');
+        }
+      });
+      if (_hits.length) {
+        try { setConfetti && setConfetti(true); setTimeout(() => setConfetti && setConfetti(false), 3500); } catch (_e) {}
+        toast('🎉 Goal' + (_hits.length > 1 ? 's' : '') + ' hit: ' + _hits.join(' · '), 'info');
+      }
+    } catch (_e) {}
     var endGuard = _rememberSessionEndGuard(s, endedAt);
     try {
       save('activeSession', null);
@@ -16957,7 +17001,13 @@ function App() {
       h('div', { className: 'cad-left' },
         h('div', { className: 'cad-logo' }, icon('PhoneOutgoing', 14)),
         h('span', { className: 'cad-brand' }, 'AutoDial'),
-        h('span', { className: 'cad-pill brass' }, h('span', { className: 'cad-dot' }), 'LIVE · ', h('span', { className: 'cad-mono' }, liveLabel))
+        // 0108: dropped the topbar "LIVE · 00:00:00" pill — duplicated the
+        // session-info card timer (which is bigger, has start time + rank
+        // chip context) and was often stale at "00:00:00" because liveLabel
+        // re-evaluated less frequently than the session-info live timer.
+        // When session is running, we replace it with a compact "LIVE" dot
+        // pill (no timer) so the topbar still indicates active state.
+        currentSession && h('span', { className: 'cad-pill brass', title: 'Session is live' }, h('span', { className: 'cad-dot' }), 'LIVE')
       ),
       h('div', { className: 'cad-right' },
         h('div', { className: 'cad-switch' },
@@ -17006,9 +17056,52 @@ function App() {
       return Math.max(spec.min, Math.min(spec.max, Math.round(n / spec.step) * spec.step));
     };
     var cadTargetCount = cadClampTarget(cadTargetType, sessionTarget?.count);
-    var cadTargetNow = currentSession ? (cadTargetType === 'connected' ? Math.max(0, (currentSession.dialed || 0) - (currentSession.np || 0)) : cadTargetType === 'sets' ? (currentSession.sets || 0) : (currentSession.dialed || 0)) : 0;
+    // 0108: multi-select targets — sessionTarget now also carries
+    // `selected[]` (which target types are active goals) and `counts{}`
+    // (per-type goal). Backward-compat: if `selected` is missing, infer
+    // it from the legacy { type, count } shape.
+    var cadSelectedTargets = Array.isArray(sessionTarget?.selected) && sessionTarget.selected.length
+      ? sessionTarget.selected.filter(t => cadTargetSpecs[t])
+      : [cadTargetType];
+    var cadTargetCounts = (sessionTarget && typeof sessionTarget.counts === 'object' && sessionTarget.counts) || {};
+    var cadGetTargetCount = type => cadClampTarget(type, cadTargetCounts[type] != null ? cadTargetCounts[type] : (sessionTarget?.type === type ? sessionTarget.count : cadTargetSpecs[type]?.fallback));
+    var cadProgressForType = (sess, type) => {
+      if (!sess) return 0;
+      if (type === 'connected') return Math.max(0, (sess.dialed || 0) - (sess.np || 0));
+      if (type === 'sets') return sess.sets || 0;
+      return sess.dialed || 0;
+    };
+    var cadTargetNow = cadProgressForType(currentSession, cadTargetType);
     var cadTargetPct = Math.min(100, cadTargetNow / Math.max(1, cadTargetCount || 1) * 100);
-    var cadSetTarget = (type, count) => setSessionTarget({ type, count: cadClampTarget(type, count) });
+    // Set a count for a specific type (also makes it the "active" type
+    // shown in the slider/big-number). Preserves selected[] and counts{}.
+    var cadSetTarget = (type, count) => setSessionTarget(prev => {
+      var p = prev || {};
+      var sel = Array.isArray(p.selected) && p.selected.length ? p.selected.slice() : [p.type || 'dials'];
+      if (sel.indexOf(type) < 0) sel.push(type);
+      var counts = { ...(p.counts || {}), [type]: cadClampTarget(type, count) };
+      return { type, count: counts[type], selected: sel, counts };
+    });
+    // Toggle whether a type is in the selected[] list. Selecting an
+    // unselected type also makes it the active one. Deselecting the
+    // active one falls back to the first remaining selected (or 'dials').
+    var cadToggleTarget = type => setSessionTarget(prev => {
+      var p = prev || {};
+      var sel = Array.isArray(p.selected) && p.selected.length ? p.selected.slice() : [p.type || 'dials'];
+      var counts = { ...(p.counts || {}) };
+      if (counts[type] == null) counts[type] = cadTargetSpecs[type]?.fallback ?? 0;
+      var idx = sel.indexOf(type);
+      var nextActive = p.type;
+      if (idx >= 0) {
+        sel.splice(idx, 1);
+        if (sel.length === 0) sel.push('dials'); // never empty
+        if (nextActive === type) nextActive = sel[0];
+      } else {
+        sel.push(type);
+        nextActive = type;
+      }
+      return { type: nextActive, count: counts[nextActive], selected: sel, counts };
+    });
     var cadSessionTargetPanel = compact => {
       var spec = cadTargetSpecs[cadTargetType] || cadTargetSpecs.dials;
       var typeEmoji = { dials: '📞', connected: '🔗', sets: '🎯' };
@@ -17190,8 +17283,31 @@ function App() {
         h('h1', { className: 'cad-hero-cta__title' }, 'Ready to ', h('em', null, 'call.')),
         h('p', { className: 'cad-hero-cta__sub' }, pendingCount, ' callable lead', pendingCount === 1 ? '' : 's', ' waiting · last session: ', lastSessionLabel),
         h('div', { className: 'cad-hero-cta__target' },
+          // 0108: tabs are now multi-select toggles. Click a selected one
+          // to deselect, click an unselected one to select + make active.
+          // The active one drives the slider + big number below. The
+          // selected list is the set of goals — confetti fires at session
+          // end if ANY goal is hit.
           h('div', { className: 'cad-hero-cta__target-tabs' },
-            Object.entries(cadTargetSpecs).map(([k, s]) => h('button', { className: 'cad-tab ' + (cadTargetType === k ? 'on' : ''), key: k, onClick: () => cadSetTarget(k, cadTargetType === k ? cadTargetCount : s.fallback), type: 'button' }, typeEmoji[k] || '•', ' ', s.label))
+            Object.entries(cadTargetSpecs).map(([k, s]) => {
+              var isSelected = cadSelectedTargets.indexOf(k) >= 0;
+              var isActive = cadTargetType === k;
+              return h('button', {
+                className: 'cad-tab ' + (isSelected ? 'on ' : '') + (isActive ? 'cad-tab--active ' : '') + 'cad-tab--toggle',
+                key: k,
+                onClick: () => {
+                  if (!isSelected) {
+                    cadSetTarget(k, cadGetTargetCount(k));
+                  } else if (!isActive) {
+                    cadSetTarget(k, cadGetTargetCount(k));
+                  } else {
+                    cadToggleTarget(k);
+                  }
+                },
+                title: isSelected ? (isActive ? 'Click again to remove this goal' : 'Click to focus this goal') : 'Click to add this as a goal',
+                type: 'button'
+              }, typeEmoji[k] || '•', ' ', s.label, isSelected && h('span', { className: 'cad-tab__check', style: { marginLeft: 6, opacity: .8 } }, '✓'));
+            })
           ),
           h('div', { className: 'cad-hero-cta__target-row' },
             h('input', { type: 'range', min: spec.min, max: spec.max, step: spec.step, value: cadTargetCount, onChange: e => cadSetTarget(cadTargetType, e.target.value) }),
@@ -17218,7 +17334,17 @@ function App() {
         h('p', { className: 'cad-hero-cta__hint' },
           pendingCount === 0
             ? '⚠ Queue empty — open Leads to wire a sheet or import a list, then start the session.'
-            : ['🎯 Target: ', cadTargetCount, ' ', spec.label.toLowerCase(), ' · session begins on the call view']
+            : (() => {
+                // 0108: hint shows ALL selected goals so the user sees the
+                // multi-target setup at a glance. "Targets: 50 dials · 3 appts"
+                if (!cadSelectedTargets.length) return '🎯 Pick at least one target above';
+                var parts = cadSelectedTargets.map(t => {
+                  var n = cadGetTargetCount(t);
+                  var lbl = (cadTargetSpecs[t]?.label || t).toLowerCase();
+                  return n + ' ' + lbl;
+                });
+                return '🎯 Goals: ' + parts.join(' · ') + (cadSelectedTargets.length > 1 ? ' · hit any to celebrate' : '');
+              })()
         )
       );
     })();
@@ -18788,7 +18914,13 @@ function App() {
       }
     };
     var dialogModal = cadModal(!!dialogRequest, 'narrow', () => resolveDialog(dialogRequest?.kind === 'confirm' ? false : null), dialogRequest && h(React.Fragment, null,
-      h('div', { className: 'cad-modal-head' }, h('div', null, h('h3', { className: 'cad-modal-title' }, dialogRequest.title), h('p', { className: 'cad-modal-sub' }, dialogRequest.message)), h('button', { className: 'cad-btn ghost', onClick: () => resolveDialog(dialogRequest.kind === 'confirm' ? false : null) }, 'x')),
+      // 0108: dialog body now preserves \n as visual line breaks. Pre-fix
+      // the wrap-up modal text "Duration:... \nDialed:... \nConnected:..."
+      // collapsed into a single flowed paragraph because <p> ignores
+      // newlines. white-space:pre-line keeps the \n breaks AND collapses
+      // runs of spaces (so the emoji-padded labels stay readable). Also
+      // bumped line-height for breathing room between rows.
+      h('div', { className: 'cad-modal-head' }, h('div', null, h('h3', { className: 'cad-modal-title' }, dialogRequest.title), h('p', { className: 'cad-modal-sub', style: { whiteSpace: 'pre-line', lineHeight: 1.7, fontSize: 13 } }, dialogRequest.message)), h('button', { className: 'cad-btn ghost', onClick: () => resolveDialog(dialogRequest.kind === 'confirm' ? false : null) }, 'x')),
       dialogRequest.kind === 'prompt' && cadField('Response', dialogRequest.multiline ? h('textarea', { value: dialogRequest.value, onChange: e => setDialogRequest(req => ({ ...req, value: e.target.value })), placeholder: dialogRequest.placeholder }) : h('input', { value: dialogRequest.value, onChange: e => setDialogRequest(req => ({ ...req, value: e.target.value })), placeholder: dialogRequest.placeholder, onKeyDown: e => { if (e.key === 'Enter') resolveDialog(dialogRequest.value || null); } })),
       h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => resolveDialog(dialogRequest.kind === 'confirm' ? false : null) }, dialogRequest.cancelLabel || 'Cancel'), h('button', { className: 'cad-btn primary', onClick: () => resolveDialog(dialogRequest.kind === 'prompt' ? (dialogRequest.value || null) : true) }, dialogRequest.confirmLabel || 'Confirm'))
     ));
@@ -18955,6 +19087,15 @@ function App() {
       h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => setShowColPicker(null) }, 'Keep pending'))
     ));
     var undoItems = undoHistory.filter(x => x?.info && x?.undo).slice(0, 4);
+    // 0108: signal the undo-bar's presence to the toast positioning CSS
+    // (sets body[data-undo-bar="1"] which lifts toasts above the floating
+    // bar). Set imperatively during render — no useEffect since this
+    // block is inside a render path, not the top of the component.
+    try {
+      var _undoBarOn = !!(undoInfo || undoItems.length);
+      if (_undoBarOn) document.body.setAttribute('data-undo-bar', '1');
+      else document.body.removeAttribute('data-undo-bar');
+    } catch (_e) {}
     // 0103: undo bar copy clarified. Pre-fix the row buttons read
     // "SKIP John Toh" — ambiguous because clicking RESTORES John Toh
     // (it's an undo, not a forward skip). New label is explicit:
