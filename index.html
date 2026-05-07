@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0111'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0112'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1368,7 +1368,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0111';
+window.APP_VERSION='2026.05.05.0112';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -17135,6 +17135,13 @@ function App() {
       }
       return { type: nextActive, count: counts[nextActive], selected: sel, counts };
     });
+    // 0112: cadSessionTargetPanel (used on the call view as the compact
+    // tracker AND on the dial view) now mirrors the home-dashboard hero
+    // CTA's multi-select target behaviour. Pre-fix this panel was still
+    // single-select — clicking a tab swapped the active type instead of
+    // toggling membership in selected[]. So edits to goals on the call
+    // view didn't agree with the home dashboard's multi-select view.
+    // Now both surfaces share the same selected[] / counts{} state.
     var cadSessionTargetPanel = compact => {
       var spec = cadTargetSpecs[cadTargetType] || cadTargetSpecs.dials;
       var typeEmoji = { dials: '📞', connected: '🔗', sets: '🎯' };
@@ -17146,8 +17153,23 @@ function App() {
           ),
           h('span', { className: 'cad-session-target__pill ' + (currentSession ? 'live' : '') }, currentSession ? Math.round(cadTargetPct) + '% complete' : 'Ready')
         ),
-        h('div', { className: 'cad-inline', style: { flexWrap: 'wrap', marginBottom: 12, gap: 6 } },
-          Object.entries(cadTargetSpecs).map(([k, s]) => h('button', { className: 'cad-tab ' + (cadTargetType === k ? 'on' : ''), key: k, onClick: () => cadSetTarget(k, cadTargetType === k ? cadTargetCount : s.fallback) }, typeEmoji[k] || '•', ' ', s.label))
+        h('p', { className: 'cad-hero-cta__target-instruction', style: { margin: '0 0 8px' } }, '🎯 Tap any target to add it as a goal — hit any one to celebrate 🎉'),
+        h('div', { className: 'cad-hero-cta__target-tabs', style: { marginBottom: 12 } },
+          Object.entries(cadTargetSpecs).map(([k, s]) => {
+            var isSelected = cadSelectedTargets.indexOf(k) >= 0;
+            var isActive = cadTargetType === k;
+            return h('button', {
+              className: 'cad-tab ' + (isSelected ? 'on ' : '') + (isActive ? 'cad-tab--active ' : '') + 'cad-tab--toggle',
+              key: k,
+              onClick: () => {
+                if (!isSelected) cadSetTarget(k, cadGetTargetCount(k));
+                else if (!isActive) cadSetTarget(k, cadGetTargetCount(k));
+                else cadToggleTarget(k);
+              },
+              title: isSelected ? (isActive ? 'Click again to remove this goal' : 'Click to focus this goal') : 'Click to add this as a goal',
+              type: 'button'
+            }, typeEmoji[k] || '•', ' ', s.label, isSelected && h('span', { className: 'cad-tab__check', style: { marginLeft: 6, opacity: .8 } }, '✓'));
+          })
         ),
         h('div', { className: 'cad-inline', style: { gap: 12, alignItems: 'center' } },
           h('input', { type: 'range', min: spec.min, max: spec.max, step: spec.step, value: cadTargetCount, onChange: e => cadSetTarget(cadTargetType, e.target.value), style: { flex: 1 } }),
@@ -17156,7 +17178,11 @@ function App() {
           h('button', { className: 'cad-btn', onClick: () => cadSetTarget(cadTargetType, cadTargetCount + spec.step) }, '+' + spec.step)
         ),
         h('div', { className: 'cad-session-target__bar ' + (currentSession ? 'live' : '') }, h('i', { style: { width: cadTargetPct + '%' } })),
-        h('p', { className: 'cad-session-target__sub' }, h('b', { style: { color: 'var(--ad-t-1)' } }, cadTargetNow), ' / ', cadTargetCount, ' ', spec.label.toLowerCase(), cadTargetType === 'sets' ? ' · max 10 per sitting' : '')
+        h('p', { className: 'cad-session-target__sub' },
+          h('b', { style: { color: 'var(--ad-t-1)' } }, cadTargetNow), ' / ', cadTargetCount, ' ', spec.label.toLowerCase(),
+          cadSelectedTargets.length > 1 ? ' · ' + cadSelectedTargets.length + ' goals active' : '',
+          cadTargetType === 'sets' ? ' · max 10 per sitting' : ''
+        )
       );
     };
     var cadScriptEditorPanel = (compact, showSaveButtons) => h('div', { className: 'cad-card cad-editor-card' },
