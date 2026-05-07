@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0113'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0114'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -278,15 +278,23 @@ button.free-slot{appearance:none;text-align:left}
 .bp{width:100%;padding:14px;background:linear-gradient(135deg,var(--accent),#a37a4d);color:#fff;font-size:15px;font-weight:700;box-shadow:0 8px 24px rgba(214,168,122,.3)}
 .bp:hover{box-shadow:0 12px 32px rgba(214,168,122,.4);transform:translateY(-1px)}
 .bs{width:100%;padding:12px;background:transparent;color:var(--text2);border:1px solid var(--border2)!important;font-size:13px;font-weight:600;margin-top:8px}
-/* 0108: lifted toast container above the undo bar (bottom:22px) and the
-   sticky outcome row. Pre-fix, the merged "Skipped X → dialing Y" toast
-   landed right on top of the undo bar AND the outcome 4 (Set) button,
-   blocking taps. body[data-undo-bar="1"] gets bumped further so toasts
-   never collide with the undo bar floating CTA. */
-.tw{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);z-index:99999;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:6px;max-width:calc(100vw - 32px)}
-body[data-undo-bar="1"] .tw{bottom:96px}
-@media(max-width:900px){.tw{bottom:80px}body[data-undo-bar="1"] .tw{bottom:140px}}
-.toast{padding:12px 20px;border-radius:12px;font-size:12px;font-weight:600;box-shadow:0 8px 32px rgba(0,0,0,.4);animation:fadeIn .25s;margin-top:6px;backdrop-filter:blur(20px)}
+/* 0114: toast container moved to TOP-RIGHT — was bottom-center where it
+   sat directly on top of the call view's outcome row + the undo bar,
+   blocking taps and feeling intrusive. Top-right is the modern app
+   convention (Slack, Linear, GitHub) and stays well clear of every
+   actionable surface. Mobile keeps a bottom-anchored variant since
+   thumb reach matters more than nav real estate on phones. */
+.tw{position:fixed;top:14px;right:14px;z-index:99999;pointer-events:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:min(360px,calc(100vw - 28px))}
+@media(max-width:900px){
+  .tw{top:auto;right:auto;bottom:80px;left:50%;transform:translateX(-50%);align-items:center;max-width:calc(100vw - 32px)}
+  body[data-undo-bar="1"] .tw{bottom:140px}
+}
+/* 0114: tightened toast styling for the new top-right placement.
+   Slimmer padding, smaller font, lighter shadow, tighter radius —
+   reads as a status pill rather than a heavy notification card.
+   max-width keeps long messages wrapping cleanly inside the
+   toast container. */
+.toast{padding:9px 14px;border-radius:10px;font-size:12px;font-weight:600;line-height:1.45;box-shadow:0 6px 18px rgba(0,0,0,.45);animation:fadeIn .2s;margin-top:0;backdrop-filter:blur(16px);max-width:100%;text-align:left}
 .t-ok{background:rgba(63,185,80,.15);border:1px solid rgba(63,185,80,.3);color:var(--green)}
 .t-err{background:rgba(248,81,73,.15);border:1px solid rgba(248,81,73,.3);color:var(--red)}
 .t-info{background:var(--adim);border:1px solid rgba(214,168,122,.3);color:var(--accent2)}
@@ -1372,7 +1380,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0113';
+window.APP_VERSION='2026.05.05.0114';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -9615,11 +9623,11 @@ function App() {
         setPhase('calling');
         setShowNextPreview(false);
         setShowPostCall(null);
-        toast('↩️ Back to ' + (u.leadName || curLeads2[targetIdx].name || 'lead'));
-        // 0108: was setTimeout 200ms before redialing — user said "loads
-        // damn long". Drop to 0ms (next tick) so the redial fires as soon
-        // as React commits the new curIdx. The dial helper reads phone
-        // directly from the lead arg so no need to wait for re-render.
+        // 0114: dropped the "↩️ Back to {name}" toast — the lead card
+        // already swaps to the restored lead in-place, which is a clear
+        // enough visual signal of where the user landed. The auto-redial
+        // fires immediately (subtle dial-sent toast suppressed by the
+        // _suppressDialToastUntil guard set at the top of doUndo).
         setTimeout(() => {
           var l = leadsRef.current[targetIdx];
           if (l?.phone) dial(l.phone);
@@ -9786,26 +9794,19 @@ function App() {
         } catch (_logErr) {}
       } else step('Appointment sheet row removed', false, 'no sheet access');
       addSyncTrail('Set undo cleanup for ' + (info.name || lead?.name || u.leadName || 'lead'), steps);
-      toast('Set undone. Cleanup details added below.');
+      // 0114: dropped the "Set undone. Cleanup details added below" toast.
+      // The undo bar already disappears (signal of completion) and the
+      // sync trail is visible in Settings → Sync if the user wants the
+      // detailed steps.
     } else {
-      // 0098 fix: pre-fix, undo for NP/NI/CB only reverted the lead row +
-      // showed a toast — session.dialed and session.{np,ni,cb} stayed
-      // incremented forever, so the user would see "DIALED 1, NO PICKUP 1"
-      // even after clicking Undo back to the same lead. handleOutcome at
-      // ~14391 always increments dialed, plus the per-status counter, so
-      // a symmetric undo decrements both.
-      if (session && !session.ended && (u.status === 'np' || u.status === 'ni' || u.status === 'cb')) {
-        setSession(p => p ? {
-          ...p,
-          dialed: Math.max(0, (p.dialed || 1) - 1),
-          np: u.status === 'np' ? Math.max(0, (p.np || 1) - 1) : (p.np || 0),
-          ni: u.status === 'ni' ? Math.max(0, (p.ni || 1) - 1) : (p.ni || 0),
-          cb: u.status === 'cb' ? Math.max(0, (p.cb || 1) - 1) : (p.cb || 0)
-        } : p);
-        step('Session counter reverted', true, 'dialed −1, ' + u.status + ' −1');
-      }
+      // 0114: dropped the duplicate np/cb/ni counter revert here — the
+      // generic block at the top of doUndo (lines ~9650 ish) already
+      // handles dialed/np/cb/ni decrements symmetrically. Pre-fix, np/cb/ni
+      // undos decremented TWICE (once at the top, once here).
       addSyncTrail('Undo for ' + (info.name || lead?.name || 'lead'), steps);
-      toast('Undone - back to ' + info.name);
+      // 0114: dropped the "Undone - back to X" toast. Lead card swap +
+      // counter rollback is the visual confirmation; another toast on top
+      // was redundant noise.
     }
     setShowPostCall(null);
     setShowNextPreview(false);
@@ -15181,14 +15182,12 @@ function App() {
       status: 'skip',
       ts: Date.now()
     });
-    // 0103: combined skip + next-dial toast. Pre-fix the user saw
-    // BOTH "Skipped X — undo within 10s" AND "📱 Dial sent → open
-    // AutoDial on phone" stacked on top of each other. Now one toast
-    // covers both events; the dial toast is suppressed for 1.5s.
-    var nextLead = (leadsRef.current || [])[nextIdx];
-    var nextName = nextLead?.name || nextLead?.phone || 'next lead';
+    // 0114: the skip toast was redundant — the undo bar at the bottom
+    // already shows "↩ Undo SKIP · {name}" with a tap-to-undo button.
+    // Two notifications for the same action felt noisy. Keep the
+    // suppressDialToastUntil guard (so the auto-redial doesn't fire
+    // its own dial-sent toast) and let the undo bar carry the signal.
     appStateRef.current._suppressDialToastUntil = Date.now() + 1500;
-    toast('⏭ Skipped ' + (skipped?.name || skipped?.phone || 'lead') + ' → dialing ' + nextName + ' · undo within 10s', 'info');
     proceedToLead(nextIdx);
   }, [running, curIdx, dialFilters, releaseClaim, proceedToLead]);
   var ensureCallbackLookupOpen = useCallback(reset => {
