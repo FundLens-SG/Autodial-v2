@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0112'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0113'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -290,6 +290,10 @@ body[data-undo-bar="1"] .tw{bottom:96px}
 .t-ok{background:rgba(63,185,80,.15);border:1px solid rgba(63,185,80,.3);color:var(--green)}
 .t-err{background:rgba(248,81,73,.15);border:1px solid rgba(248,81,73,.3);color:var(--red)}
 .t-info{background:var(--adim);border:1px solid rgba(214,168,122,.3);color:var(--accent2)}
+/* 0113: subtle tone — lower-importance status blips (e.g., dial-sent).
+   Half-size padding, smaller font, lower opacity, no shadow so it
+   registers as a quiet acknowledgment, not a notification. */
+.t-subtle{background:rgba(13,16,21,.85);border:1px solid var(--ad-line-1);color:var(--ad-t-3);padding:6px 12px;font-size:10.5px;font-weight:600;box-shadow:none;letter-spacing:.02em;opacity:.82}
 .touch-action-row button{min-height:46px}
 @media(max-width:720px){
   input,select,textarea{font-size:16px}
@@ -1368,7 +1372,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0112';
+window.APP_VERSION='2026.05.05.0113';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -1517,7 +1521,11 @@ function toast(m, t) {
     oldest.style.opacity = '0';
     setTimeout(function(){ oldest.remove(); }, 200);
   }
-  var lifetime = tone === 'err' ? 4500 : isProgress ? 1800 : 3000;
+  // 0113: 'subtle' tone for low-importance status toasts (e.g., the
+  // per-dial "Dial sent → open AutoDial on phone"). Shorter lifetime,
+  // smaller font, lower opacity — registers as a status blip without
+  // demanding attention.
+  var lifetime = tone === 'err' ? 4500 : isProgress ? 1800 : tone === 'subtle' ? 1500 : 3000;
   setTimeout(function(){
     e.style.opacity = '0';
     e.style.transition = 'opacity .3s';
@@ -1525,6 +1533,20 @@ function toast(m, t) {
   }, lifetime);
 }
 window.toast = toast;
+// 0113: clearToasts — fade-out every currently visible toast. Used by
+// doUndo so the "Skipped X → dialing Y" + "Dial sent" toasts don't
+// linger after the user has reversed the action they're describing.
+window.clearToasts = function() {
+  try {
+    var area = document.getElementById('toast-area');
+    if (!area) return;
+    Array.from(area.querySelectorAll('.toast')).forEach(function(el){
+      el.style.opacity = '0';
+      el.style.transition = 'opacity .2s';
+      setTimeout(function(){ try { el.remove(); } catch(_){} }, 220);
+    });
+  } catch(_){}
+};
 
 // ══════ TIP CELEBRATION SOUND — Web Audio API (no external libs) ══════
 window._audioCtx=null;
@@ -9559,6 +9581,13 @@ function App() {
     if (!info) return;
     var u = overrideUndo || appStateRef.current._lastUndo;
     if (!u) return;
+    // 0113: clear stale toasts (the "Skipped X → dialing Y" + any dial-
+    // sent blip) the moment undo fires — those messages described the
+    // action we're now reversing, so leaving them on screen is noise.
+    // Also suppress the next dial-sent toast for 1.5s so the undo's own
+    // redial doesn't fire another notification.
+    try { window.clearToasts && window.clearToasts(); } catch (_e) {}
+    try { appStateRef.current._suppressDialToastUntil = Date.now() + 1500; } catch (_e) {}
     // ─── Skip undo (no status mutation, just jump back) ────────────
     // skipCurrentLead never wrote a status. Undo just re-positions
     // curIdx on the skipped lead, fires the dialer, and clears the
@@ -9647,11 +9676,20 @@ function App() {
         step('Lead sheet revert queued', false, e?.message || 'failed');
       }
     }
+    // 0113: every non-skip outcome (np/cb/ni/set) counts as one DIAL +
+    // increments its specific status counter in handleOutcome. Pre-fix,
+    // doUndo only reverted the 'set' counters — np/cb/ni undos left the
+    // dial count + np/cb/ni counts inflated. Now revert symmetrically:
+    // session.dialed -= 1, plus the specific np/cb/ni/sets counter -= 1.
+    setSession(p => p ? {
+      ...p,
+      dialed: Math.max(0, (p.dialed || 1) - 1),
+      np: u.status === 'np' ? Math.max(0, (p.np || 1) - 1) : (p.np || 0),
+      cb: u.status === 'cb' ? Math.max(0, (p.cb || 1) - 1) : (p.cb || 0),
+      ni: u.status === 'ni' ? Math.max(0, (p.ni || 1) - 1) : (p.ni || 0),
+      sets: u.status === 'set' ? Math.max(0, (p.sets || 1) - 1) : (p.sets || 0)
+    } : p);
     if (u.status === 'set') {
-      setSession(p => p ? {
-        ...p,
-        sets: Math.max(0, (p.sets || 1) - 1)
-      } : p);
       setTotalSets(p => Math.max(0, p - 1));
       setSetDone(false);
       var _ds = JSON.parse(localStorage.getItem('autodial_daily_sets') || '{}');
@@ -14274,7 +14312,7 @@ function App() {
       // second toast would just stack and block the screen.
       var _suppressUntil = appStateRef.current._suppressDialToastUntil || 0;
       if (Date.now() >= _suppressUntil) {
-        toast('📱 Dial sent → open AutoDial on phone', 'info');
+        toast('📱 Dial sent', 'subtle');
       }
     }
   }, [isMob, callAssist, showNextLeadNotification, session, writePhoneDialRequest, role, adminLeadLinked, adminCfgVerified]);
