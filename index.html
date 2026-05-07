@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0102'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0103'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -507,6 +507,16 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
    the legacy ghost-in-the-corner. Same prominence as Start session. */
 .cad-session-stop{background:linear-gradient(180deg,oklch(0.68 0.18 25),oklch(0.58 0.20 25));border-color:oklch(0.58 0.20 25);color:#fff;font-weight:700;box-shadow:0 8px 22px -10px oklch(0.68 0.18 25 / .6)}
 .cad-session-stop:hover{filter:brightness(1.08)}
+/* 0103: prominent single Start/Stop session CTA in the session strip.
+   Replaces the small brass primary + the duplicate "Start calling"
+   button that previously sat in the lead card. Both states share the
+   same chunky proportions so the user reads them as one toggle. */
+.cad-session-cta{min-height:54px;padding:0 24px;font-size:15px;font-weight:850;letter-spacing:.01em;border-radius:14px;display:inline-flex;align-items:center;gap:10px;border:none;cursor:pointer;transition:transform .08s,filter .12s,box-shadow .25s;text-shadow:0 1px 2px rgba(0,0,0,.18)}
+.cad-session-cta:hover{transform:translateY(-2px);filter:brightness(1.10)}
+.cad-session-cta:active{transform:translateY(0) scale(.985)}
+.cad-session-cta--start{background:linear-gradient(135deg,#16a34a 0%,#10b981 50%,#059669 100%);color:#fff;box-shadow:0 16px 38px -12px rgba(16,185,129,.6),0 0 0 1px rgba(255,255,255,.18) inset,0 1px 0 rgba(255,255,255,.3) inset}
+.cad-session-cta--stop{background:linear-gradient(135deg,#ef4444 0%,#dc2626 50%,#b91c1c 100%);color:#fff;box-shadow:0 16px 38px -12px rgba(248,113,113,.6),0 0 0 1px rgba(255,255,255,.18) inset,0 1px 0 rgba(255,255,255,.3) inset}
+@media(max-width:900px){.cad-session-cta{min-height:48px;padding:0 18px;font-size:14px;width:100%;justify-content:center}}
 /* Keyboard shortcut hint pills above the outcome grid. Replaces the
    tiny grey "NP · NI auto-advance" hint that nobody noticed. */
 .cad-kb-hint{display:inline-flex;flex-wrap:wrap;gap:10px;font-size:11px;color:var(--ad-t-2)}
@@ -1145,6 +1155,27 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
 .cad-hero-cta__target-num{font:850 38px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-brass-2);letter-spacing:-.04em;min-width:74px;text-align:center;text-shadow:0 0 24px rgba(214,168,122,.28)}
 .cad-hero-cta__target-row .cad-btn{min-height:36px;padding:0 12px}
 /* Live-mode metrics row inside the hero */
+/* 0103: chosen-target tracker block on the live hero CTA. Shows the
+   single metric the user picked (dials / connected / appts) as a big
+   X / Y, with a percentage pill + gradient bar. The 5-stat strip
+   below is supporting context, not the primary signal. */
+.cad-hero-cta__tracker{padding:14px 16px;border-radius:14px;background:linear-gradient(135deg,rgba(214,168,122,.10),rgba(0,0,0,.18));border:1px solid var(--ad-brass-line);margin-bottom:14px;position:relative;overflow:hidden}
+.cad-hero-cta__tracker::before{content:"";position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--ad-amber),var(--ad-brass-2),var(--ad-green));opacity:.7}
+.cad-hero-cta__tracker-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.cad-hero-cta__tracker-label{font-size:11px;font-weight:850;letter-spacing:.12em;color:var(--ad-brass-2);text-transform:uppercase}
+.cad-hero-cta__tracker-pct{font:850 16px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-brass-2);background:rgba(214,168,122,.18);padding:3px 10px;border-radius:999px;border:1px solid var(--ad-brass-line)}
+.cad-hero-cta__tracker-num{font:850 44px 'JetBrains Mono',ui-monospace,monospace;color:#fff;letter-spacing:-.04em;line-height:1;display:flex;align-items:baseline;gap:0;text-shadow:0 0 24px rgba(214,168,122,.32)}
+.cad-hero-cta__tracker-num b{color:var(--ad-green);font-weight:850}
+.cad-hero-cta__tracker-slash{color:var(--ad-t-3);font-size:32px;font-weight:600;margin:0 4px}
+.cad-hero-cta__tracker-target{color:var(--ad-t-2);font-weight:600}
+.cad-hero-cta__tracker-bar{height:8px;border-radius:999px;background:rgba(0,0,0,.32);overflow:hidden;margin-top:10px}
+.cad-hero-cta__tracker-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--ad-amber),var(--ad-brass-2) 50%,var(--ad-green));border-radius:999px;transition:width .35s ease;box-shadow:0 0 10px rgba(74,222,128,.4)}
+@media(max-width:900px){
+  .cad-hero-cta__tracker{padding:12px 14px}
+  .cad-hero-cta__tracker-num{font-size:36px}
+  .cad-hero-cta__tracker-slash{font-size:26px}
+  .cad-hero-cta__tracker-pct{font-size:14px;padding:2px 8px}
+}
 .cad-hero-cta__metrics{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;margin-bottom:14px;position:relative}
 .cad-hero-cta__metric{padding:12px 10px;border-radius:11px;background:rgba(0,0,0,.30);border:1px solid var(--ad-line-1);text-align:center}
 .cad-hero-cta__metric b{display:block;font:800 22px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-t-0);line-height:1}
@@ -1296,7 +1327,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0102';
+window.APP_VERSION='2026.05.05.0103';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -14026,7 +14057,13 @@ function App() {
         window.location.href = 'tel:' + ph.replace(/[^+\d]/g, '');
       }, 80);
     } else {
-      toast('📱 Dial sent → open AutoDial on phone', 'info');
+      // 0103: suppress the standalone dial-sent toast for 1.5s after a
+      // skip — the skip toast already says "→ dialing X on phone" so a
+      // second toast would just stack and block the screen.
+      var _suppressUntil = appStateRef.current._suppressDialToastUntil || 0;
+      if (Date.now() >= _suppressUntil) {
+        toast('📱 Dial sent → open AutoDial on phone', 'info');
+      }
     }
   }, [isMob, callAssist, showNextLeadNotification, session, writePhoneDialRequest, role, adminLeadLinked, adminCfgVerified]);
   var sheetQueueRef = useRef([]);
@@ -14417,8 +14454,12 @@ function App() {
     var mm = Math.floor((elapsedSec % 3600) / 60);
     var dur = hh > 0 ? hh + 'h ' + mm + 'm' : mm + ' min';
     var slotH = session.selectedSlot ? n(session.selectedSlot.hours, 0) : 0;
-    var dynamicBar = (Array.isArray(myCfg.tierMins) && myCfg.tierMins[1]) ? n(myCfg.tierMins[1], 0) : n(myCfg.mThresh, 2);
-    var apptsBar = session.selectedSlot ? n(session.selectedSlot.apptsBar, 0) : dynamicBar;
+    // 0103 fix: was reading myCfg.tierMins[1] — that's the SECOND monthly
+    // rank tier's minimum (often 30 for Silver), NOT the session's appts
+    // bar. End-session modal showed "0 / 30-set bar" when the user's
+    // actual mThresh was 3. Drop the tierMins fallback; mThresh is
+    // canonical for the per-session "full credit" threshold.
+    var apptsBar = session.selectedSlot ? n(session.selectedSlot.apptsBar, 0) : n(myCfg.mThresh, 2);
     // 0101: clearer end-session copy. Pre-fix the body read
     //   "Duration: 0 min / 5h slot
     //    Dialed: 0   Sets: 0 / 30"
@@ -14839,7 +14880,14 @@ function App() {
       status: 'skip',
       ts: Date.now()
     });
-    toast('Skipped ' + (skipped?.name || skipped?.phone || 'lead') + ' — undo within 10s');
+    // 0103: combined skip + next-dial toast. Pre-fix the user saw
+    // BOTH "Skipped X — undo within 10s" AND "📱 Dial sent → open
+    // AutoDial on phone" stacked on top of each other. Now one toast
+    // covers both events; the dial toast is suppressed for 1.5s.
+    var nextLead = (leadsRef.current || [])[nextIdx];
+    var nextName = nextLead?.name || nextLead?.phone || 'next lead';
+    appStateRef.current._suppressDialToastUntil = Date.now() + 1500;
+    toast('⏭ Skipped ' + (skipped?.name || skipped?.phone || 'lead') + ' → dialing ' + nextName + ' · undo within 10s', 'info');
     proceedToLead(nextIdx);
   }, [running, curIdx, dialFilters, releaseClaim, proceedToLead]);
   var ensureCallbackLookupOpen = useCallback(reset => {
@@ -16913,10 +16961,31 @@ function App() {
         ? (lastSession.sets || 0) + ' Set · ' + _fmtAgo(Date.now() - (lastSession.startTime || Date.now()))
         : 'fresh start — no prior sessions';
       if (running) {
+        // 0103: chosen-target tracker is now the dominant visible thing
+        // during a live session. Pre-fix the live state showed all 5
+        // metrics flat — there was no single tracker the user could
+        // anchor to. The chosen sessionTarget.type (locked once the
+        // session starts because tabs only render in idle) drives a
+        // big "X / Y" hero with a gradient progress bar. The 5-stat
+        // strip stays as supporting context underneath.
+        var _trackerLabel = cadTargetType === 'connected' ? 'connected' : cadTargetType === 'sets' ? 'appts set' : 'dials';
+        var _trackerEmoji = cadTargetType === 'connected' ? '🔗' : cadTargetType === 'sets' ? '🎯' : '📞';
         return h('div', { className: 'cad-hero-cta cad-hero-cta--live' },
           h('div', { className: 'cad-hero-cta__head' },
             h('span', { className: 'cad-hero-cta__pulse' }, h('i'), 'Live session'),
             h('span', { className: 'cad-hero-cta__timer' }, fmtTime(elapsed || 0))
+          ),
+          h('div', { className: 'cad-hero-cta__tracker' },
+            h('div', { className: 'cad-hero-cta__tracker-head' },
+              h('span', { className: 'cad-hero-cta__tracker-label' }, _trackerEmoji, ' ', _trackerLabel.toUpperCase(), ' target'),
+              h('span', { className: 'cad-hero-cta__tracker-pct' }, Math.round(cadTargetPct), '%')
+            ),
+            h('div', { className: 'cad-hero-cta__tracker-num' },
+              h('b', null, cadTargetNow),
+              h('span', { className: 'cad-hero-cta__tracker-slash' }, ' / '),
+              h('span', { className: 'cad-hero-cta__tracker-target' }, cadTargetCount)
+            ),
+            h('div', { className: 'cad-hero-cta__tracker-bar' }, h('i', { style: { width: cadTargetPct + '%' } }))
           ),
           h('div', { className: 'cad-hero-cta__metrics' },
             h('div', { className: 'cad-hero-cta__metric' }, h('b', null, sessionDialed || 0), h('small', null, 'Dialed')),
@@ -17093,11 +17162,39 @@ function App() {
             // Pay tile remains Admin-only (mains earn no per-session pay).
             role === 'admin' && h('div', { className: 'cad-session-stat cad-session-stat--card tone-brass' }, h('span', { className: 'cad-session-stat__glyph' }, h('span', { className: 'cad-session-stat__dot' }), 'Pay'), h('b', null, '$' + sessionPay.toFixed(2)), h('small', null, 'session'))
           ),
+          // 0103: session-strip Start/Stop is now the SINGLE prominent CTA
+          // for session control (cad-session-cta — bigger, glowier). The
+          // lead-card duplicate that used to start the session is gone;
+          // when no session is running, the lead-card button is hidden
+          // and a clear hint points up to this button instead.
           currentSession
-            ? h('button', { className: 'cad-btn cad-session-stop', onClick: endSessionConfirm }, icon('Square', 14), 'Stop session')
-            : h('button', { className: 'cad-btn primary', onClick: () => startDial() }, icon('PhoneOutgoing', 14), 'Start session')
+            ? h('button', { className: 'cad-btn cad-session-cta cad-session-cta--stop', onClick: endSessionConfirm, type: 'button' }, icon('Square', 16), 'Stop session')
+            : h('button', { className: 'cad-btn cad-session-cta cad-session-cta--start', onClick: () => startDial(), type: 'button' }, icon('PhoneOutgoing', 16), 'Start session')
         ),
-        h('div', { className: 'cad-card cad-lead-card' }, h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('div', { className: 'cad-inline' }, h('span', { className: 'cad-label' }, 'Now calling'), h('span', { className: 'cad-mono cad-muted', style: { fontSize: 12 } }, queuePos, ' / ', queueTotal || 0), h('div', { className: 'cad-progress', style: { width: 120 } }, h('i', { style: { width: queuePct + '%' } }))), h('div', { className: 'cad-inline' }, h('span', { className: 'cad-pill amber' }, ((activeLead?.npCount || 0) + 1) + ' attempt'), h('span', { className: 'cad-pill' }, icon('Sheet', 10), 'Row ', activeLead?.sheetRow || (demo ? 218 : '-')))), h('div', { className: 'cad-inline', style: { alignItems: 'flex-end', gap: 24 } }, h('div', { style: { flex: 1 } }, h('h2', { className: 'cad-lead-name' }, leadName), h('div', { className: 'cad-inline', style: { marginTop: 8, flexWrap: 'wrap' } }, h('span', { className: 'cad-phone-chip' }, icon('PhoneOutgoing', 14), leadPhone || 'No phone'), leadAge && h('span', { className: 'cad-muted', style: { fontSize: 13 } }, leadAge, demo ? ' · last contacted 2d ago' : ''))), h('button', { className: 'cad-btn primary', style: { height: 52, padding: '0 22px', fontSize: 14 }, onClick: () => running && leadPhone ? dial(leadPhone) : startDial() }, icon('PhoneOutgoing', 16), running ? 'Dial now' : 'Start calling')), h('p', { className: 'cad-note' }, h('span', { className: 'cad-label', style: { marginRight: 8 } }, 'Notes'), leadNotes)),
+        h('div', { className: 'cad-card cad-lead-card' },
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } },
+            h('div', { className: 'cad-inline' }, h('span', { className: 'cad-label' }, 'Now calling'), h('span', { className: 'cad-mono cad-muted', style: { fontSize: 12 } }, queuePos, ' / ', queueTotal || 0), h('div', { className: 'cad-progress', style: { width: 120 } }, h('i', { style: { width: queuePct + '%' } }))),
+            h('div', { className: 'cad-inline' }, h('span', { className: 'cad-pill amber' }, ((activeLead?.npCount || 0) + 1) + ' attempt'), h('span', { className: 'cad-pill' }, icon('Sheet', 10), 'Row ', activeLead?.sheetRow || (demo ? 218 : '-')))
+          ),
+          h('div', { className: 'cad-inline', style: { alignItems: 'flex-end', gap: 24 } },
+            h('div', { style: { flex: 1 } },
+              h('h2', { className: 'cad-lead-name' }, leadName),
+              h('div', { className: 'cad-inline', style: { marginTop: 8, flexWrap: 'wrap' } }, h('span', { className: 'cad-phone-chip' }, icon('PhoneOutgoing', 14), leadPhone || 'No phone'), leadAge && h('span', { className: 'cad-muted', style: { fontSize: 13 } }, leadAge, demo ? ' · last contacted 2d ago' : ''))
+            ),
+            // 0103: lead-card button only shows when a session is RUNNING —
+            // pre-fix it doubled as a session starter ("Start calling")
+            // which collided with the session-strip Start session CTA and
+            // confused the user. Now it's strictly "Dial Lead Name" with
+            // a clear single purpose. When idle, a hint replaces it.
+            running
+              ? h('button', { className: 'cad-btn primary', style: { height: 52, padding: '0 22px', fontSize: 14 }, onClick: () => leadPhone && dial(leadPhone), disabled: !leadPhone, type: 'button' },
+                  icon('PhoneOutgoing', 16),
+                  leadPhone ? ('📞 Dial ' + (String(leadName || 'lead').split(/\s+/)[0] || 'lead')) : 'No phone'
+                )
+              : h('span', { className: 'cad-muted', style: { fontSize: 12, fontStyle: 'italic', alignSelf: 'flex-end', paddingBottom: 4 } }, '↑ Tap "Start session" above to begin')
+          ),
+          h('p', { className: 'cad-note' }, h('span', { className: 'cad-label', style: { marginRight: 8 } }, 'Notes'), leadNotes)
+        ),
         // 0079: outcome row + Skip + Undo collapsed into one sticky block.
         // Pause is GONE (user said "should not exist") — Stop/Start in the
         // session strip is the only on/off control. Skip lead is now a peer
@@ -18653,12 +18750,21 @@ function App() {
       h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => setShowColPicker(null) }, 'Keep pending'))
     ));
     var undoItems = undoHistory.filter(x => x?.info && x?.undo).slice(0, 4);
+    // 0103: undo bar copy clarified. Pre-fix the row buttons read
+    // "SKIP John Toh" — ambiguous because clicking RESTORES John Toh
+    // (it's an undo, not a forward skip). New label is explicit:
+    // "↩ Undo SKIP · John Toh" so the action and target both read
+    // as a rewind. Same treatment for the headline status pill.
+    var _undoActionLabel = s => {
+      var u = String(s || 'last').toUpperCase();
+      return u === 'SKIP' ? '↩ Undo SKIP' : '↩ Undo ' + u;
+    };
     var undoBar = (undoInfo || undoItems.length) ? h('div', { className: 'cad-floating-bar cad-undo-bar' },
-      h('span', null, undoInfo ? h(React.Fragment, null, h('b', null, undoInfo.status?.toUpperCase()), ' - ', undoInfo.name || 'last lead') : h('b', null, 'Undo history')),
+      h('span', null, undoInfo ? h(React.Fragment, null, h('b', null, _undoActionLabel(undoInfo.status)), ' · ', undoInfo.name || 'last lead') : h('b', null, 'Undo history')),
       h('div', { className: 'cad-inline cad-undo-items' },
-        undoItems.map(item => h('button', { className: 'cad-btn ghost', key: item.ts, onClick: () => doUndo(item.info, item.undo) }, (item.info.status || 'undo').toUpperCase(), ' ', item.info.name ? String(item.info.name).slice(0, 14) : 'lead')),
+        undoItems.map(item => h('button', { className: 'cad-btn ghost', key: item.ts, onClick: () => doUndo(item.info, item.undo), title: 'Restore ' + (item.info.name || 'lead') + ' (was ' + (item.info.status || 'last').toUpperCase() + ')' }, _undoActionLabel(item.info.status), ' · ', item.info.name ? String(item.info.name).slice(0, 14) : 'lead')),
         h('button', { className: 'cad-btn', onClick: () => { setUndoInfo(null); if (!undoInfo) setUndoHistory([]); } }, undoInfo ? 'Dismiss' : 'Clear'),
-        undoInfo && h('button', { className: 'cad-btn primary', onClick: () => doUndo() }, 'Undo now')
+        undoInfo && h('button', { className: 'cad-btn primary', onClick: () => doUndo() }, '↩ Undo now')
       )
     ) : null;
     // 0084: Feature A modal — surfaces when calDeletionScanEvents
