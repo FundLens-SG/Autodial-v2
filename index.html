@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0106'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0107'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1346,7 +1346,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0106';
+window.APP_VERSION='2026.05.05.0107';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -8519,6 +8519,116 @@ function App() {
     }
     save('activeSession', session);
   }, [session]);
+  // 0107: cross-device session mirror — desktop starts session ⇒ mobile
+  // reflects on next focus, and vice versa. Pushes debounced to
+  // user_settings.ui_preferences.liveSession (1.5s) so frequent counter
+  // updates coalesce. Pull side lives in the checkPendingDial effect
+  // below — it already polls user_settings on focus/visibility/online,
+  // we just extend the read to also pick up liveSession.
+  var liveSessionPushRef = useRef({ timer: null, lastPushed: '' });
+  useEffect(() => {
+    if (!_SB || !_user || !myEmail) return;
+    var ref = liveSessionPushRef.current;
+    clearTimeout(ref.timer);
+    var snapshot = (session && !session.ended) ? {
+      id: session.id,
+      startTime: session.startTime,
+      email: session.email || myEmail,
+      dialed: session.dialed || 0,
+      np: session.np || 0,
+      cb: session.cb || 0,
+      ni: session.ni || 0,
+      sets: session.sets || 0,
+      selectedSlot: session.selectedSlot || null,
+      ended: false,
+      devId: window._devId,
+      ts: Date.now()
+    } : null;
+    var hash = snapshot ? JSON.stringify({ id: snapshot.id, dialed: snapshot.dialed, sets: snapshot.sets, np: snapshot.np, cb: snapshot.cb, ni: snapshot.ni, ended: snapshot.ended }) : 'null';
+    if (hash === ref.lastPushed) return;
+    ref.timer = setTimeout(async () => {
+      try {
+        var pr = await _SB.schema('autodial').from('user_settings').select('ui_preferences').eq('user_id', _user.id).maybeSingle();
+        var prev = (pr.data && pr.data.ui_preferences) || {};
+        var next = { ...prev, liveSession: snapshot };
+        await _SB.schema('autodial').from('user_settings').upsert({
+          user_id: _user.id,
+          ui_preferences: next,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+        ref.lastPushed = hash;
+      } catch (e) { console.warn('[liveSession push]', e?.message || e); }
+    }, 1500);
+    return () => clearTimeout(ref.timer);
+  }, [session?.id, session?.startTime, session?.dialed, session?.np, session?.cb, session?.ni, session?.sets, session?.ended, myEmail]);
+  // 0107: cross-device session PULL. Runs on ALL devices (desktop +
+  // mobile) — separate from the mobile-only phone_dialer poll
+  // because session mirroring needs to flow both ways. Polls the
+  // liveSession sub-field on a 3s cadence when the tab is visible,
+  // plus on focus / online / mount.
+  useEffect(() => {
+    if (!_SB || !_user || !myEmail) return;
+    var stopped = false;
+    var checkLiveSession = async () => {
+      if (stopped) return;
+      try {
+        var r = await _SB.schema('autodial').from('user_settings').select('ui_preferences').eq('user_id', _user.id).maybeSingle();
+        var remoteSess = r.data && r.data.ui_preferences ? r.data.ui_preferences.liveSession : null;
+        if (remoteSess && remoteSess.devId !== window._devId && remoteSess.ts) {
+          var remoteAge = Date.now() - remoteSess.ts;
+          if (remoteAge < 20 * 60000) {
+            var local = sessionRef.current;
+            var localTs = local && local.startTime ? Number(local.startTime) : 0;
+            var remoteTs = Number(remoteSess.startTime || 0);
+            var shouldApply = false;
+            if (!local || local.ended) {
+              shouldApply = true;
+            } else if (remoteTs && remoteTs !== localTs) {
+              shouldApply = true;
+            } else if (remoteTs === localTs) {
+              if ((remoteSess.dialed || 0) > (local.dialed || 0) || (remoteSess.sets || 0) > (local.sets || 0)) {
+                shouldApply = true;
+              }
+            }
+            if (shouldApply) {
+              setSession({
+                id: remoteSess.id,
+                startTime: remoteSess.startTime,
+                email: remoteSess.email,
+                dialed: remoteSess.dialed || 0,
+                np: remoteSess.np || 0,
+                cb: remoteSess.cb || 0,
+                ni: remoteSess.ni || 0,
+                sets: remoteSess.sets || 0,
+                selectedSlot: remoteSess.selectedSlot || null,
+                ended: false,
+                _mirrored: true
+              });
+            }
+          }
+        } else if (!remoteSess && sessionRef.current && !sessionRef.current.ended && sessionRef.current._mirrored) {
+          setSession(null);
+          setRunning(false);
+          setPhase('idle');
+        }
+      } catch (e) { console.warn('[liveSession poll]', e?.message || e); }
+    };
+    checkLiveSession();
+    var onVis = () => { if (document.visibilityState === 'visible') checkLiveSession(); };
+    var onFocus = () => checkLiveSession();
+    var onOnline = () => checkLiveSession();
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onOnline);
+    var pollId = setInterval(() => { if (document.visibilityState === 'visible') checkLiveSession(); }, 3000);
+    return () => {
+      stopped = true;
+      clearInterval(pollId);
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('online', onOnline);
+    };
+  }, [myEmail]);
   var liveSessionDialFocusRef = useRef(false);
   useEffect(() => {
     if (role !== 'main' || mainMode !== 'call') return;
