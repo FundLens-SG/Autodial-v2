@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0115'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0116'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -619,6 +619,23 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 .cad-rank-chip--bold .cad-rank-chip__progress{font-size:10px;font-weight:700;color:var(--ad-t-2);font-family:'JetBrains Mono',ui-monospace,monospace}
 .cad-lead-card{padding:28px;display:flex;flex-direction:column;gap:18px}
 .cad-lead-name{font-size:38px;font-weight:650;letter-spacing:-.02em}
+/* 0116: inline lead-jump search — replaces the modal-trigger button.
+   Always-visible input + popover dropdown. Width adapts: ~220px
+   default, full width on mobile (where the lead-card head is column). */
+.cad-lead-card__head-right{flex-wrap:wrap;gap:8px;justify-content:flex-end}
+.cad-lead-jump-inline{position:relative;flex:0 1 240px;min-width:200px}
+.cad-lead-jump-inline__input{width:100%;min-height:32px;padding:5px 11px;border-radius:8px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font-size:12px;font-weight:500;outline:none;transition:border-color .12s,background .12s}
+.cad-lead-jump-inline__input::placeholder{color:var(--ad-t-3);font-weight:400}
+.cad-lead-jump-inline__input:focus{border-color:var(--ad-brass-line);background:var(--ad-bg-1);box-shadow:0 0 0 3px var(--ad-brass-dim)}
+.cad-lead-jump-inline__results{position:absolute;top:calc(100% + 4px);right:0;left:0;z-index:50;max-height:320px;overflow-y:auto;background:var(--ad-bg-1);border:1px solid var(--ad-line-2);border-radius:10px;box-shadow:0 12px 36px -8px rgba(0,0,0,.55);display:flex;flex-direction:column;gap:2px;padding:4px}
+.cad-lead-jump-inline__row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;background:transparent;border:none;color:var(--ad-t-0);cursor:pointer;text-align:left;width:100%;transition:background .1s}
+.cad-lead-jump-inline__row:hover,.cad-lead-jump-inline__row:focus{background:var(--ad-bg-2);outline:none}
+.cad-lead-jump-inline__empty{padding:14px;text-align:center;color:var(--ad-t-3);font-size:11.5px;font-style:italic}
+@media(max-width:900px){
+  .cad-lead-card__head-right{width:100%;justify-content:flex-start}
+  .cad-lead-jump-inline{flex:1 1 100%;order:-1}
+  .cad-lead-jump-inline__results{max-height:260px}
+}
 .cad-phone-chip{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;background:var(--ad-bg-2);border:1px solid var(--ad-line-2);font:13px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-t-0)}
 .cad-note{padding:12px 14px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);border-radius:10px;color:var(--ad-t-1);font-size:13px;line-height:1.6}
 .cad-outcomes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
@@ -1380,7 +1397,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0115';
+window.APP_VERSION='2026.05.05.0116';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -17591,14 +17608,67 @@ function App() {
         h('div', { className: 'cad-card cad-lead-card' },
           h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } },
             h('div', { className: 'cad-inline' }, h('span', { className: 'cad-label' }, 'Now calling'), h('span', { className: 'cad-mono cad-muted', style: { fontSize: 12 } }, queuePos, ' / ', queueTotal || 0), h('div', { className: 'cad-progress', style: { width: 120 } }, h('i', { style: { width: queuePct + '%' } }))),
-            h('div', { className: 'cad-inline' },
-              // 0115: jump-to-lead — opens a search picker so the user can
-              // recall ANY previous lead by name/phone, regardless of
-              // their status (NP/CB/NI/Set). Useful when a prospect calls
-              // back days after the original NP/CB outcome and the user
-              // needs to find them in the queue without scrolling the
-              // full Leads tab.
-              h('button', { className: 'cad-btn ghost', onClick: () => setShowLeadJump(true), title: 'Find any lead by name or phone — jump back to call them', type: 'button', style: { fontSize: 11, padding: '4px 10px' } }, '🔍 Find lead'),
+            h('div', { className: 'cad-inline cad-lead-card__head-right' },
+              // 0116: inline jump-to-lead search. Pre-fix the user had
+              // to tap "🔍 Find lead" → wait for modal → then type. Now
+              // the input is always present + always typable; results
+              // appear in a popover dropdown below the input as the
+              // user types, click any to dial. Zero friction.
+              h('div', { className: 'cad-lead-jump-inline' },
+                h('input', {
+                  type: 'search',
+                  className: 'cad-lead-jump-inline__input',
+                  placeholder: '🔍 Find lead by name / phone…',
+                  value: leadJumpQuery,
+                  onChange: e => { setLeadJumpQuery(e.target.value); setShowLeadJump(false); },
+                  onFocus: () => { /* dropdown shows when query non-empty */ },
+                  onKeyDown: e => { if (e.key === 'Escape') { setLeadJumpQuery(''); e.currentTarget.blur(); } }
+                }),
+                leadJumpQuery && h('div', { className: 'cad-lead-jump-inline__results' },
+                  (() => {
+                    var q = String(leadJumpQuery || '').toLowerCase().trim();
+                    var qDigits = q.replace(/\D/g, '');
+                    var hits = (leads || []).filter(l => {
+                      var nameHit = String(l.name || '').toLowerCase().includes(q);
+                      var phoneHit = qDigits && String(l.phone || '').replace(/\D/g, '').includes(qDigits);
+                      var emailHit = String(l.email || '').toLowerCase().includes(q);
+                      return nameHit || phoneHit || emailHit;
+                    }).slice(0, 8);
+                    if (hits.length === 0) return h('div', { className: 'cad-lead-jump-inline__empty' }, 'No matches for "' + leadJumpQuery + '"');
+                    return hits.map((l, i) => {
+                      var status = String(l.status || 'pending').toLowerCase();
+                      var statusLabel = status === 'set' ? '✓ Set' : status === 'cb' ? '🔔 CB' : status === 'ni' ? 'NI' : status === 'np' ? 'NP×' + (l.npCount || 1) : '·';
+                      var statusTone = status === 'set' ? 'green' : status === 'cb' ? 'blue' : status === 'ni' ? 'red' : status === 'np' ? 'amber' : '';
+                      return h('button', {
+                        key: l.id || l.phone || i,
+                        type: 'button',
+                        className: 'cad-lead-jump-inline__row',
+                        onMouseDown: e => e.preventDefault(),
+                        onClick: () => {
+                          var idx = (leads || []).findIndex(x => x === l || (l.id && x.id === l.id));
+                          if (idx < 0) return;
+                          setLeadJumpQuery('');
+                          var needsStart = !running || !session || session.ended;
+                          if (needsStart) {
+                            try { startDial(); } catch (_e) {}
+                            setTimeout(() => { setCurIdx(idx); setRunning(true); setPhase('calling'); if (l.phone) dial(l.phone); }, 120);
+                          } else {
+                            setCurIdx(idx);
+                            setPhase('calling');
+                            if (l.phone) dial(l.phone);
+                          }
+                        }
+                      },
+                        h('span', { style: { textAlign: 'left', flex: 1, minWidth: 0, overflow: 'hidden' } },
+                          h('b', { style: { display: 'block', fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, l.name || 'Unnamed'),
+                          h('small', { className: 'cad-mono cad-subtle', style: { display: 'block', fontSize: 10.5, marginTop: 2 } }, l.phone || 'no phone')
+                        ),
+                        h('span', { className: 'cad-pill ' + statusTone, style: { fontSize: 9.5, padding: '2px 7px' } }, statusLabel)
+                      );
+                    });
+                  })()
+                )
+              ),
               h('span', { className: 'cad-pill amber' }, ((activeLead?.npCount || 0) + 1) + ' attempt'),
               h('span', { className: 'cad-pill' }, icon('Sheet', 10), 'Row ', activeLead?.sheetRow || (demo ? 218 : '-'))
             )
