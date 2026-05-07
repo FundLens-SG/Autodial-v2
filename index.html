@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0114'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0115'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1380,7 +1380,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0114';
+window.APP_VERSION='2026.05.05.0115';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -9278,6 +9278,11 @@ function App() {
   var [updateAvailable, setUpdateAvailable] = useState(null);
   var [tsSearch, setTsSearch] = useState('');
   var [leadSearch, setLeadSearch] = useState('');
+  // 0115: lead-jump picker state — opened from the call-view "Find lead"
+  // button to search any previously-imported lead by name/phone and
+  // jump straight to dialing them, regardless of their current status.
+  var [showLeadJump, setShowLeadJump] = useState(false);
+  var [leadJumpQuery, setLeadJumpQuery] = useState('');
   var billingDate = cfg.billingDate || 1;
   // Phase 7B2: usersList / pendingUsers state vars removed — User Management UI
   // moved to the ckgtools.com hub. The avatar-button notice dot and the
@@ -17586,7 +17591,17 @@ function App() {
         h('div', { className: 'cad-card cad-lead-card' },
           h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } },
             h('div', { className: 'cad-inline' }, h('span', { className: 'cad-label' }, 'Now calling'), h('span', { className: 'cad-mono cad-muted', style: { fontSize: 12 } }, queuePos, ' / ', queueTotal || 0), h('div', { className: 'cad-progress', style: { width: 120 } }, h('i', { style: { width: queuePct + '%' } }))),
-            h('div', { className: 'cad-inline' }, h('span', { className: 'cad-pill amber' }, ((activeLead?.npCount || 0) + 1) + ' attempt'), h('span', { className: 'cad-pill' }, icon('Sheet', 10), 'Row ', activeLead?.sheetRow || (demo ? 218 : '-')))
+            h('div', { className: 'cad-inline' },
+              // 0115: jump-to-lead — opens a search picker so the user can
+              // recall ANY previous lead by name/phone, regardless of
+              // their status (NP/CB/NI/Set). Useful when a prospect calls
+              // back days after the original NP/CB outcome and the user
+              // needs to find them in the queue without scrolling the
+              // full Leads tab.
+              h('button', { className: 'cad-btn ghost', onClick: () => setShowLeadJump(true), title: 'Find any lead by name or phone — jump back to call them', type: 'button', style: { fontSize: 11, padding: '4px 10px' } }, '🔍 Find lead'),
+              h('span', { className: 'cad-pill amber' }, ((activeLead?.npCount || 0) + 1) + ' attempt'),
+              h('span', { className: 'cad-pill' }, icon('Sheet', 10), 'Row ', activeLead?.sheetRow || (demo ? 218 : '-'))
+            )
           ),
           h('div', { className: 'cad-inline', style: { alignItems: 'flex-end', gap: 24 } },
             h('div', { style: { flex: 1 } },
@@ -19302,18 +19317,17 @@ function App() {
     // (it's an undo, not a forward skip). New label is explicit:
     // "↩ Undo SKIP · John Toh" so the action and target both read
     // as a rewind. Same treatment for the headline status pill.
-    var _undoActionLabel = s => {
-      var u = String(s || 'last').toUpperCase();
-      return u === 'SKIP' ? '↩ Undo SKIP' : '↩ Undo ' + u;
-    };
-    var undoBar = (undoInfo || undoItems.length) ? h('div', { className: 'cad-floating-bar cad-undo-bar' },
-      h('span', null, undoInfo ? h(React.Fragment, null, h('b', null, _undoActionLabel(undoInfo.status)), ' · ', undoInfo.name || 'last lead') : h('b', null, 'Undo history')),
-      h('div', { className: 'cad-inline cad-undo-items' },
-        undoItems.map(item => h('button', { className: 'cad-btn ghost', key: item.ts, onClick: () => doUndo(item.info, item.undo), title: 'Restore ' + (item.info.name || 'lead') + ' (was ' + (item.info.status || 'last').toUpperCase() + ')' }, _undoActionLabel(item.info.status), ' · ', item.info.name ? String(item.info.name).slice(0, 14) : 'lead')),
-        h('button', { className: 'cad-btn', onClick: () => { setUndoInfo(null); if (!undoInfo) setUndoHistory([]); } }, undoInfo ? 'Dismiss' : 'Clear'),
-        undoInfo && h('button', { className: 'cad-btn primary', onClick: () => doUndo() }, '↩ Undo now')
-      )
-    ) : null;
+    // 0115: floating undo bar dropped. The Undo button (#6) in the
+    // outcome row already handles immediate undo, and it's the
+    // canonical action surface — having a parallel floating bar at
+    // the bottom blocked the outcome row's Skip (5) and Undo (6)
+    // buttons. The user had to Dismiss/Clear it before they could
+    // tap their next outcome.
+    //
+    // Older undos (>1 ago) are still tracked in undoHistory but no
+    // longer surfaced visually — the immediate undo via the row's
+    // button #6 is what >99% of corrections actually need.
+    var undoBar = null;
     // 0084: Feature A modal — surfaces when calDeletionScanEvents
     // detects an appointment whose calEventId is no longer in Google
     // Calendar. Single-modal queue (one prompt at a time, with "N of M"
@@ -19387,7 +19401,95 @@ function App() {
     // floats above every cad view. Auto-clears via the 950ms timeout in
     // handleOutcome.
     var setStampOverlay = setStampShow ? h('div', { className: 'cad-set-stamp', 'aria-hidden': 'true' }, 'SET!') : null;
-    var modalStack = h(React.Fragment, null, undoBar, moreModal, adminConfigModal, cbModal, calAddPickerModal, apptModal, slotModal, waModal, payQrModalClaude, importModal, colPickerModal, calDeletionModal, dialogModal, setStampOverlay);
+    // 0115: lead-jump picker modal. Opened by the "🔍 Find lead" button
+    // on the call-view lead card. Filters every loaded lead by
+    // name/phone substring (case-insensitive on name, digit-only on
+    // phone). Click a row → dial that lead immediately. Each row also
+    // surfaces the lead's current status so the user knows they're
+    // recalling a previously-marked NP/CB/NI/Set lead.
+    var _statusToneOf = s => {
+      var t = String(s || 'pending').toLowerCase();
+      if (t === 'set') return 'green';
+      if (t === 'cb') return 'blue';
+      if (t === 'ni') return 'red';
+      if (t === 'np') return 'amber';
+      return '';
+    };
+    var leadJumpResults = (() => {
+      var q = String(leadJumpQuery || '').toLowerCase().trim();
+      var qDigits = q.replace(/\D/g, '');
+      var src = leads || [];
+      if (!q) return src.slice(0, 30);
+      return src.filter(l => {
+        var nameHit = String(l.name || '').toLowerCase().includes(q);
+        var phoneHit = qDigits && String(l.phone || '').replace(/\D/g, '').includes(qDigits);
+        var emailHit = String(l.email || '').toLowerCase().includes(q);
+        return nameHit || phoneHit || emailHit;
+      }).slice(0, 30);
+    })();
+    var jumpToLead = lead => {
+      if (!lead) return;
+      var idx = (leads || []).findIndex(l => l === lead || (l.id && l.id === lead.id) || (lead.phone && l.phone === lead.phone));
+      if (idx < 0) { toast('Lead is no longer in the loaded list', 'err'); return; }
+      // If session not running, start it; otherwise just jump to the lead.
+      var needsStart = !running || !session || session.ended;
+      setShowLeadJump(false);
+      setLeadJumpQuery('');
+      if (needsStart) {
+        // Start session first, then dial the chosen lead.
+        try { startDial(); } catch (_e) {}
+        setTimeout(() => {
+          setCurIdx(idx);
+          setRunning(true);
+          setPhase('calling');
+          if (lead.phone) dial(lead.phone);
+        }, 120);
+      } else {
+        setCurIdx(idx);
+        setPhase('calling');
+        if (lead.phone) dial(lead.phone);
+      }
+    };
+    var leadJumpModal = cadModal(showLeadJump, '', () => { setShowLeadJump(false); setLeadJumpQuery(''); }, h(React.Fragment, null,
+      h('div', { className: 'cad-modal-head' },
+        h('div', null,
+          h('h3', { className: 'cad-modal-title' }, '🔍 Find a lead'),
+          h('p', { className: 'cad-modal-sub' }, 'Search any loaded lead by name, phone, or email. Tap a row to dial them — works regardless of their current status (NP / CB / NI / Set).')
+        ),
+        h('button', { className: 'cad-btn ghost', onClick: () => { setShowLeadJump(false); setLeadJumpQuery(''); } }, 'x')
+      ),
+      h('input', {
+        type: 'search',
+        className: 'cad-search',
+        placeholder: 'Type name or phone…',
+        value: leadJumpQuery,
+        onChange: e => setLeadJumpQuery(e.target.value),
+        autoFocus: true,
+        style: { marginBottom: 12 }
+      }),
+      h('div', { className: 'cad-option-list', style: { maxHeight: '52vh', overflowY: 'auto' } },
+        leadJumpResults.length === 0
+          ? h('p', { className: 'cad-page-note', style: { textAlign: 'center', padding: '20px 0', fontStyle: 'italic' } }, leadJumpQuery ? 'No leads match "' + leadJumpQuery + '"' : 'No leads loaded')
+          : leadJumpResults.map((l, i) => {
+              var status = String(l.status || 'pending').toLowerCase();
+              var statusLabel = status === 'set' ? '✓ Set' : status === 'cb' ? '🔔 Callback' : status === 'ni' ? 'NI' : status === 'np' ? 'NP × ' + (l.npCount || 1) : 'Pending';
+              return h('button', {
+                key: l.id || l.phone || i,
+                type: 'button',
+                className: 'cad-option',
+                onClick: () => jumpToLead(l)
+              },
+                h('span', { style: { textAlign: 'left', flex: 1, minWidth: 0 } },
+                  h('b', { style: { display: 'block', fontSize: 13 } }, l.name || 'Unnamed'),
+                  h('small', { className: 'cad-mono cad-subtle', style: { display: 'block', marginTop: 3 } }, l.phone || 'no phone', l.email ? ' · ' + l.email : '')
+                ),
+                h('span', { className: 'cad-pill ' + _statusToneOf(status) }, statusLabel)
+              );
+            })
+      ),
+      h('p', { className: 'cad-page-note', style: { marginTop: 12, fontSize: 11 } }, 'Showing ', leadJumpResults.length, ' of ', (leads || []).length, ' loaded leads', leadJumpResults.length === 30 && (leads || []).length > 30 ? ' · refine search for more' : '')
+    ));
+    var modalStack = h(React.Fragment, null, undoBar, moreModal, adminConfigModal, cbModal, calAddPickerModal, apptModal, slotModal, waModal, payQrModalClaude, importModal, colPickerModal, calDeletionModal, leadJumpModal, dialogModal, setStampOverlay);
     var withCadModals = view => h(React.Fragment, null, view, modalStack);
     if ((mainMode === 'call' && tab === 'home') || tab === 'dial') return withCadModals(tab === 'dial' ? dialView : callView);
     if (tab === 'leads') return withCadModals(leadsView);
