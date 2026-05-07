@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0116'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0117'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1214,12 +1214,28 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
    - selected (.on): brass background w/ ✓ check
    - selected + active (.cad-tab--active): brass + green ring + glow,
      the one whose count is in the slider/big-number below */
-.cad-tab--toggle{transition:filter .14s,box-shadow .18s,border-color .14s,background .14s,opacity .14s}
-.cad-hero-cta__target-tabs .cad-tab--toggle:not(.on){background:transparent;color:var(--ad-t-3);border:1px dashed var(--ad-line-2);opacity:.78}
-.cad-hero-cta__target-tabs .cad-tab--toggle:not(.on):hover{opacity:1;border-color:var(--ad-brass-line);color:var(--ad-t-1)}
-.cad-hero-cta__target-tabs .cad-tab--toggle.on{border:1px solid var(--ad-brass)}
-.cad-hero-cta__target-tabs .cad-tab--toggle.on.cad-tab--active{box-shadow:0 0 0 2px var(--ad-green) inset,0 0 16px rgba(74,222,128,.32);background:linear-gradient(135deg,var(--ad-brass),#10b981)}
-.cad-tab__check{display:inline-flex;align-items:center;font-size:11px;font-weight:850}
+/* 0117: cad-goal-pill — checkbox-embedded multi-select pills.
+   Replaces the cad-tab--toggle scheme. Three states, all brass-themed
+   (no more ugly green ring on active):
+   - unselected: faded text, transparent bg, neutral hairline border,
+     empty rounded-square checkbox
+   - selected (.on): brass-tinted bg, brass-filled checkbox with tick
+   - selected + active (.active): same + brass-2 ring + slightly stronger
+     bg, marking the one being edited in the slider below */
+.cad-goal-pill{display:inline-flex;align-items:center;gap:8px;padding:7px 13px 7px 9px;border-radius:999px;border:1px solid var(--ad-line-2);background:transparent;color:var(--ad-t-3);font-size:12.5px;font-weight:600;cursor:pointer;transition:background .14s,border-color .14s,color .14s,box-shadow .18s,transform .08s;line-height:1}
+.cad-goal-pill:hover{border-color:var(--ad-brass-line);color:var(--ad-t-1);background:var(--ad-bg-2)}
+.cad-goal-pill:active{transform:scale(.97)}
+.cad-goal-pill.on{background:var(--ad-brass-dim);border-color:var(--ad-brass);color:var(--ad-t-0)}
+.cad-goal-pill.on.active{background:linear-gradient(135deg,var(--ad-brass-dim),rgba(214,168,122,.26));border-color:var(--ad-brass-2);box-shadow:0 0 0 1px var(--ad-brass-2),0 0 14px rgba(214,168,122,.30);color:var(--ad-brass-2)}
+.cad-goal-pill__check{flex-shrink:0;width:16px;height:16px;border-radius:5px;border:1.5px solid var(--ad-line-2);background:transparent;display:inline-flex;align-items:center;justify-content:center;color:#0a0c10;transition:background .14s,border-color .14s}
+.cad-goal-pill.on .cad-goal-pill__check{background:var(--ad-brass);border-color:var(--ad-brass);color:#0a0c10}
+.cad-goal-pill.on.active .cad-goal-pill__check{background:var(--ad-brass-2);border-color:var(--ad-brass-2)}
+.cad-goal-pill__emoji{font-size:13px;line-height:1}
+.cad-goal-pill__label{letter-spacing:.01em}
+@media(max-width:560px){
+  .cad-goal-pill{padding:6px 11px 6px 8px;font-size:12px;gap:6px}
+  .cad-goal-pill__check{width:15px;height:15px}
+}
 .cad-hero-cta__target-row{display:flex;gap:14px;align-items:center}
 .cad-hero-cta__target-row input[type=range]{flex:1;min-width:0}
 .cad-hero-cta__target-num{font:850 38px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-brass-2);letter-spacing:-.04em;min-width:74px;text-align:center;text-shadow:0 0 24px rgba(214,168,122,.28)}
@@ -1397,7 +1413,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0116';
+window.APP_VERSION='2026.05.05.0117';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -17212,22 +17228,28 @@ function App() {
           ),
           h('span', { className: 'cad-session-target__pill ' + (currentSession ? 'live' : '') }, currentSession ? Math.round(cadTargetPct) + '% complete' : 'Ready')
         ),
-        h('p', { className: 'cad-hero-cta__target-instruction', style: { margin: '0 0 8px' } }, '🎯 Tap any target to add it as a goal — hit any one to celebrate 🎉'),
+        h('p', { className: 'cad-hero-cta__target-instruction', style: { margin: '0 0 8px' } }, '✅ Tap to select your goals — hit any one to celebrate 🎉'),
         h('div', { className: 'cad-hero-cta__target-tabs', style: { marginBottom: 12 } },
           Object.entries(cadTargetSpecs).map(([k, s]) => {
             var isSelected = cadSelectedTargets.indexOf(k) >= 0;
             var isActive = cadTargetType === k;
             return h('button', {
-              className: 'cad-tab ' + (isSelected ? 'on ' : '') + (isActive ? 'cad-tab--active ' : '') + 'cad-tab--toggle',
+              className: 'cad-goal-pill' + (isSelected ? ' on' : '') + (isActive ? ' active' : ''),
               key: k,
               onClick: () => {
                 if (!isSelected) cadSetTarget(k, cadGetTargetCount(k));
                 else if (!isActive) cadSetTarget(k, cadGetTargetCount(k));
                 else cadToggleTarget(k);
               },
-              title: isSelected ? (isActive ? 'Click again to remove this goal' : 'Click to focus this goal') : 'Click to add this as a goal',
-              type: 'button'
-            }, typeEmoji[k] || '•', ' ', s.label, isSelected && h('span', { className: 'cad-tab__check', style: { marginLeft: 6, opacity: .8 } }, '✓'));
+              title: isSelected ? (isActive ? 'Active goal — click again to remove' : 'Click to focus this goal in the slider') : 'Click to add as a goal',
+              type: 'button',
+              role: 'checkbox',
+              'aria-checked': isSelected
+            },
+              h('span', { className: 'cad-goal-pill__check', 'aria-hidden': 'true' }, isSelected && h('svg', { width: 12, height: 12, viewBox: '0 0 14 14', fill: 'none' }, h('path', { d: 'M3 7L6 10L11 4', stroke: 'currentColor', strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round' }))),
+              h('span', { className: 'cad-goal-pill__emoji' }, typeEmoji[k] || '•'),
+              h('span', { className: 'cad-goal-pill__label' }, s.label)
+            );
           })
         ),
         h('div', { className: 'cad-inline', style: { gap: 12, alignItems: 'center' } },
@@ -17406,29 +17428,33 @@ function App() {
           // The active one drives the slider + big number below. The
           // selected list is the set of goals — confetti fires at session
           // end if ANY goal is hit.
-          // 0111: explicit instruction line — the toggle behaviour wasn't
-          // obvious from the visual state alone. Tells the user what to
-          // do AND what they get for completing the goal.
-          h('div', { className: 'cad-hero-cta__target-instruction' }, '🎯 Tap any of the 3 targets below to set goals for this session — hit any one to celebrate 🎉'),
+          // 0117: clearer instruction + embedded checkbox pills. The
+          // previous green-ring "active" state read as broken/ugly;
+          // replaced with a brass-only selection scheme. Each pill has
+          // a real checkbox glyph on the left so the toggle behaviour
+          // is unambiguous.
+          h('div', { className: 'cad-hero-cta__target-instruction' }, '✅ Tap to select your goals for this session — pick as many as you like, hit any one to celebrate 🎉'),
           h('div', { className: 'cad-hero-cta__target-tabs' },
             Object.entries(cadTargetSpecs).map(([k, s]) => {
               var isSelected = cadSelectedTargets.indexOf(k) >= 0;
               var isActive = cadTargetType === k;
               return h('button', {
-                className: 'cad-tab ' + (isSelected ? 'on ' : '') + (isActive ? 'cad-tab--active ' : '') + 'cad-tab--toggle',
+                className: 'cad-goal-pill' + (isSelected ? ' on' : '') + (isActive ? ' active' : ''),
                 key: k,
                 onClick: () => {
-                  if (!isSelected) {
-                    cadSetTarget(k, cadGetTargetCount(k));
-                  } else if (!isActive) {
-                    cadSetTarget(k, cadGetTargetCount(k));
-                  } else {
-                    cadToggleTarget(k);
-                  }
+                  if (!isSelected) cadSetTarget(k, cadGetTargetCount(k));
+                  else if (!isActive) cadSetTarget(k, cadGetTargetCount(k));
+                  else cadToggleTarget(k);
                 },
-                title: isSelected ? (isActive ? 'Click again to remove this goal' : 'Click to focus this goal') : 'Click to add this as a goal',
-                type: 'button'
-              }, typeEmoji[k] || '•', ' ', s.label, isSelected && h('span', { className: 'cad-tab__check', style: { marginLeft: 6, opacity: .8 } }, '✓'));
+                title: isSelected ? (isActive ? 'Active goal — click again to remove' : 'Click to focus this goal in the slider') : 'Click to add as a goal',
+                type: 'button',
+                role: 'checkbox',
+                'aria-checked': isSelected
+              },
+                h('span', { className: 'cad-goal-pill__check', 'aria-hidden': 'true' }, isSelected && h('svg', { width: 12, height: 12, viewBox: '0 0 14 14', fill: 'none' }, h('path', { d: 'M3 7L6 10L11 4', stroke: 'currentColor', strokeWidth: 2.4, strokeLinecap: 'round', strokeLinejoin: 'round' }))),
+                h('span', { className: 'cad-goal-pill__emoji' }, typeEmoji[k] || '•'),
+                h('span', { className: 'cad-goal-pill__label' }, s.label)
+              );
             })
           ),
           h('div', { className: 'cad-hero-cta__target-row' },
