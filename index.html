@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0105'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0106'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1346,7 +1346,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0105';
+window.APP_VERSION='2026.05.05.0106';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -13037,8 +13037,25 @@ function App() {
           return false;
         }
       } else {
+        // 0106: was setting window.location.href = 'tel:...' which
+        // actually navigates the browser and leaves tel:NNN in the
+        // history stack. When the user later switched away and back
+        // to autodial, browser back-button (or even just a tab switch
+        // gesture on Android Chrome) bounced them to the previous
+        // page (the CKG hub or whichever tool they were on before).
+        // Programmatic anchor click handles tel: as a side-effect
+        // intent without changing the page URL or history.
         setTimeout(() => {
-          window.location.href = 'tel:' + d.phone.replace(/[^+\d]/g, '');
+          try {
+            var a = document.createElement('a');
+            a.href = 'tel:' + d.phone.replace(/[^+\d]/g, '');
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { try { a.parentNode && a.parentNode.removeChild(a); } catch (_e) {} }, 100);
+          } catch (_e) {
+            window.location.href = 'tel:' + d.phone.replace(/[^+\d]/g, '');
+          }
         }, opts.delay || 120);
       }
     }
@@ -13213,7 +13230,20 @@ function App() {
             }, d.curIdx ?? -1);
             return;
           }
-          window.location.href = 'tel:' + d.phone.replace(/[^+\d]/g, '');
+          // 0106: anchor-click instead of location.href — see comment in
+          // handlePhoneDialRequest. Same back-button-bounce fix applied
+          // to the broadcast-listener path so cross-tab session starts
+          // also stay non-navigating.
+          try {
+            var a = document.createElement('a');
+            a.href = 'tel:' + d.phone.replace(/[^+\d]/g, '');
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => { try { a.parentNode && a.parentNode.removeChild(a); } catch (_e) {} }, 100);
+          } catch (_e) {
+            window.location.href = 'tel:' + d.phone.replace(/[^+\d]/g, '');
+          }
         }, 800);
       }
       if (d.type === 'pause') {
@@ -13267,6 +13297,16 @@ function App() {
         var d = r.data ? r.data.phone_dialer : null;
         if (!d || !d.phone || d.devId === window._devId) return;
         if (d.ts && Date.now() - d.ts > 20 * 60000) return;
+        // 0106: skip if this device already handled this dial — prevents
+        // the same phone_dialer row from re-firing the tel: navigation
+        // every time the mobile gains focus / comes online / polls.
+        // Pre-fix the user reported the dial prompt re-popping every time
+        // they switched tabs back to autodial.
+        if (d.handledBy === window._devId) return;
+        var localLast = '';
+        try { localLast = localStorage.getItem('ad_lastPhoneDialId') || ''; } catch (_e) {}
+        var dialId = d.id || ('dial_' + (d.ts || '') + '_' + String(d.phone || '').replace(/\D/g, ''));
+        if (localLast && localLast === dialId) return;
         await handlePhoneDialRequest(d, {
           source: reason
         });
@@ -14077,8 +14117,20 @@ function App() {
     if (!isMob) writePhoneDialRequest(dialPayload);
     syncSend('dial', dialPayload);
     if (isMob) {
+      // 0106: anchor-click instead of location.href so the tel: navigation
+      // doesn't get pushed onto browser history (which caused the
+      // tab-switch bounce-to-previous-tool bug).
       setTimeout(() => {
-        window.location.href = 'tel:' + ph.replace(/[^+\d]/g, '');
+        try {
+          var a = document.createElement('a');
+          a.href = 'tel:' + ph.replace(/[^+\d]/g, '');
+          a.style.display = 'none';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => { try { a.parentNode && a.parentNode.removeChild(a); } catch (_e) {} }, 100);
+        } catch (_e) {
+          window.location.href = 'tel:' + ph.replace(/[^+\d]/g, '');
+        }
       }, 80);
     } else {
       // 0103: suppress the standalone dial-sent toast for 1.5s after a
