@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0099'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0100'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1078,8 +1078,15 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
 .cad-hero-cta__btn--stop{background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;box-shadow:0 14px 36px -10px rgba(248,113,113,.55),0 0 0 1px rgba(255,255,255,.14) inset}
 .cad-hero-cta__btn--stop:hover{filter:brightness(1.08);transform:translateY(-2px)}
 .cad-hero-cta__btn--stop:active{transform:translateY(0) scale(.985)}
-.cad-hero-cta__btn--disabled{background:linear-gradient(135deg,var(--ad-bg-2),var(--ad-bg-3));color:var(--ad-t-3);box-shadow:none;animation:none;cursor:not-allowed;border:1px solid var(--ad-line-2)}
-.cad-hero-cta__btn--disabled::after{display:none}
+/* 0100: when there are no leads, the button is INVITATIONAL not disabled
+   — it routes the user to the Leads tab so they can wire a sheet. The
+   visual treatment is amber-dashed (clearly different from the live
+   green Start) so the agent reads it as "needs setup", and it stays
+   bright enough to read against the dark hero bg. */
+.cad-hero-cta__btn--needs-leads{background:linear-gradient(135deg,oklch(0.32 0.10 75 / .55),oklch(0.26 0.08 75 / .35));color:var(--ad-amber);border:1.5px dashed var(--ad-amber);box-shadow:0 6px 20px -10px rgba(239,184,79,.55);animation:none}
+.cad-hero-cta__btn--needs-leads:hover{filter:brightness(1.12);transform:translateY(-2px);background:linear-gradient(135deg,oklch(0.36 0.12 75 / .65),oklch(0.30 0.10 75 / .45))}
+.cad-hero-cta__btn--needs-leads:active{transform:translateY(0) scale(.985)}
+.cad-hero-cta__btn--needs-leads::after{display:none}
 @keyframes cadHeroBtnPulse{0%,100%{box-shadow:0 14px 36px -10px rgba(34,197,94,.55),0 0 0 1px rgba(255,255,255,.18) inset}50%{box-shadow:0 20px 48px -10px rgba(34,197,94,.85),0 0 0 1px rgba(255,255,255,.28) inset}}
 .cad-hero-cta__hint{font-size:11.5px;color:var(--ad-t-3);text-align:center;margin:10px 0 0;letter-spacing:.02em}
 .cad-hero-cta__head{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;position:relative;flex-wrap:wrap;gap:10px}
@@ -1245,7 +1252,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0099';
+window.APP_VERSION='2026.05.05.0100';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -16812,8 +16819,20 @@ function App() {
       var typeEmoji = { dials: '📞', connected: '🔗', sets: '🎯' };
       var pendingCount = (pending || []).length;
       var lastSession = (sessionLog || [])[0];
+      // 0100: format "X min ago" properly — was rendering as "3590min ago"
+      // for sessions older than an hour. Bucket into min / hr / d.
+      var _fmtAgo = ms => {
+        if (!Number.isFinite(ms) || ms < 0) return 'just now';
+        var m = Math.floor(ms / 60000);
+        if (m < 1) return 'just now';
+        if (m < 60) return m + 'min ago';
+        var hr = Math.floor(m / 60);
+        if (hr < 24) return hr + 'hr ago';
+        var d = Math.floor(hr / 24);
+        return d + 'd ago';
+      };
       var lastSessionLabel = lastSession
-        ? (lastSession.sets || 0) + ' Set · ' + Math.max(1, Math.floor((Date.now() - (lastSession.startTime || Date.now())) / 60000)) + 'min ago'
+        ? (lastSession.sets || 0) + ' Set · ' + _fmtAgo(Date.now() - (lastSession.startTime || Date.now()))
         : 'fresh start — no prior sessions';
       if (running) {
         return h('div', { className: 'cad-hero-cta cad-hero-cta--live' },
@@ -16848,16 +16867,26 @@ function App() {
             h('button', { className: 'cad-btn', onClick: () => cadSetTarget(cadTargetType, cadTargetCount + spec.step), type: 'button' }, '+' + spec.step)
           )
         ),
+        // 0100: when no leads loaded, the button is invitational (amber
+        // dashed "Load leads first →") that ROUTES to the leads tab —
+        // not a dead disabled state that blends into the dark hero bg.
         h('button', {
-          className: 'cad-hero-cta__btn cad-hero-cta__btn--start' + (pendingCount === 0 ? ' cad-hero-cta__btn--disabled' : ''),
-          disabled: pendingCount === 0,
-          onClick: () => { if (pendingCount === 0) return; setMainMode('call'); setTab('home'); setTimeout(() => { try { startDial(); } catch (_e) {} }, 80); },
+          className: 'cad-hero-cta__btn ' + (pendingCount === 0 ? 'cad-hero-cta__btn--needs-leads' : 'cad-hero-cta__btn--start'),
+          onClick: () => {
+            if (pendingCount === 0) { setTab('leads'); return; }
+            setMainMode('call'); setTab('home');
+            setTimeout(() => { try { startDial(); } catch (_e) {} }, 80);
+          },
           type: 'button'
         },
-          icon('PhoneOutgoing', 22),
-          pendingCount === 0 ? 'No leads in queue' : 'Start calling session'
+          icon(pendingCount === 0 ? 'Sheet' : 'PhoneOutgoing', 22),
+          pendingCount === 0 ? 'Load leads first →' : 'Start calling session'
         ),
-        h('p', { className: 'cad-hero-cta__hint' }, '🎯 Target: ', cadTargetCount, ' ', spec.label.toLowerCase(), pendingCount === 0 ? ' · open the leads tab to load some' : ' · session begins on the call view')
+        h('p', { className: 'cad-hero-cta__hint' },
+          pendingCount === 0
+            ? '⚠ Queue empty — open Leads to wire a sheet or import a list, then start the session.'
+            : ['🎯 Target: ', cadTargetCount, ' ', spec.label.toLowerCase(), ' · session begins on the call view']
+        )
       );
     })();
     var heroQuickRef = h('div', { className: 'cad-hero-quickref' },
