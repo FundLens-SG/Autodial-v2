@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0109'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0110'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1364,7 +1364,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0109';
+window.APP_VERSION='2026.05.05.0110';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -14406,6 +14406,35 @@ function App() {
       selectedSlot: chosenSlot || null
     };
     setSession(nextSession);
+    // 0110: pre-fill the multi-select sessionTarget from the chosen slot.
+    // Each slot can carry per-slot goals (targetDials, apptsBar, bonusBar)
+    // that the user defined in the admin-config session-slot editor.
+    // When a slot is picked at session start, those goals become the
+    // active selected[] + counts{} for the hero tracker — so the user
+    // doesn't have to re-pick targets each session.
+    try {
+      if (chosenSlot && (chosenSlot.targetDials || chosenSlot.apptsBar)) {
+        var slotSelected = [];
+        var slotCounts = {};
+        if (Number(chosenSlot.targetDials) > 0) {
+          slotSelected.push('dials');
+          slotCounts.dials = Number(chosenSlot.targetDials);
+        }
+        if (Number(chosenSlot.apptsBar) > 0) {
+          slotSelected.push('sets');
+          slotCounts.sets = Number(chosenSlot.apptsBar);
+        }
+        if (slotSelected.length) {
+          var primary = slotSelected[0];
+          setSessionTarget({
+            type: primary,
+            count: slotCounts[primary],
+            selected: slotSelected,
+            counts: slotCounts
+          });
+        }
+      }
+    } catch (_e) {}
     setElapsed(0);
     setShowSlotPicker(false);
     toast(chosenSlot ? '🔥 ' + n(chosenSlot.hours, 5) + 'h challenge accepted!' : 'Session started! 🔥');
@@ -19106,9 +19135,33 @@ function App() {
       )
     ));
     var slots = (myCfg.sessionSlots || [{ hours: n(myCfg.sessionDur, 5), apptsBar: n(myCfg.mThresh, 2), bonusBar: n(myCfg.nThresh, 3) }]).filter(sl => n(sl.hours, 0) > 0).sort((a, b) => n(a.hours, 0) - n(b.hours, 0));
+    // 0110: slot picker now surfaces every per-slot target the user
+    // configured (target dials + appts bar + bonus bar + unlimited
+    // marker), so picking a slot is an informed choice. The picked
+    // slot's targets pre-fill the multi-select sessionTarget on
+    // session start (see startSession).
     var slotModal = cadModal(showSlotPicker, '', () => setShowSlotPicker(false), h(React.Fragment, null,
-      h('div', { className: 'cad-modal-head' }, h('div', null, h('h3', { className: 'cad-modal-title' }, 'Choose session'), h('p', { className: 'cad-modal-sub' }, 'Pick the call block and target bar for this run.')), h('button', { className: 'cad-btn ghost', onClick: () => setShowSlotPicker(false) }, 'x')),
-      h('div', { className: 'cad-option-list' }, slots.map((slot, i) => { var hrs = n(slot.hours, 5); var ap = n(slot.apptsBar, 2); var bonus = n(slot.bonusBar, 4); return h('button', { className: 'cad-option', key: i, onClick: () => { setShowSlotPicker(false); startDial(slot); } }, h('span', null, h('b', null, hrs, 'h session'), h('span', { className: 'cad-muted', style: { display: 'block', fontSize: 12, marginTop: 3 } }, ap, ' appts bar - ', bonus, ' bonus bar')), h('span', { className: 'cad-pill green' }, '$', (hrs * hourlyRate).toFixed(0))); }))
+      h('div', { className: 'cad-modal-head' }, h('div', null, h('h3', { className: 'cad-modal-title' }, 'Choose session'), h('p', { className: 'cad-modal-sub' }, 'Pick the call block. Each slot carries its own goals — they auto-load into the session tracker.')), h('button', { className: 'cad-btn ghost', onClick: () => setShowSlotPicker(false) }, 'x')),
+      h('div', { className: 'cad-option-list' }, slots.map((slot, i) => {
+        var hrs = n(slot.hours, 5);
+        var ap = n(slot.apptsBar, 2);
+        var bonus = n(slot.bonusBar, 4);
+        var dialGoal = Number(slot.targetDials) || 0;
+        var unlimited = !!slot.unlimited;
+        var hoursLabel = unlimited ? '∞ Unlimited' : hrs + 'h session';
+        var payLabel = unlimited ? 'open-ended' : '$' + (hrs * hourlyRate).toFixed(0);
+        var goalChips = [];
+        if (dialGoal > 0) goalChips.push('📞 ' + dialGoal + ' dials');
+        if (ap > 0) goalChips.push('🎯 ' + ap + ' appts');
+        if (bonus > 0) goalChips.push('🚀 ' + bonus + ' bonus');
+        return h('button', { className: 'cad-option', key: i, onClick: () => { setShowSlotPicker(false); startDial(slot); }, type: 'button' },
+          h('span', { style: { flex: 1 } },
+            h('b', { style: { fontSize: 14 } }, hoursLabel),
+            h('span', { className: 'cad-muted', style: { display: 'block', fontSize: 12, marginTop: 4, lineHeight: 1.5 } }, goalChips.length ? goalChips.join('  ·  ') : 'no preset goals')
+          ),
+          h('span', { className: 'cad-pill ' + (unlimited ? 'amber' : 'green'), style: { whiteSpace: 'nowrap' } }, payLabel)
+        );
+      }))
     ));
     var waModal = cadModal(!!showWA, '', () => setShowWA(null), showWA && h(React.Fragment, null,
       h('div', { className: 'cad-modal-head' }, h('div', null, h('span', { className: 'cad-pill green' }, 'WhatsApp'), h('h3', { className: 'cad-modal-title', style: { marginTop: 10 } }, 'Send confirmation'), h('p', { className: 'cad-modal-sub' }, 'To ', showWA.name, showWA.phone ? ' - ' + showWA.phone : '')), h('button', { className: 'cad-btn ghost', onClick: () => setShowWA(null) }, 'x')),
