@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0104'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0105'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -978,6 +978,25 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
    doesn't blow out horizontally. */
 .cad-appt-cal-row{margin-bottom:12px}
 .cad-appt-cal-row select{width:100%;min-width:0;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}
+/* 0105: calendar inside the appt modal — pre-fix the cad-time-board
+   carried its desktop min-width:1040px (7 days × 128px + 54px axis)
+   which forced the right-side day(s) to clip when rendered inside
+   the 760px wide cad-modal. Drop the per-day minmax floor and the
+   board-level min-width when in modal context, so the 7-day grid
+   compresses to fit modal width. Time blocks get a tighter font so
+   the labels don't overflow the narrower columns. */
+.cad-modal .cad-time-board{min-width:0;overflow:auto}
+.cad-modal .cad-time-head,
+.cad-modal .cad-time-body{grid-template-columns:42px repeat(7,minmax(72px,1fr));min-width:0}
+.cad-modal .cad-time-head>div{padding:7px 4px;font-size:11px}
+.cad-modal .cad-time-block{font-size:9px;padding:3px 4px}
+.cad-modal .cad-time-block strong{font-size:9px}
+.cad-modal .cad-time-block small{font-size:8px}
+.cad-modal .cad-time-label{font-size:9px;padding:2px 4px 0 0}
+@media(max-width:560px){
+  .cad-modal .cad-time-head,
+  .cad-modal .cad-time-body{grid-template-columns:36px repeat(7,minmax(56px,1fr))}
+}
 /* 0101: mobile responsive sweep on the new hero CTA + KPI + 6-up
    outcome grid. Each block needs explicit handling since the stack
    gets dense on a 360px viewport. */
@@ -1327,7 +1346,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0104';
+window.APP_VERSION='2026.05.05.0105';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -18211,7 +18230,26 @@ function App() {
       )
     ));
     var cadField = (label, child) => h('div', { className: 'cad-field' }, h('label', null, label), child);
-    var cadModal = (show, cls, onClose, body) => show ? h('div', { className: 'cad-modal-overlay', onClick: onClose }, h('div', { className: 'cad-modal ' + (cls || ''), onClick: e => e.stopPropagation() }, body)) : null;
+    // 0105: cadModal close-on-overlay-click previously fired even when the
+    // user mousedowned INSIDE the modal (e.g., dragging across an input
+    // to text-select) and released OUTSIDE. The native click event fires
+    // on the common ancestor (the overlay), bypassing the modal's
+    // stopPropagation. Fix: track where mousedown started and only close
+    // if the gesture started AND ended on the overlay itself — drags
+    // that started inside (text selection, slider drags) are ignored.
+    var cadModal = (show, cls, onClose, body) => {
+      if (!show) return null;
+      var _downOnOverlay = false;
+      return h('div', {
+        className: 'cad-modal-overlay',
+        onMouseDown: e => { _downOnOverlay = e.target === e.currentTarget; },
+        onClick: e => { if (_downOnOverlay && e.target === e.currentTarget) onClose(); }
+      }, h('div', {
+        className: 'cad-modal ' + (cls || ''),
+        onMouseDown: e => e.stopPropagation(),
+        onClick: e => e.stopPropagation()
+      }, body));
+    };
     var adminConfigModal = cadModal(!!adminDetailEmail, 'wide', () => setAdminDetailEmail(null), adminDetailEmail && (() => {
       var em = adminDetailEmail;
       var ac = (adminConfigs || {})[em] || {};
