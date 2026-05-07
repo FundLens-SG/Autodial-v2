@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0108'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0109'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1364,7 +1364,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0108';
+window.APP_VERSION='2026.05.05.0109';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -17594,7 +17594,15 @@ function App() {
             var handleEl = e.currentTarget;
             var onMove = function (ev) {
               var dx = ev.clientX - startX;
-              var nextW = Math.max(360, Math.min(820, startW - dx));
+              // 0109: max width was clamped at 820px — too narrow on
+              // ultrawide / 1440p+ monitors where the user wanted the
+              // script + objection panel to dominate the call view.
+              // Bumped to 1400px (or 70% of the viewport, whichever is
+              // smaller) so the handle drags to a meaningful expansion
+              // on big screens, but the call view still keeps min 320px
+              // for the lead card on the left.
+              var maxW = Math.min(1400, Math.max(420, Math.floor(window.innerWidth * 0.7)));
+              var nextW = Math.max(360, Math.min(maxW, startW - dx));
               if (nextW !== lastW) {
                 lastW = nextW;
                 moved = true;
@@ -18669,10 +18677,59 @@ function App() {
           h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label', style: { color: 'var(--ad-brass-2)' } }, '📞 Calling rules + bars'), h('span', { className: 'cad-pill brass' }, 'tunable')),
           h('div', { className: 'cad-form-grid' },
             cadField('🚫 NP → NI threshold', h('input', { type: 'number', min: 1, max: 20, step: 1, value: ac.npMax || cfg.npMax || 5, onChange: e => cadUpdateAdminConfig(em, { npMax: Math.max(1, parseInt(e.target.value || '5', 10) || 5) }) })),
-            cadField('🎯 Appts bar (full credit)', h('input', { type: 'number', min: 0, max: 10, step: 1, value: ac.mThresh ?? cfg.mThresh ?? 2, onChange: e => cadUpdateAdminConfig(em, { mThresh: Number(e.target.value) || 0 }) })),
-            cadField('🚀 Bonus bar', h('input', { type: 'number', min: 0, max: 10, step: 1, value: ac.nThresh ?? cfg.nThresh ?? 3, onChange: e => cadUpdateAdminConfig(em, { nThresh: Number(e.target.value) || 0 }) })),
+            cadField('🎯 Default appts bar (full credit)', h('input', { type: 'number', min: 0, max: 10, step: 1, value: ac.mThresh ?? cfg.mThresh ?? 2, onChange: e => cadUpdateAdminConfig(em, { mThresh: Number(e.target.value) || 0 }) })),
+            cadField('🚀 Default bonus bar', h('input', { type: 'number', min: 0, max: 10, step: 1, value: ac.nThresh ?? cfg.nThresh ?? 3, onChange: e => cadUpdateAdminConfig(em, { nThresh: Number(e.target.value) || 0 }) })),
             cadField('✖ Bonus multiplier', h('input', { type: 'number', min: 0, step: 0.1, value: ac.bonusMult ?? cfg.bonusMult ?? 1.5, onChange: e => cadUpdateAdminConfig(em, { bonusMult: Number(e.target.value) || 0 }) }))
           ),
+          // 0109: session slots editor — multiple session hour choices,
+          // each with its own appts bar / bonus bar / target dials, plus
+          // an "unlimited hours" option for open-ended sessions. The
+          // group is collapsible so the modal doesn't feel cluttered;
+          // the existing default-bars row above acts as the fallback for
+          // any slot that doesn't override.
+          (() => {
+            var slots = Array.isArray(ac.sessionSlots) ? ac.sessionSlots : [];
+            var open = !!ac._sessionSlotsOpen;
+            var setSlots = next => cadUpdateAdminConfig(em, { sessionSlots: next });
+            var addSlot = () => setSlots([...(slots || []), { hours: 5, apptsBar: ac.mThresh ?? 2, bonusBar: ac.nThresh ?? 3, unlimited: false, targetDials: 50 }]);
+            var removeSlot = i => setSlots(slots.filter((_s, j) => j !== i));
+            var updateSlot = (i, patch) => setSlots(slots.map((s, j) => j === i ? { ...s, ...patch } : s));
+            return h('div', { style: { marginTop: 14 } },
+              h('button', {
+                type: 'button',
+                className: 'cad-inline',
+                onClick: () => cadUpdateAdminConfig(em, { _sessionSlotsOpen: !open }),
+                style: { width: '100%', justifyContent: 'space-between', padding: '10px 12px', border: '1px solid var(--ad-line-1)', borderRadius: 10, background: 'var(--ad-bg-2)', color: 'var(--ad-t-0)', cursor: 'pointer' }
+              },
+                h('span', { className: 'cad-inline', style: { gap: 8 } },
+                  h('span', { className: 'cad-label', style: { color: 'var(--ad-brass-2)' } }, '⏱ Session slot choices'),
+                  h('span', { className: 'cad-pill' }, slots.length, ' slot', slots.length === 1 ? '' : 's')
+                ),
+                h('span', { className: 'cad-subtle' }, open ? '▾' : '▸')
+              ),
+              open && h('div', { style: { marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10 } },
+                h('p', { className: 'cad-page-note' }, 'Define the session hour choices the admin sees when starting a session. Each slot can carry its own appts bar / bonus bar / dial target — overrides the default row above. Tick "Unlimited" for an open-ended session with no hours cap.'),
+                slots.length === 0 && h('p', { className: 'cad-subtle', style: { fontStyle: 'italic', textAlign: 'center', padding: '14px 0' } }, 'No custom slots — admin uses the defaults above. Tap "+ Add slot" to override.'),
+                slots.map((s, i) => h('div', { key: i, className: 'cad-card', style: { padding: 10, background: 'var(--ad-bg-2)', border: '1px solid var(--ad-line-1)' } },
+                  h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 8 } },
+                    h('span', { className: 'cad-pill brass' }, 'Slot ', i + 1, ' · ', s.unlimited ? '∞ unlimited' : (s.hours || 0) + 'h'),
+                    h('button', { type: 'button', className: 'cad-btn ghost danger', onClick: () => removeSlot(i), style: { fontSize: 11, padding: '3px 9px' } }, '🗑 Remove')
+                  ),
+                  h('label', { className: 'cad-inline', style: { gap: 6, marginBottom: 8, fontSize: 12, cursor: 'pointer' } },
+                    h('input', { type: 'checkbox', checked: !!s.unlimited, onChange: e => updateSlot(i, { unlimited: e.target.checked }), style: { width: 'auto' } }),
+                    h('span', null, '∞ Unlimited hours (open-ended session)')
+                  ),
+                  h('div', { className: 'cad-form-grid' },
+                    cadField('⏱ Hours', h('input', { type: 'number', min: 0.5, step: 0.5, value: s.hours || 0, disabled: !!s.unlimited, onChange: e => updateSlot(i, { hours: Number(e.target.value) || 0 }) })),
+                    cadField('🎯 Appts bar', h('input', { type: 'number', min: 0, step: 1, value: s.apptsBar ?? 0, onChange: e => updateSlot(i, { apptsBar: Number(e.target.value) || 0 }) })),
+                    cadField('🚀 Bonus bar', h('input', { type: 'number', min: 0, step: 1, value: s.bonusBar ?? 0, onChange: e => updateSlot(i, { bonusBar: Number(e.target.value) || 0 }) })),
+                    cadField('📞 Target dials (optional)', h('input', { type: 'number', min: 0, step: 5, value: s.targetDials ?? 0, onChange: e => updateSlot(i, { targetDials: Number(e.target.value) || 0 }) }))
+                  )
+                )),
+                h('button', { type: 'button', className: 'cad-btn', onClick: addSlot, style: { width: '100%', borderStyle: 'dashed' } }, '+ Add slot choice')
+              )
+            );
+          })(),
           h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginTop: 14, marginBottom: 8 } }, h('span', { className: 'cad-label', style: { color: 'var(--ad-brass-2)' } }, '📜 Shared script'), h('span', { className: 'cad-pill ' + (ac.scriptShareVersionId ? 'green' : '') }, ac.scriptShareVersionId ? '✓ shared' : 'off')),
           h('div', { className: 'cad-form-grid' },
             h('select', { value: ac.scriptShareVersionId || '', onChange: e => { var v = scriptVersions.find(x => x.id === e.target.value); cadUpdateAdminConfig(em, { scriptShareVersionId: e.target.value, scriptShareName: v?.name || '' }); } }, h('option', { value: '' }, 'No shared script'), scriptVersions.map(v => h('option', { key: v.id, value: v.id }, v.name || new Date(v.ts || Date.now()).toLocaleDateString('en-SG')))),
@@ -18717,21 +18774,41 @@ function App() {
             })();
             var hit = monthlyAdminAppts >= minAppts;
             var pct = minAppts > 0 ? Math.min(100, Math.round(monthlyAdminAppts / minAppts * 100)) : 100;
+            // 0109: per-tier enable/disable. ac.disabledTiers is an array
+            // of indexes (0-5) the admin opted out of — those tier cards
+            // grey out, the admin's rank ladder skips them, and pay-calc
+            // uses the next-enabled tier for that bucket. Default: all
+            // tiers enabled for backward compat.
+            var disabledTiers = Array.isArray(ac.disabledTiers) ? ac.disabledTiers : [];
+            var tierOff = disabledTiers.indexOf(i) >= 0;
+            var toggleTier = () => {
+              var next = disabledTiers.slice();
+              var idx = next.indexOf(i);
+              if (idx >= 0) next.splice(idx, 1); else next.push(i);
+              cadUpdateAdminConfig(em, { disabledTiers: next });
+            };
             return h('div', {
-              className: 'cad-rank-card' + (hit ? ' achieved' : ''),
+              className: 'cad-rank-card' + (hit && !tierOff ? ' achieved' : '') + (tierOff ? ' cad-rank-card--off' : ''),
               key: name,
-              style: { borderColor: hit ? tierColor : 'var(--ad-line-1)', boxShadow: hit ? '0 0 24px ' + tierGlow : 'none' }
+              style: { borderColor: tierOff ? 'var(--ad-line-1)' : (hit ? tierColor : 'var(--ad-line-1)'), boxShadow: hit && !tierOff ? '0 0 24px ' + tierGlow : 'none', opacity: tierOff ? 0.55 : 1 }
             },
-              h('div', { className: 'cad-rank-card__head', style: { background: tierBg } },
-                h('span', { className: 'cad-rank-card__emoji' }, tierEmoji),
-                h('div', null,
+              h('div', { className: 'cad-rank-card__head', style: { background: tierOff ? 'linear-gradient(135deg,var(--ad-bg-3),var(--ad-bg-2))' : tierBg, position: 'relative' } },
+                h('span', { className: 'cad-rank-card__emoji', style: { filter: tierOff ? 'grayscale(1)' : 'none' } }, tierEmoji),
+                h('div', { style: { flex: 1 } },
                   h('b', { style: { color: '#fff', fontSize: 14, textShadow: '0 1px 2px rgba(0,0,0,.4)' } }, name),
-                  h('p', { style: { fontSize: 10.5, color: 'rgba(255,255,255,.82)', marginTop: 2, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 } }, hit ? '✓ Achieved' : pct + '% there')
-                )
+                  h('p', { style: { fontSize: 10.5, color: 'rgba(255,255,255,.82)', marginTop: 2, textTransform: 'uppercase', letterSpacing: '.06em', fontWeight: 700 } }, tierOff ? '⊘ Off' : (hit ? '✓ Achieved' : pct + '% there'))
+                ),
+                h('button', {
+                  type: 'button',
+                  onClick: toggleTier,
+                  className: 'cad-rank-card__toggle',
+                  title: tierOff ? 'Re-enable this tier' : 'Disable this tier — admin won\'t see it in their rank ladder',
+                  style: { position: 'absolute', top: 8, right: 8, padding: '3px 8px', borderRadius: 999, fontSize: 10, fontWeight: 800, letterSpacing: '.04em', textTransform: 'uppercase', background: tierOff ? 'rgba(255,255,255,.18)' : 'rgba(0,0,0,.28)', color: '#fff', border: '1px solid rgba(255,255,255,.3)', cursor: 'pointer' }
+                }, tierOff ? 'Enable' : 'Disable')
               ),
               h('div', { className: 'cad-rank-card__body' },
-                cadField('💵 $/hr', h('input', { type: 'number', min: 0, step: 1, value: rates[i] ?? 0, onChange: e => cadUpdateAdminArray(em, 'payRates', i, e.target.value, [8, 10, 12, 16, 18, 20]) })),
-                cadField('🎯 Min appts', h('input', { type: 'number', min: 0, step: 1, value: minAppts, onChange: e => cadUpdateAdminArray(em, 'tierMins', i, e.target.value, [0, 20, 40, 80, 150, 200]) })),
+                cadField('💵 $/hr', h('input', { type: 'number', min: 0, step: 1, value: rates[i] ?? 0, disabled: tierOff, onChange: e => cadUpdateAdminArray(em, 'payRates', i, e.target.value, [8, 10, 12, 16, 18, 20]) })),
+                cadField('🎯 Min appts', h('input', { type: 'number', min: 0, step: 1, value: minAppts, disabled: tierOff, onChange: e => cadUpdateAdminArray(em, 'tierMins', i, e.target.value, [0, 20, 40, 80, 150, 200]) })),
                 minAppts > 0 && h('div', { className: 'cad-mini-progress', style: { marginTop: 6 } }, h('i', { style: { width: pct + '%', background: tierBg } })),
                 h('p', { className: 'cad-rank-card__progress' },
                   h('b', { style: { color: hit ? tierColor : 'var(--ad-t-2)' } }, monthlyAdminAppts),
