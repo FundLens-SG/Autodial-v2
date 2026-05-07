@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0119'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0120'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -627,16 +627,25 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
    user to mentally count their position. */
 .cad-queue-priority{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px;padding:8px 12px;border-radius:10px;background:rgba(214,168,122,.06);border:1px dashed var(--ad-line-2)}
 .cad-queue-priority__label{font-size:11px;font-weight:800;letter-spacing:.04em;color:var(--ad-t-3);text-transform:uppercase;flex-shrink:0}
-.cad-queue-priority__pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px 5px 5px;border-radius:999px;border:1px solid var(--ad-line-2);background:transparent;color:var(--ad-t-2);font-size:11.5px;font-weight:600;cursor:pointer;transition:background .12s,border-color .12s,color .12s,transform .08s;line-height:1}
+/* 0120: priority pill is now a draggable surface — added a grab handle
+   on the left, drag/drop visual states (dragging fades to .35, drop
+   target gets a brass dashed outline that pulses), and cursor:grab
+   so the affordance is obvious before the user even starts the drag. */
+.cad-queue-priority__pill{display:inline-flex;align-items:center;gap:6px;padding:5px 11px 5px 5px;border-radius:999px;border:1px solid var(--ad-line-2);background:transparent;color:var(--ad-t-2);font-size:11.5px;font-weight:600;cursor:grab;transition:background .12s,border-color .12s,color .12s,transform .08s,opacity .12s;line-height:1;user-select:none}
 .cad-queue-priority__pill:hover{border-color:var(--ad-brass-line);color:var(--ad-t-0);background:var(--ad-bg-2)}
-.cad-queue-priority__pill:active{transform:scale(.96)}
+.cad-queue-priority__pill:active{cursor:grabbing;transform:scale(.96)}
 .cad-queue-priority__pill.first{background:var(--ad-brass-dim);border-color:var(--ad-brass);color:var(--ad-t-0);box-shadow:0 0 0 1px var(--ad-brass-dim)}
+.cad-queue-priority__pill.dragging{opacity:.35;cursor:grabbing}
+.cad-queue-priority__pill.drop-target{border:1.5px dashed var(--ad-brass-2)!important;background:var(--ad-brass-dim);color:var(--ad-brass-2);transform:scale(1.04);box-shadow:0 0 16px rgba(214,168,122,.35)}
+.cad-queue-priority__handle{flex-shrink:0;color:var(--ad-t-3);font-size:14px;letter-spacing:-2px;line-height:.7;font-weight:900;padding:0 2px;cursor:grab}
+.cad-queue-priority__pill:hover .cad-queue-priority__handle{color:var(--ad-brass-2)}
 .cad-queue-priority__rank{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--ad-bg-3);color:var(--ad-t-3);font-size:10px;font-weight:800;font-family:'JetBrains Mono',ui-monospace,monospace;flex-shrink:0}
 .cad-queue-priority__pill.first .cad-queue-priority__rank{background:var(--ad-brass);color:#0a0c10}
 @media(max-width:560px){
   .cad-queue-priority{padding:7px 10px;gap:6px}
   .cad-queue-priority__pill{padding:4px 9px 4px 4px;font-size:11px;gap:5px}
   .cad-queue-priority__rank{width:16px;height:16px;font-size:9px}
+  .cad-queue-priority__handle{font-size:12px}
 }
 /* 0116: inline lead-jump search — replaces the modal-trigger button.
    Always-visible input + popover dropdown. Width adapts: ~220px
@@ -973,11 +982,18 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
   .cad-rail .cad-tab{white-space:nowrap;flex:0 0 auto;padding:9px 14px}
   .cad-settings-main{padding:18px 14px;gap:14px}
   /* outcomes: explicit 2x2 grid that wins over the line-787 reset */
-  .cad-outcomes,.cad-outcomes--five,.cad-outcomes.cad-outcomes--five{grid-template-columns:repeat(2,1fr)}
-  .cad-outcome{min-height:78px;padding:13px 14px;gap:4px}
-  .cad-outcome .glyph{font-size:20px}
-  .cad-outcome .caption{font-size:11px}
-  .cad-outcomes--five .cad-outcome--skip{grid-column:1/-1}
+  /* 0120: outcome buttons tightened on mobile per user feedback —
+     pre-fix the 2x3 grid filled half the screen with chunky 78px-tall
+     pills. Now slimmer (60px), tighter padding, smaller glyph, and
+     the row gap compresses too so the whole 6-up grid is half the
+     vertical footprint it used to be. Skip + Undo span 1 column each
+     (no longer full-width) so all 6 buttons fit on screen at once. */
+  .cad-outcomes,.cad-outcomes--five,.cad-outcomes.cad-outcomes--five,.cad-outcomes--six{grid-template-columns:repeat(2,1fr);gap:8px}
+  .cad-outcome{min-height:60px;padding:8px 11px;gap:2px;border-radius:11px}
+  .cad-outcome .glyph{font-size:16px}
+  .cad-outcome .caption{font-size:10px;letter-spacing:.04em}
+  .cad-outcome .key{font-size:9px;right:7px;top:6px}
+  .cad-outcomes--five .cad-outcome--skip{grid-column:auto}
   /* lead-card title row: stack vertically so the phone-chip + Dial CTA
      don't fight for the same horizontal slice on a 360px viewport */
   .cad-lead-card{padding:18px}
@@ -1432,7 +1448,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0119';
+window.APP_VERSION='2026.05.05.0120';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -17683,11 +17699,11 @@ function App() {
             : h('button', { className: 'cad-btn cad-session-cta cad-session-cta--start', onClick: () => startDial(), type: 'button' }, icon('PhoneOutgoing', 16), 'Start session')
         ),
         h('div', { className: 'cad-card cad-lead-card' },
-          // 0118: queue priority filter — three reorderable pills sit in
-          // a slim row right above the lead-card head. Click any pill to
-          // bump it to the front of the priority order; the order is
-          // persisted on cfg.queuePriority and getNextDialable picks the
-          // next lead by walking the priority buckets in this order.
+          // 0120: queue priority is now drag-and-drop — grab any pill by
+          // its handle (≡) and drop it where you want in the order.
+          // Tap to bump still works as a quick alternative on touch
+          // devices where drag is awkward. The active drag pill fades
+          // and the drop target gets a brass dashed outline.
           (() => {
             var priority = (cfg.queuePriority && cfg.queuePriority.length === 3)
               ? cfg.queuePriority
@@ -17697,15 +17713,51 @@ function App() {
               var rest = priority.filter(x => x !== key);
               setCfg(p => ({ ...p, queuePriority: [key, ...rest] }));
             };
+            var reorder = (fromKey, toKey) => {
+              if (fromKey === toKey) return;
+              var fromIdx = priority.indexOf(fromKey);
+              var toIdx = priority.indexOf(toKey);
+              if (fromIdx < 0 || toIdx < 0) return;
+              var next = priority.slice();
+              next.splice(fromIdx, 1);
+              next.splice(toIdx, 0, fromKey);
+              setCfg(p => ({ ...p, queuePriority: next }));
+            };
             return h('div', { className: 'cad-queue-priority' },
-              h('span', { className: 'cad-queue-priority__label' }, '🎯 Priority:'),
-              priority.map((key, i) => h('button', {
+              h('span', { className: 'cad-queue-priority__label' }, '🎯 Priority — drag to reorder:'),
+              priority.map((key, i) => h('div', {
                 key,
-                type: 'button',
                 className: 'cad-queue-priority__pill' + (i === 0 ? ' first' : ''),
+                draggable: true,
+                onDragStart: e => {
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', key);
+                  e.currentTarget.classList.add('dragging');
+                },
+                onDragEnd: e => {
+                  e.currentTarget.classList.remove('dragging');
+                  document.querySelectorAll('.cad-queue-priority__pill.drop-target').forEach(el => el.classList.remove('drop-target'));
+                },
+                onDragOver: e => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'move';
+                  e.currentTarget.classList.add('drop-target');
+                },
+                onDragLeave: e => {
+                  e.currentTarget.classList.remove('drop-target');
+                },
+                onDrop: e => {
+                  e.preventDefault();
+                  e.currentTarget.classList.remove('drop-target');
+                  var src = e.dataTransfer.getData('text/plain');
+                  if (src) reorder(src, key);
+                },
                 onClick: () => bumpFirst(key),
-                title: i === 0 ? 'Currently first — calls these leads before the others' : 'Click to make ' + (labels[key] || key).replace(/^\W+\s*/, '') + ' the top priority'
+                title: i === 0 ? 'Currently first · drag to reorder, or click another pill to swap top spot' : 'Drag to reorder, or click to make ' + (labels[key] || key).replace(/^\W+\s*/, '') + ' the top priority',
+                role: 'button',
+                tabIndex: 0
               },
+                h('span', { className: 'cad-queue-priority__handle', 'aria-hidden': 'true' }, '⋮⋮'),
                 h('span', { className: 'cad-queue-priority__rank' }, i + 1),
                 h('span', null, labels[key] || key)
               ))
