@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0120'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0121'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -619,6 +619,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 .cad-rank-chip--bold .cad-rank-chip__progress{font-size:10px;font-weight:700;color:var(--ad-t-2);font-family:'JetBrains Mono',ui-monospace,monospace}
 .cad-lead-card{padding:28px;display:flex;flex-direction:column;gap:18px}
 .cad-lead-name{font-size:38px;font-weight:650;letter-spacing:-.02em}
+/* 0121: Rename / Delete are version-meta actions (rare) — visually
+   demoted from the primary save buttons so the row reads as
+   primary actions vs meta actions at a glance. Dashed border,
+   smaller font, fully transparent bg until hover. The danger
+   variant tints red on hover so accidental delete clicks register
+   as a stronger affordance. */
+.cad-script-meta-btn{font-size:11px!important;padding:5px 10px!important;background:transparent!important;border:1px dashed var(--ad-line-2)!important;color:var(--ad-t-3)!important;font-weight:600!important}
+.cad-script-meta-btn:hover{border-color:var(--ad-brass-line)!important;color:var(--ad-t-1)!important;background:var(--ad-bg-2)!important}
+.cad-script-meta-btn--danger:hover{border-color:var(--ad-red)!important;color:var(--ad-red)!important;background:var(--ad-red-dim)!important}
 /* 0118: queue priority filter row — three reorderable pills above the
    lead-card head. Click any pill to make it #1 in the order. The
    first pill gets a brass-tinted ring + "1" badge so the active
@@ -651,10 +660,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
    Always-visible input + popover dropdown. Width adapts: ~220px
    default, full width on mobile (where the lead-card head is column). */
 .cad-lead-card__head-right{flex-wrap:wrap;gap:8px;justify-content:flex-end}
-.cad-lead-jump-inline{position:relative;flex:0 1 240px;min-width:200px}
-.cad-lead-jump-inline__input{width:100%;min-height:32px;padding:5px 11px;border-radius:8px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font-size:12px;font-weight:500;outline:none;transition:border-color .12s,background .12s}
-.cad-lead-jump-inline__input::placeholder{color:var(--ad-t-3);font-weight:400}
-.cad-lead-jump-inline__input:focus{border-color:var(--ad-brass-line);background:var(--ad-bg-1);box-shadow:0 0 0 3px var(--ad-brass-dim)}
+.cad-lead-jump-inline{position:relative;flex:0 1 280px;min-width:240px}
+/* 0121: search input bumped to read as an obvious search affordance —
+   brass-tinted border, slightly larger min-height, idle bg has a
+   subtle brass glow so it doesn't disappear into the lead-card head.
+   Placeholder copy gets a touch of weight so it stays legible. */
+.cad-lead-jump-inline__input{width:100%;min-height:36px;padding:7px 13px;border-radius:9px;border:1.5px solid var(--ad-brass-line);background:linear-gradient(135deg,rgba(214,168,122,.08),var(--ad-bg-2));color:var(--ad-t-0);font-size:12.5px;font-weight:500;outline:none;transition:border-color .14s,background .14s,box-shadow .18s;box-shadow:0 0 0 1px var(--ad-brass-dim) inset}
+.cad-lead-jump-inline__input::placeholder{color:var(--ad-brass-2);font-weight:600;opacity:.85}
+.cad-lead-jump-inline__input:hover{border-color:var(--ad-brass-2);background:var(--ad-bg-2)}
+.cad-lead-jump-inline__input:focus{border-color:var(--ad-brass-2);background:var(--ad-bg-1);box-shadow:0 0 0 3px var(--ad-brass-dim),0 0 16px rgba(214,168,122,.18)}
 .cad-lead-jump-inline__results{position:absolute;top:calc(100% + 4px);right:0;left:0;z-index:50;max-height:320px;overflow-y:auto;background:var(--ad-bg-1);border:1px solid var(--ad-line-2);border-radius:10px;box-shadow:0 12px 36px -8px rgba(0,0,0,.55);display:flex;flex-direction:column;gap:2px;padding:4px}
 .cad-lead-jump-inline__row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:7px;background:transparent;border:none;color:var(--ad-t-0);cursor:pointer;text-align:left;width:100%;transition:background .1s}
 .cad-lead-jump-inline__row:hover,.cad-lead-jump-inline__row:focus{background:var(--ad-bg-2);outline:none}
@@ -1448,7 +1462,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0120';
+window.APP_VERSION='2026.05.05.0121';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -8650,6 +8664,11 @@ function App() {
     if (!_SB || !_user || !myEmail) return;
     var ref = liveSessionPushRef.current;
     clearTimeout(ref.timer);
+    // 0121: extended snapshot — sessionTarget (multi-select goals),
+    // queuePriority (priority bucket order) and curIdx (active lead
+    // pointer) all ride along now so all of them sync cross-device.
+    // Pre-fix: setting goals or reordering priority on the desktop
+    // never reached the mobile.
     var snapshot = (session && !session.ended) ? {
       id: session.id,
       startTime: session.startTime,
@@ -8660,11 +8679,14 @@ function App() {
       ni: session.ni || 0,
       sets: session.sets || 0,
       selectedSlot: session.selectedSlot || null,
+      sessionTarget: sessionTarget || null,
+      queuePriority: cfg.queuePriority || null,
+      curIdx: typeof curIdx === 'number' ? curIdx : -1,
       ended: false,
       devId: window._devId,
       ts: Date.now()
     } : null;
-    var hash = snapshot ? JSON.stringify({ id: snapshot.id, dialed: snapshot.dialed, sets: snapshot.sets, np: snapshot.np, cb: snapshot.cb, ni: snapshot.ni, ended: snapshot.ended }) : 'null';
+    var hash = snapshot ? JSON.stringify({ id: snapshot.id, dialed: snapshot.dialed, sets: snapshot.sets, np: snapshot.np, cb: snapshot.cb, ni: snapshot.ni, ended: snapshot.ended, st: snapshot.sessionTarget, qp: snapshot.queuePriority, cur: snapshot.curIdx }) : 'null';
     if (hash === ref.lastPushed) return;
     ref.timer = setTimeout(async () => {
       try {
@@ -8680,7 +8702,7 @@ function App() {
       } catch (e) { console.warn('[liveSession push]', e?.message || e); }
     }, 1500);
     return () => clearTimeout(ref.timer);
-  }, [session?.id, session?.startTime, session?.dialed, session?.np, session?.cb, session?.ni, session?.sets, session?.ended, myEmail]);
+  }, [session?.id, session?.startTime, session?.dialed, session?.np, session?.cb, session?.ni, session?.sets, session?.ended, sessionTarget?.type, sessionTarget?.count, JSON.stringify(sessionTarget?.selected || []), JSON.stringify(sessionTarget?.counts || {}), JSON.stringify(cfg.queuePriority || []), curIdx, myEmail]);
   // 0107: cross-device session PULL. Runs on ALL devices (desktop +
   // mobile) — separate from the mobile-only phone_dialer poll
   // because session mirroring needs to flow both ways. Polls the
@@ -8724,6 +8746,20 @@ function App() {
                 ended: false,
                 _mirrored: true
               });
+              // 0121: also apply the synced sessionTarget, queuePriority,
+              // and curIdx so the receiving device matches what the
+              // pusher sees. Conditional on each being present so a
+              // legacy snapshot from an older client doesn't blow away
+              // the local state with undefined.
+              if (remoteSess.sessionTarget && typeof remoteSess.sessionTarget === 'object') {
+                setSessionTarget(remoteSess.sessionTarget);
+              }
+              if (Array.isArray(remoteSess.queuePriority) && remoteSess.queuePriority.length === 3) {
+                setCfg(p => ({ ...p, queuePriority: remoteSess.queuePriority }));
+              }
+              if (typeof remoteSess.curIdx === 'number' && remoteSess.curIdx >= 0) {
+                setCurIdx(remoteSess.curIdx);
+              }
             }
           }
         } else if (!remoteSess && sessionRef.current && !sessionRef.current.ended && sessionRef.current._mirrored) {
@@ -17816,9 +17852,19 @@ function App() {
                           }
                         }
                       },
+                        // 0121: surface more lead context per row — email
+                        // (often the disambiguator when names repeat),
+                        // age, and any sheet-parsed extras live alongside
+                        // the phone. Clean ellipsis when long; second
+                        // sub-line for email so the phone stays mono and
+                        // the email is regular text.
                         h('span', { style: { textAlign: 'left', flex: 1, minWidth: 0, overflow: 'hidden' } },
-                          h('b', { style: { display: 'block', fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, l.name || 'Unnamed'),
-                          h('small', { className: 'cad-mono cad-subtle', style: { display: 'block', fontSize: 10.5, marginTop: 2 } }, l.phone || 'no phone')
+                          h('b', { style: { display: 'block', fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+                            l.name || 'Unnamed',
+                            l.age && h('span', { className: 'cad-subtle', style: { fontWeight: 500, fontSize: 11, marginLeft: 6 } }, '· age ', l.age)
+                          ),
+                          h('small', { className: 'cad-mono cad-subtle', style: { display: 'block', fontSize: 10.5, marginTop: 2 } }, l.phone || 'no phone'),
+                          l.email && h('small', { className: 'cad-subtle', style: { display: 'block', fontSize: 10, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, '✉ ', l.email)
                         ),
                         h('span', { className: 'cad-pill ' + statusTone, style: { fontSize: 9.5, padding: '2px 7px' } }, statusLabel)
                       );
@@ -17978,11 +18024,19 @@ function App() {
           h('div', { className: 'cad-script-versionbar' },
             scriptVersions.length > 0 && h('select', { value: cfg.scriptVersionId || '', title: 'Load saved script version', onChange: e => { if (e.target.value) restoreScriptVersion(e.target.value); } }, h('option', { value: '' }, 'Load saved...'), scriptVersions.map(v => h('option', { key: v.id, value: v.id }, v.name || new Date(v.ts || Date.now()).toLocaleDateString('en-SG')))),
             h('button', { className: 'cad-btn', onClick: () => setScriptEditing(p => !p) }, scriptEditing ? 'Preview' : 'Edit'),
-            h('button', { className: 'cad-btn', onClick: () => saveCurrentScriptDraft('Script draft saved') }, 'Save Draft'),
+            // 0121: Save Draft removed per user request — Save and Save As
+            // cover all the user's needs (Save = overwrite current named
+            // version; Save As = new named version). The implicit draft
+            // auto-saves on edit anyway via setCfg(callingScript).
             h('button', { className: 'cad-btn', onClick: saveCurrentScriptVersion, title: cfg.scriptVersionId ? 'Overwrite the selected version' : 'Create the first saved version' }, 'Save'),
             h('button', { className: 'cad-btn', onClick: saveAsNewScriptVersion, title: 'Save as a new named version' }, 'Save As'),
-            scriptVersions.length > 0 && cfg.scriptVersionId && h('button', { className: 'cad-btn ghost', onClick: () => renameScriptVersion(cfg.scriptVersionId) }, 'Rename'),
-            scriptVersions.length > 0 && cfg.scriptVersionId && h('button', { className: 'cad-btn ghost danger', onClick: () => deleteScriptVersion(cfg.scriptVersionId) }, 'Delete')
+            // 0121: Rename + Delete demoted to a clearly-secondary tone —
+            // they're meta-actions on the saved version (rare), distinct
+            // from the primary Save / Save As buttons. Smaller font,
+            // dotted border, neutral text, plus an icon glyph each so
+            // they don't blend into the row.
+            scriptVersions.length > 0 && cfg.scriptVersionId && h('button', { className: 'cad-btn cad-script-meta-btn', onClick: () => renameScriptVersion(cfg.scriptVersionId), title: 'Rename this saved version' }, '✏ Rename'),
+            scriptVersions.length > 0 && cfg.scriptVersionId && h('button', { className: 'cad-btn cad-script-meta-btn cad-script-meta-btn--danger', onClick: () => deleteScriptVersion(cfg.scriptVersionId), title: 'Delete this saved version' }, '🗑 Delete')
           ),
           scriptEditing
             ? h(React.Fragment, null, cadRichToolbar('script'), cadRichEditor('script', scriptContent || cfg.callingScript || liveScriptHtml || '', false))
