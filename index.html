@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0122'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0123'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1477,7 +1477,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0122';
+window.APP_VERSION='2026.05.05.0123';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -3722,9 +3722,9 @@ window.DB={
     const r=await(adminEmail?q.eq('admin_email',adminEmail):q);
     return !r.error
   }catch(e){console.warn('[updateApptShaky]',e?.message||e);return false}},
-  async getAppts(email){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('appointments').select('*').eq('admin_email',email).order('created_at',{ascending:false});return r.data||[]}catch(e){return[]}},
-  async getAllAppts(){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('appointments').select('*').order('created_at',{ascending:false});return r.data||[]}catch(e){return[]}},
-  async updateApptFollowUp(id,followUp,tip){if(!_SB)return;try{await _SB.schema('autodial').from('appointments').update({follow_up:followUp,follow_up_date:new Date().toISOString(),tip:tip||0}).eq('id',id)}catch(e){}},
+  async getAppts(email){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('appointments').select('*').eq('admin_email',email).order('created_at',{ascending:false});return r.data||[]}catch(e){console.warn('[getAppts]',e?.message||e);return[]}},
+  async getAllAppts(){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('appointments').select('*').order('created_at',{ascending:false});return r.data||[]}catch(e){console.warn('[getAllAppts]',e?.message||e);return[]}},
+  async updateApptFollowUp(id,followUp,tip){if(!_SB)return;try{await _SB.schema('autodial').from('appointments').update({follow_up:followUp,follow_up_date:new Date().toISOString(),tip:tip||0}).eq('id',id)}catch(e){console.warn('[updateApptFollowUp]',e?.message||e)}},
 
   // Incentives
   async saveIncentive(inc){if(!_SB)return;try{await _SB.schema('autodial').from('incentives').insert({
@@ -3748,11 +3748,11 @@ window.DB={
   // CB Queue
   async addCB(cb){if(!_SB)return;try{await _SB.schema('autodial').from('cb_queue').insert({
     admin_id:cb.adminId,admin_email:cb.admin,lead_name:cb.name,lead_phone:cb.phone,
-    scheduled_date:cb.cbDate,scheduled_time:cb.cbTime})}catch(e){}},
+    scheduled_date:cb.cbDate,scheduled_time:cb.cbTime})}catch(e){console.warn('[addCB]',e?.message||e)}},
   async getCBQueue(email){if(!_SB)return[];try{var r=email?
     await _SB.schema('autodial').from('cb_queue').select('*').eq('admin_email',email).order('scheduled_date').order('scheduled_time'):
-    await _SB.schema('autodial').from('cb_queue').select('*').order('scheduled_date').order('scheduled_time');return r.data||[]}catch(e){return[]}},
-  async updateCBStatus(id,status){if(!_SB)return;try{await _SB.schema('autodial').from('cb_queue').update({status,called_at:new Date().toISOString()}).eq('id',id)}catch(e){}},
+    await _SB.schema('autodial').from('cb_queue').select('*').order('scheduled_date').order('scheduled_time');return r.data||[]}catch(e){console.warn('[getCBQueue]',e?.message||e);return[]}},
+  async updateCBStatus(id,status){if(!_SB)return;try{await _SB.schema('autodial').from('cb_queue').update({status,called_at:new Date().toISOString()}).eq('id',id)}catch(e){console.warn('[updateCBStatus]',e?.message||e)}},
 
   // WhatsApp Templates
   async getWATemplates(){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('wa_templates').select('*').order('is_default',{ascending:false});return r.data||[]}catch(e){return[]}},
@@ -3764,6 +3764,9 @@ window.DB={
   async getSharedCalendars(email){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('calendar_shares').select('*').eq('shared_with_email',email);return r.data||[]}catch(e){return[]}},
   async getMyShares(uid){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('calendar_shares').select('*').eq('owner_id',uid);return r.data||[]}catch(e){return[]}},
 
+  // Lead rows
+  async getLeads(uid){if(!_SB||!uid)return[];try{var r=await _SB.schema('autodial').from('leads').select('data,phone,status,assigned_by,updated_at').eq('assigned_to',uid);return r.data||[]}catch(e){console.warn('[DB.getLeads]',e?.message||e);return[]}},
+
 
   // Config sync — save/load settings to Supabase for cross-device persistence
   async saveConfig(userId,key,value){if(!_SB||!userId)return;try{await _SB.schema('autodial').from('user_config').upsert({user_id:userId,key:key,value:value,updated_at:new Date().toISOString()},{onConflict:'user_id,key'})}catch(e){}},
@@ -3774,13 +3777,15 @@ window.DB={
     try{
     // Remove existing channel if any to prevent duplicate subscribe error
     try{_SB.removeChannel(_SB.channel('live-dashboard'))}catch(e){}
-    return _SB.channel('live-dashboard').on('postgres_changes',{event:'INSERT',schema:'public',table:'autodial_call_log'},p=>{callback('call',p.new)})
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'autodial_appointments'},p=>{callback('appt',p.new)})
+    return _SB.channel('live-dashboard').on('postgres_changes',{event:'INSERT',schema:'autodial',table:'call_log'},p=>{callback('call',p.new)})
+      .on('postgres_changes',{event:'INSERT',schema:'autodial',table:'appointments'},p=>{callback('appt',p.new)})
       // ═══ DELETE listener so undo flows: when an admin undoes a Set, doUndo deletes the
       // autodial_appointments row, this fires, and Main's liveFeed strips the matching entry.
-      .on('postgres_changes',{event:'DELETE',schema:'public',table:'autodial_appointments'},p=>{callback('appt_delete',p.old)})
-      .on('postgres_changes',{event:'*',schema:'public',table:'autodial_sessions'},p=>{callback('session',p.new)})
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'autodial_notifications'},p=>{callback('notif',p.new)})
+      .on('postgres_changes',{event:'DELETE',schema:'autodial',table:'appointments'},p=>{callback('appt_delete',p.old)})
+      .on('postgres_changes',{event:'*',schema:'autodial',table:'sessions'},p=>{callback('session',p.new)})
+      .on('postgres_changes',{event:'INSERT',schema:'autodial',table:'notifications'},p=>{callback('notif',p.new)})
+      .on('postgres_changes',{event:'*',schema:'autodial',table:'cb_queue'},p=>{callback('cb',p.new||p.old)})
+      .on('postgres_changes',{event:'*',schema:'autodial',table:'leads'},p=>{callback('lead',p.new||p.old)})
       .subscribe()}catch(e){console.warn('[Realtime]',e.message);return null}}
 };
 
@@ -8654,6 +8659,35 @@ function App() {
   }, []);
   var [streak, setStreak] = useState(0);
   var [bestStreak, setBestStreak] = useState(load('bestStreak') || 0);
+  // 0123: daily-login streak — consecutive calendar days (SGT) the user
+  // has opened the app, ending today. useState initializer runs once on
+  // mount so we record today and compute the streak in one pass:
+  //   1. Load the saved loginDays array (kept up to last 365 days)
+  //   2. Add today (deduped)
+  //   3. Walk backwards from today through the day-set; count while
+  //      consecutive, stop at the first gap → that's the streak
+  // Persisted as 'loginDays' in localStorage; never older than 365.
+  var [loginStreak] = useState(() => {
+    try {
+      var saved = load('loginDays');
+      var days = Array.isArray(saved) ? saved.filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)) : [];
+      var today = getTodaySGT();
+      if (days.indexOf(today) < 0) days.push(today);
+      var unique = [...new Set(days)].sort().slice(-365);
+      save('loginDays', unique);
+      var daySet = new Set(unique);
+      var streakCount = 0;
+      var cursor = new Date(today + 'T00:00:00Z');
+      for (var i = 0; i < 366; i++) {
+        var iso = cursor.toISOString().slice(0, 10);
+        if (daySet.has(iso)) {
+          streakCount++;
+          cursor.setUTCDate(cursor.getUTCDate() - 1);
+        } else break;
+      }
+      return streakCount || 1;
+    } catch (_e) { return 1; }
+  });
   var [achievements, setAchievements] = useState(load('achievements') || []);
   var [showAchievement, setShowAchievement] = useState(null);
   useEffect(() => {
@@ -10864,17 +10898,26 @@ function App() {
       _cfgTs
     });
     if (_SB && _user && window._cloudReady) {
-      _SB.schema('autodial').from('user_settings').upsert({
-        user_id: _user.id,
-        ui_preferences: {
-          ...cleanCfg,
-          _leadsCount: leads.length,
-          _lastSync: Date.now()
-        },
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'user_id'
-      }).catch(function () {});
+      (async () => {
+        try {
+          var pr = await _SB.schema('autodial').from('user_settings').select('ui_preferences').eq('user_id', _user.id).maybeSingle();
+          var prev = pr.data && pr.data.ui_preferences && typeof pr.data.ui_preferences === 'object' ? pr.data.ui_preferences : {};
+          await _SB.schema('autodial').from('user_settings').upsert({
+            user_id: _user.id,
+            ui_preferences: {
+              ...prev,
+              ...cleanCfg,
+              _leadsCount: leads.length,
+              _lastSync: Date.now()
+            },
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'user_id'
+          });
+        } catch (e) {
+          console.warn('[user_settings cfg sync]', e?.message || e);
+        }
+      })();
     }
   }, [leads, cfg, detectedColMap]);
   useEffect(() => {
@@ -11812,33 +11855,45 @@ function App() {
       _waLoad();
     }
     if (_user?.id) DB.getNotifs(_user.id).then(setNotifications);
-    if (role === 'main') {
-      var sub = null;
-      try {
-        sub = DB.subscribeLive((type, data) => {
-          if (type === 'appt_delete') {
-            setLiveFeed(p => p.filter(f => !(f.type === 'appt' && f.data && (data.id && f.data.id === data.id || data.lead_phone && f.data.lead_phone === data.lead_phone && f.data.admin_email === data.admin_email))));
-            return;
-          }
-          setLiveFeed(p => [{
-            type,
-            data,
-            ts: Date.now()
-          }, ...p].slice(0, 50));
-          if (type === 'appt') DB.getCBQueue().then(setCbQueue);
-        });
+    var sub = null;
+    try {
+      sub = DB.subscribeLive((type, data) => {
+        if (type === 'appt_delete') {
+          data = data || {};
+          if (role === 'main') setLiveFeed(p => p.filter(f => !(f.type === 'appt' && f.data && (data.id && f.data.id === data.id || data.lead_phone && f.data.lead_phone === data.lead_phone && f.data.admin_email === data.admin_email))));
+          _markSuppressedPush('appts');
+          setAppointments(prev => prev.filter(a => !(data.id && String(a.dbApptId || a.rowId || a.id || '') === String(data.id) || data.calendar_event_id && a.calEventId === data.calendar_event_id || data.lead_phone && (a.phone || '') === data.lead_phone && (!data.admin_email || (a.admin || '').toLowerCase() === String(data.admin_email || '').toLowerCase()) && (!data.appt_date || a.apptDate === data.appt_date))));
+          if (typeof window._liveSyncPull === 'function') window._liveSyncPull();
+          return;
+        }
+        if (type === 'lead') {
+          if (typeof window._liveSyncPull === 'function') window._liveSyncPull();
+          return;
+        }
+        if (role === 'main') setLiveFeed(p => [{
+          type,
+          data,
+          ts: Date.now()
+        }, ...p].slice(0, 50));
+        if (type === 'appt') {
+          DB.getCBQueue(role === 'admin' || role === 'main' && mainMode === 'call' ? myEmail : null).then(setCbQueue);
+          if (typeof window._liveSyncPull === 'function') window._liveSyncPull();
+        }
+        if (type === 'cb') DB.getCBQueue(role === 'admin' || role === 'main' && mainMode === 'call' ? myEmail : null).then(setCbQueue);
+      });
+      if (role === 'main') {
         if (gOk) gCalShare.listCalendars().then(setCalList);
         DB.getMyShares(_user?.id).then(setCalShares);
-      } catch (e) {
-        console.warn('[LiveSub]', e.message);
       }
-      return () => {
-        try {
-          if (sub) _SB.removeChannel(sub);
-        } catch (e) {}
-      };
+      if (role === 'admin') DB.getSharedCalendars(myEmail).then(setCalShares);
+    } catch (e) {
+      console.warn('[LiveSub]', e.message);
     }
-    if (role === 'admin') DB.getSharedCalendars(myEmail).then(setCalShares);
+    return () => {
+      try {
+        if (sub) _SB.removeChannel(sub);
+      } catch (e) {}
+    };
   }, []);
   useEffect(() => {
     if (gOk && role === 'main' && (!calList.length || calRefreshTrigger > 0)) gCalShare.listCalendars().then(setCalList).catch(() => {});
@@ -12069,6 +12124,7 @@ function App() {
     leadsPushTimer: null,
     apptsPushTimer: null,
     hasPulledOnce: false,
+    leadRowsReady: false,
     clearGuardUntil: 0,
     localApptsGuardUntil: 0
   });
@@ -12313,7 +12369,7 @@ function App() {
         sourceSheetName: p.sheetName || p.sourceSheetName || p.leads[0]?._sourceSheetName || ''
       };
       var nextLeads = tagLeadsWithSource(p.leads || [], sourceMeta);
-      if (role === 'admin' && (p.ownerAssigned || p.publishedBy) && (leadsRef.current || []).length) {
+      if (role === 'admin' && (p.ownerAssigned || p.publishedBy) && p.progressOwner !== 'admin' && (leadsRef.current || []).length) {
         var current = leadsRef.current || [];
         var currentId = current[0]?._sourceSheetId || '';
         var currentTab = current[0]?._sourceSheetTab || '';
@@ -12501,9 +12557,98 @@ function App() {
       setSyncStatus('synced');
       setLastSyncAt(Date.now());
     };
-    var pullLeads = async () => {};
-    var pullAssignedLeads = async () => {};
-    var pullAppts = async () => {};
+    var pullLeads = async () => {
+      if (_cancelled || !_user) return false;
+      try {
+        var rows = await DB.getLeads(_user.id);
+        if (!rows.length) return false;
+        rows = rows.slice().sort((a, b) => {
+          var ao = Number(a.data?._syncOrder);
+          var bo = Number(b.data?._syncOrder);
+          if (!Number.isFinite(ao)) ao = 999999;
+          if (!Number.isFinite(bo)) bo = 999999;
+          return ao - bo;
+        });
+        var first = rows[0]?.data || {};
+        var rowTs = rows.reduce((max, row) => Math.max(max, Date.parse(row.updated_at || '') || 0), 0) || Date.now();
+        var p = {
+          leads: rows.map(row => {
+            var d = row.data || {};
+            return { ...d, phone: d.phone || row.phone, status: d.status || row.status };
+          }),
+          sheetId: first.sheetId || first._sourceSheetId || '',
+          sheetTab: first.sheetTab || first._sourceSheetTab || '',
+          sheetName: first.sheetName || first._sourceSheetName || '',
+          ownerAssigned: rows.some(row => !!row.assigned_by) || !!first.ownerAssigned,
+          publishedBy: first.publishedBy || '',
+          progressOwner: first.progressOwner || (role === 'main' ? 'main' : rows.some(row => !!row.assigned_by) ? 'main' : 'admin'),
+          ts: rowTs
+        };
+        if (_applyLeadPayload(p, 'lead rows', 'autodial.leads')) {
+          setSyncStatus('synced');
+          setLastSyncAt(Date.now());
+          return true;
+        }
+      } catch (e) {
+        console.warn('[LiveSync leads pull]', e?.message || e);
+      }
+      return false;
+    };
+    var pullAssignedLeads = pullLeads;
+    var pullAppts = async () => {
+      if (_cancelled || !_user) return false;
+      try {
+        var dbAppts = role === 'main' ? await DB.getAllAppts() : await DB.getAppts(myEmail);
+        if (!dbAppts.length) return false;
+        var delIds = _getDelIds();
+        var mapped = dbAppts.map(a => ({
+          id: a.id || Date.now() + Math.random(),
+          dbApptId: a.id || '',
+          name: a.lead_name || '',
+          phone: a.lead_phone || '',
+          apptDate: a.appt_date || '',
+          apptTime: a.appt_time || '',
+          duration: a.duration_mins || 60,
+          calEventId: a.calendar_event_id || '',
+          admin: a.admin_email || '',
+          followUp: a.follow_up || 'pending',
+          tip: a.tip || 0,
+          createdAt: a.created_at || new Date().toISOString(),
+          followUpDate: a.follow_up_date || null,
+          shaky: !!a.shaky,
+          location: '',
+          industry: '',
+          remarks: '',
+          gender: '',
+          age: ''
+        })).filter(a => !isApptDeleted(a, delIds));
+        var newHash = _hashAppts(mapped);
+        if (newHash === _liveSyncRef.current.lastApptsHash) return false;
+        _liveSyncRef.current.lastApptsHash = newHash;
+        _markSuppressedPush('appts');
+        setAppointments(prev => {
+          var next = prev.slice();
+          var keyOf = a => a.calEventId ? 'cal:' + a.calEventId : a.dbApptId ? 'db:' + a.dbApptId : a.id ? 'id:' + a.id : ((a.admin || '') + '|' + (a.phone || '') + '|' + (a.apptDate || '') + '|' + (a.createdAt || ''));
+          var idxByKey = new Map(next.map((a, idx) => [keyOf(a), idx]).filter(x => x[0]));
+          mapped.forEach(a => {
+            var key = keyOf(a);
+            var idx = idxByKey.get(key);
+            if (idx !== undefined) next[idx] = { ...next[idx], ...a };
+            else {
+              idxByKey.set(key, next.length);
+              next.push(a);
+            }
+          });
+          return _dedupAppts(next);
+        });
+        setSyncStatus('synced');
+        setLastSyncAt(Date.now());
+        return true;
+      } catch (e) {
+        console.warn('[LiveSync appts pull]', e?.message || e);
+        return false;
+      }
+    };
     var pullSharedAdminCfg = async () => {
       if (_cancelled || role !== 'admin' || !_user) return;
       try {
@@ -12885,6 +13030,20 @@ function App() {
       _liveSyncRef.current.lastLeadsHash = newHash;
       return;
     }
+    var currentLeadRows = (leads || []).slice(0, 5000);
+    var previousLeadRows = (prevLeads && prevLeads.current) || [];
+    var currentPhones = new Set(currentLeadRows.map(l => String(l.phone || '')).filter(Boolean));
+    var orderByPhone = new Map(currentLeadRows.map((l, idx) => [String(l.phone || ''), idx]).filter(x => x[0]));
+    var prevPhones = new Set(previousLeadRows.map(l => String(l.phone || '')).filter(Boolean));
+    var fullSync = !_liveSyncRef.current.leadRowsReady || currentPhones.size !== prevPhones.size || [...currentPhones].some(ph => !prevPhones.has(ph));
+    var prevByPhone = new Map(previousLeadRows.map(l => [String(l.phone || ''), l]).filter(x => x[0]));
+    var changedPhones = new Set();
+    currentLeadRows.forEach(l => {
+      var ph = String(l.phone || '');
+      if (!ph) return;
+      var old = prevByPhone.get(ph);
+      if (fullSync || _hashAny(old) !== _hashAny(l)) changedPhones.add(ph);
+    });
     clearTimeout(_liveSyncRef.current.leadsPushTimer);
     _liveSyncRef.current.leadsPushTimer = setTimeout(async () => {
       try {
@@ -12904,21 +13063,53 @@ function App() {
         // Phase 7B2: bulk leads_<email> blob push replaced by per-row writes
         // to autodial.leads. assigned_to=current user; assigned_by remains the
         // source's user_id (NULL for Main's own queue, set to Main's id for
-        // admin-assigned). Strategy: delete-all-then-insert-all the rows
-        // assigned to me, since we receive the full snapshot here.
+        // admin-assigned). Strategy: update changed phones only, insert new
+        // phones, and remove stale phones only when the local queue shape changed.
         try {
-          await _SB.schema('autodial').from('leads').delete().eq('assigned_to', _user.id);
-          var rows = (leads || []).slice(0, 5000).map(function (l) {
-            return {
-              assigned_to: _user.id,
-              assigned_by: null,
-              data: { ...l, ...sourceMeta },
-              phone: String(l.phone || ''),
-              status: String(l.status || 'pending')
-            };
+          var er = await _SB.schema('autodial').from('leads').select('phone,assigned_by').eq('assigned_to', _user.id);
+          if (er.error) throw er.error;
+          var existingRows = er.data || [];
+          var existingPhoneSet = new Set(existingRows.map(r => String(r.phone || '')).filter(Boolean));
+          var assignedByPhone = {};
+          existingRows.forEach(r => {
+            var ph = String(r.phone || '');
+            if (ph && assignedByPhone[ph] === undefined) assignedByPhone[ph] = r.assigned_by || null;
           });
-          if (rows.length) await _SB.schema('autodial').from('leads').insert(rows);
-          DBG('[LiveSync] push', rows.length, 'leads hash', newHash);
+          var stalePhones = fullSync ? [...existingPhoneSet].filter(ph => ph && !currentPhones.has(ph)) : [];
+          if (stalePhones.length) {
+            var del = await _SB.schema('autodial').from('leads').delete().eq('assigned_to', _user.id).in('phone', stalePhones);
+            if (del.error) throw del.error;
+          }
+          var rowsToWrite = currentLeadRows.filter(l => changedPhones.has(String(l.phone || '')));
+          var inserts = [];
+          for (var ri = 0; ri < rowsToWrite.length; ri++) {
+            var l = rowsToWrite[ri];
+            var phone = String(l.phone || '');
+            if (!phone) continue;
+            var payload = {
+              assigned_by: assignedByPhone[phone] || null,
+              data: { ...l, ...sourceMeta, _syncOrder: orderByPhone.get(phone) ?? ri },
+              status: String(l.status || 'pending'),
+              updated_at: new Date().toISOString()
+            };
+            if (existingPhoneSet.has(phone)) {
+              var upd = await _SB.schema('autodial').from('leads').update(payload).eq('assigned_to', _user.id).eq('phone', phone);
+              if (upd.error) throw upd.error;
+            } else {
+              inserts.push({
+                assigned_to: _user.id,
+                phone,
+                ...payload
+              });
+            }
+          }
+          if (inserts.length) {
+            var ins = await _SB.schema('autodial').from('leads').insert(inserts);
+            if (ins.error) throw ins.error;
+          }
+          _liveSyncRef.current.leadRowsReady = true;
+          if (window._bumpSyncVer) window._bumpSyncVer();
+          DBG('[LiveSync] push leads updated=' + rowsToWrite.length + ' inserted=' + inserts.length + ' stale=' + stalePhones.length + ' hash', newHash);
         } catch (e) {
           console.warn('[LiveSync leads push]', e?.message || e);
         }
@@ -12943,8 +13134,8 @@ function App() {
         var me = (_user.email || '').toLowerCase();
         _liveSyncRef.current.lastApptsHash = newHash;
         // Phase 7B2: apptlive_<email> push eliminated. Appointments are
-        // persisted row-by-row to autodial.appointments via DB.upsertAppt
-        // and propagated through realtime; no aggregate blob push needed.
+        // persisted row-by-row to autodial.appointments and propagated
+        // through realtime; no aggregate blob push needed.
         DBG('[LiveSync] appts push elided hash', newHash);
       } catch (e) {
         console.warn('[LiveSync appts push]', e?.message || e);
@@ -13262,6 +13453,7 @@ function App() {
   var leadsRef = useRef(leads);
   useEffect(() => {
     leadsRef.current = leads;
+    prevLeads.current = leads;
   }, [leads]);
   var [callAssist, setCallAssist] = useState(() => load('callAssist') ?? true);
   var [callAssistStatus, setCallAssistStatus] = useState('');
@@ -16088,21 +16280,48 @@ function App() {
       ownerAssigned: true,
       publishedBy: myEmail
     };
+    var existingRows = [];
+    var existingRes = await _SB.schema('autodial').from('leads').select('data,phone,status').eq('assigned_to', aid).eq('assigned_by', _user.id);
+    if (existingRes.error) throw existingRes.error;
+    existingRows = existingRes.data || [];
+    var existingByPhone = new Map(existingRows.map(function (row) {
+      return [phoneDigits(row.phone || row.data?.phone || ''), row];
+    }).filter(function (x) {
+      return x[0];
+    }));
+    clean = clean.slice(0, 5000).map(function (l) {
+      var old = existingByPhone.get(phoneDigits(l.phone || ''));
+      if (!old) return l;
+      var d = old.data || {};
+      return {
+        ...l,
+        ...d,
+        phone: d.phone || old.phone || l.phone,
+        status: d.status || old.status || l.status,
+        _sourceSheetId: meta.sourceSheetId || meta.sheetId || '',
+        _sourceSheetTab: meta.sourceSheetTab || meta.sheetTab || '',
+        _sourceSheetName: meta.sourceSheetName || meta.sheetName || ''
+      };
+    });
     // Phase 7B2: assigned_leads_<adminEmail> blob replaced by per-row writes
     // to autodial.leads where assigned_to=adminUid + assigned_by=mainUid.
-    // Replace-all strategy: delete admin's existing rows assigned by me,
-    // then insert the new set.
-    await _SB.schema('autodial').from('leads').delete().eq('assigned_to', aid).eq('assigned_by', _user.id);
-    var rows = clean.slice(0, 5000).map(function (l) {
+    // Replace rows assigned by me, but carry forward the admin's per-phone
+    // progress already in cloud so assignment refreshes do not reset statuses.
+    var delAssigned = await _SB.schema('autodial').from('leads').delete().eq('assigned_to', aid).eq('assigned_by', _user.id);
+    if (delAssigned.error) throw delAssigned.error;
+    var rows = clean.map(function (l, idx) {
       return {
         assigned_to: aid,
         assigned_by: _user.id,
-        data: { ...l, ...sourceMeta },
+        data: { ...l, ...sourceMeta, _syncOrder: idx },
         phone: String(l.phone || ''),
         status: String(l.status || 'pending')
       };
     });
-    if (rows.length) await _SB.schema('autodial').from('leads').insert(rows);
+    if (rows.length) {
+      var insAssigned = await _SB.schema('autodial').from('leads').insert(rows);
+      if (insAssigned.error) throw insAssigned.error;
+    }
     return true;
   };
   var publishAssignedLeadsToAdmins = async (configs, opts = {}) => {
@@ -16221,6 +16440,13 @@ function App() {
       var lr = await _SB.schema('autodial').from('leads').select('data,phone,status,assigned_by').eq('assigned_to', _user.id);
       var rows = (lr && lr.data) || [];
       if (!rows.length) return false;
+      rows = rows.slice().sort((a, b) => {
+        var ao = Number(a.data?._syncOrder);
+        var bo = Number(b.data?._syncOrder);
+        if (!Number.isFinite(ao)) ao = 999999;
+        if (!Number.isFinite(bo)) bo = 999999;
+        return ao - bo;
+      });
       var first = rows[0]?.data || {};
       var p = {
         leads: rows.map(function (row) {
@@ -16231,6 +16457,8 @@ function App() {
         sheetTab: first.sheetTab || first._sourceSheetTab || '',
         sheetName: first.sheetName || first._sourceSheetName || '',
         ownerAssigned: rows.some(function (r) { return !!r.assigned_by; }),
+        publishedBy: first.publishedBy || '',
+        progressOwner: first.progressOwner || (rows.some(function (r) { return !!r.assigned_by; }) ? 'main' : 'admin'),
         ts: Date.now()
       };
       if (!Array.isArray(p.leads) || !p.leads.length) return false;
@@ -16244,7 +16472,7 @@ function App() {
         sourceSheetName: myCfg._tsName || p.sheetName || ''
       };
       var pulled = tagLeadsWithSource(validateStatuses(p.leads || []), meta);
-      if ((leadsRef.current || []).length) {
+      if (p.ownerAssigned && p.progressOwner !== 'admin' && (leadsRef.current || []).length) {
         var current = leadsRef.current || [];
         var sameSource = (current[0]?._sourceSheetId || '') === meta.sourceSheetId && (current[0]?._sourceSheetTab || '') === meta.sourceSheetTab;
         if (sameSource) {
@@ -17665,7 +17893,16 @@ function App() {
       pastApptBanner,
       h('div', { className: 'cad-dashboard-head' },
         h('div', null,
-          h('div', { className: 'cad-inline' }, h('span', { className: 'cad-label' }, new Date().toLocaleDateString('en-SG', { weekday: 'long', month: 'short', day: 'numeric' })), h('span', { className: 'cad-pill amber' }, h('span', { className: 'cad-mono' }, '12'), '-day streak')),
+          h('div', { className: 'cad-inline' },
+            h('span', { className: 'cad-label' }, new Date().toLocaleDateString('en-SG', { weekday: 'long', month: 'short', day: 'numeric' })),
+            // 0123: streak pill is now derived from loginDays — was hardcoded "12".
+            // Plural-aware copy + a fire emoji once the streak is real (≥2 days).
+            h('span', { className: 'cad-pill amber', title: loginStreak === 1 ? 'First day back — open AutoDial again tomorrow to start a streak' : loginStreak + ' consecutive days using AutoDial' },
+              loginStreak >= 2 && h('span', { style: { marginRight: 4 } }, '🔥'),
+              h('span', { className: 'cad-mono' }, loginStreak),
+              loginStreak === 1 ? '-day' : '-day streak'
+            )
+          ),
           h('h1', { className: 'cad-title' }, (new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening'), ', ', (userName || 'Joel').split(' ')[0], '.'),
           h('p', { className: 'cad-muted', style: { fontSize: 14, marginTop: 4 } }, knownAdmins.length || (demo ? 3 : 0), ' admins ready · ', liveRows.length, ' are on a call right now.')
         ),
