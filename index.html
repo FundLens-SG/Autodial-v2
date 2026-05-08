@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0121'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0122'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -679,6 +679,21 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
   .cad-lead-jump-inline__results{max-height:260px}
 }
 .cad-phone-chip{display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:10px;background:var(--ad-bg-2);border:1px solid var(--ad-line-2);font:13px 'JetBrains Mono',ui-monospace,monospace;color:var(--ad-t-0)}
+/* 0122: lead-context chips — small per-field pills surfacing every
+   sheet-parsed field (email / gender / race / company / income /
+   savings / NRIC / birthday) so the caller has full context before
+   dialing. Tone variants: email amber, money green, NRIC neutral.
+   Each chip is text-overflow:ellipsis so a long email doesn't blow
+   out the row width. */
+.cad-lead-context{align-items:center}
+.cad-lead-context__chip{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:8px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);font-size:12px;font-weight:500;color:var(--ad-t-1);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cad-lead-context__chip--email{color:var(--ad-amber);border-color:oklch(0.80 0.13 75 / .26);background:linear-gradient(135deg,var(--ad-amber-dim),var(--ad-bg-2) 60%);max-width:240px}
+.cad-lead-context__chip--money{color:var(--ad-green);border-color:oklch(0.74 0.16 150 / .26);background:linear-gradient(135deg,var(--ad-green-dim),var(--ad-bg-2) 60%)}
+.cad-lead-context__chip--id{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--ad-t-2)}
+@media(max-width:560px){
+  .cad-lead-context__chip{padding:3px 7px;font-size:11px}
+  .cad-lead-context__chip--email{max-width:180px}
+}
 .cad-note{padding:12px 14px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);border-radius:10px;color:var(--ad-t-1);font-size:13px;line-height:1.6}
 .cad-outcomes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 .cad-call-actions-sticky{position:sticky;bottom:0;z-index:6;margin-top:auto;padding:12px 0 4px;background:linear-gradient(180deg,transparent,var(--ad-bg-0) 18%,var(--ad-bg-0))}
@@ -1462,7 +1477,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0121';
+window.APP_VERSION='2026.05.05.0122';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -10699,15 +10714,21 @@ function App() {
       placeholder: 'I already have an agent'
     });
     if (!title) return;
+    // 0122: rich-text talk-track on add (matches the edit flow). Same
+    // toolbar as the calling-script editor — bold, italic, underline,
+    // size, six text colors, three highlights — so the agent can
+    // colour-code the answer for fast scanning during a live call.
     var answer = await promptAsync('Suggested answer / talk track', '', {
       title: 'Add talk track',
-      multiline: true
+      multiline: true,
+      rich: true
     });
     if (!answer) return;
+    var answerHtml = /<[a-z][^>]*>/i.test(answer) ? safeRich(answer) : cadPlainToHtml(answer);
     var item = {
       id: 'obj_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
       title,
-      answer,
+      answer: answerHtml,
       category: 'common'
     };
     saveObjections([...(cfg.objections || []), item]);
@@ -17124,6 +17145,13 @@ function App() {
         setRefNotes(html);
         setRefEditing(true);
         setCfg(s => ({ ...s, refNotes: html, scriptLocalEditedAt: Date.now() }));
+      } else if (target === 'dialog') {
+        // 0122: rich-text dialog mode (used by cadEditObjection so the
+        // user can apply the same color palette / bold / italic / size
+        // toolbar that the calling-script editor offers). Writes to
+        // dialogRequest.value as HTML; promptAsync resolves to that
+        // HTML string when the user confirms.
+        setDialogRequest(req => req ? { ...req, value: html } : req);
       } else {
         setScriptContent(html);
         setScriptEditing(true);
@@ -17171,9 +17199,17 @@ function App() {
       if (title === null) return;
       title = String(title || '').trim();
       if (!title) return toast('Title required', 'err');
-      var answer = await promptAsync('Suggested answer / talk track', _htmlToPlain(item.answer || item.response || item.body || '', 5000), { title: 'Edit talk track', multiline: true });
+      // 0122: talk-track edit now uses the rich-text mode (rich:true)
+      // so the user gets the same B/I/U/size + 6 colors + 3 highlights
+      // toolbar as the calling-script editor. Existing answer HTML
+      // (color spans, bolds, etc.) is preserved through the round-trip
+      // — no more lossy plain-text conversion that stripped formatting.
+      var existingHtml = safeRich(item.answer || item.response || item.body || '');
+      var answer = await promptAsync('Suggested answer / talk track', existingHtml, { title: 'Edit talk track', multiline: true, rich: true });
       if (answer === null) return;
-      var answerHtml = cadPlainToHtml(answer);
+      // If the input came back as plain text (legacy fallback), wrap it;
+      // otherwise it's already HTML from the rich editor — keep as-is.
+      var answerHtml = /<[a-z][^>]*>/i.test(answer) ? safeRich(answer) : cadPlainToHtml(answer);
       var list = cadEditableObjectionBase();
       var found = false;
       var next = list.map(o => {
@@ -17877,9 +17913,26 @@ function App() {
             )
           ),
           h('div', { className: 'cad-inline', style: { alignItems: 'flex-end', gap: 24 } },
-            h('div', { style: { flex: 1 } },
+            h('div', { style: { flex: 1, minWidth: 0 } },
               h('h2', { className: 'cad-lead-name' }, leadName),
-              h('div', { className: 'cad-inline', style: { marginTop: 8, flexWrap: 'wrap' } }, h('span', { className: 'cad-phone-chip' }, icon('PhoneOutgoing', 14), leadPhone || 'No phone'), leadAge && h('span', { className: 'cad-muted', style: { fontSize: 13 } }, leadAge, demo ? ' · last contacted 2d ago' : ''))
+              // 0122: lead context row — surfaces every sheet-parsed field
+              // available on the lead so the caller has full context
+              // before the call. Each field renders as a small chip with
+              // a leading emoji, and only renders if the value is present
+              // (no empty placeholders cluttering the line).
+              h('div', { className: 'cad-inline cad-lead-context', style: { marginTop: 10, flexWrap: 'wrap', gap: 8 } },
+                h('span', { className: 'cad-phone-chip' }, icon('PhoneOutgoing', 14), leadPhone || 'No phone'),
+                leadAge && h('span', { className: 'cad-lead-context__chip' }, '🎂 ', leadAge),
+                activeLead?.email && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--email', title: activeLead.email }, '✉ ', activeLead.email),
+                activeLead?.gender && h('span', { className: 'cad-lead-context__chip' }, (String(activeLead.gender).toLowerCase().startsWith('m') ? '♂ ' : '♀ '), activeLead.gender),
+                activeLead?.race && h('span', { className: 'cad-lead-context__chip' }, '🌐 ', activeLead.race),
+                activeLead?.company && h('span', { className: 'cad-lead-context__chip' }, '🏢 ', activeLead.company),
+                activeLead?.income && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--money' }, '💰 ', activeLead.income),
+                activeLead?.savings && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--money' }, '🏦 ', activeLead.savings),
+                activeLead?.nric && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--id', title: 'NRIC' }, '🪪 ', String(activeLead.nric).slice(0, 4) + '…' + String(activeLead.nric).slice(-1)),
+                activeLead?.birthday && h('span', { className: 'cad-lead-context__chip' }, '🎉 ', activeLead.birthday),
+                demo && h('span', { className: 'cad-muted', style: { fontSize: 12 } }, '· last contacted 2d ago')
+              )
             ),
             // 0103: lead-card button only shows when a session is RUNNING —
             // pre-fix it doubled as a session starter ("Start calling")
@@ -19394,7 +19447,20 @@ function App() {
       // runs of spaces (so the emoji-padded labels stay readable). Also
       // bumped line-height for breathing room between rows.
       h('div', { className: 'cad-modal-head' }, h('div', null, h('h3', { className: 'cad-modal-title' }, dialogRequest.title), h('p', { className: 'cad-modal-sub', style: { whiteSpace: 'pre-line', lineHeight: 1.7, fontSize: 13 } }, dialogRequest.message)), h('button', { className: 'cad-btn ghost', onClick: () => resolveDialog(dialogRequest.kind === 'confirm' ? false : null) }, 'x')),
-      dialogRequest.kind === 'prompt' && cadField('Response', dialogRequest.multiline ? h('textarea', { value: dialogRequest.value, onChange: e => setDialogRequest(req => ({ ...req, value: e.target.value })), placeholder: dialogRequest.placeholder }) : h('input', { value: dialogRequest.value, onChange: e => setDialogRequest(req => ({ ...req, value: e.target.value })), placeholder: dialogRequest.placeholder, onKeyDown: e => { if (e.key === 'Enter') resolveDialog(dialogRequest.value || null); } })),
+      dialogRequest.kind === 'prompt' && cadField(
+        'Response',
+        // 0122: rich-text mode lets the user style the response with
+        // the same toolbar (B / I / U / size / 6 colors / 3 highlights)
+        // as the calling-script editor. Used by cadEditObjection so
+        // talk-track answers can be color-coded for easy scanning
+        // during a live call.
+        dialogRequest.rich
+          ? h(React.Fragment, null, cadRichToolbar('dialog'), cadRichEditor('dialog', dialogRequest.value || '', false))
+          : (dialogRequest.multiline
+              ? h('textarea', { value: dialogRequest.value, onChange: e => setDialogRequest(req => ({ ...req, value: e.target.value })), placeholder: dialogRequest.placeholder })
+              : h('input', { value: dialogRequest.value, onChange: e => setDialogRequest(req => ({ ...req, value: e.target.value })), placeholder: dialogRequest.placeholder, onKeyDown: e => { if (e.key === 'Enter') resolveDialog(dialogRequest.value || null); } })
+            )
+      ),
       h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => resolveDialog(dialogRequest.kind === 'confirm' ? false : null) }, dialogRequest.cancelLabel || 'Cancel'), h('button', { className: 'cad-btn primary', onClick: () => resolveDialog(dialogRequest.kind === 'prompt' ? (dialogRequest.value || null) : true) }, dialogRequest.confirmLabel || 'Confirm'))
     ));
     var cbPicks = [['Later today', makeCbPick(0, Math.min(new Date().getHours() + 2, 20), 0)], ['Tomorrow 10am', makeCbPick(1, 10, 0)], ['Tomorrow 2pm', makeCbPick(1, 14, 0)], ['In 3 days', makeCbPick(3, 10, 0)]];
