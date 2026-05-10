@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.10.0142'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0143'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1554,7 +1554,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.10.0142';
+window.APP_VERSION='2026.05.11.0143';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -1902,7 +1902,9 @@ async function authCheck(){try{
 // Persistent device ID — survives reloads so cloud write-backs from this device are always ignored.
 window._devId = localStorage.getItem('autodial_devId');
 if(!window._devId){window._devId='dev_'+Math.random().toString(36).slice(2)+'_'+Date.now().toString(36);localStorage.setItem('autodial_devId',window._devId)}
-var _channel=null,_syncCbs=[],_channelStatus='idle',_reconnectTimer=null;
+var _channel=null,_syncCbs=[],_channelStatus='idle',_reconnectTimer=null,_pendingSync=[];
+function _sendSyncPayload(payload){try{if(_channel&&_channelStatus==='SUBSCRIBED')_channel.send({type:'broadcast',event:'sync',payload:payload})}catch(e){console.warn('[sync send]',e?.message||e)}}
+function _flushPendingSync(){if(!_pendingSync.length||!_channel||_channelStatus!=='SUBSCRIBED')return;var now=Date.now();var q=_pendingSync.splice(0,_pendingSync.length).filter(p=>!p._ts||now-p._ts<5*60000);q.forEach(_sendSyncPayload)}
 function initSync(){try{if(!_SB||!_user?.id)return;
   if(_channel){try{_SB.removeChannel(_channel)}catch(e){}_channel=null}
   _channelStatus='connecting';
@@ -1910,7 +1912,7 @@ function initSync(){try{if(!_SB||!_user?.id)return;
   _channel.on('broadcast',{event:'sync'},function(msg){var d=msg.payload;if(!d||d._dev===window._devId)return;_syncCbs.forEach(function(cb){try{cb(d)}catch(e){console.warn('[sync cb]',e)}})});
   _channel.subscribe(function(status,err){
     _channelStatus=status;
-    if(status==='SUBSCRIBED'){console.info('[InitSync] connected',window._devId);clearTimeout(_reconnectTimer);_reconnectTimer=null}
+    if(status==='SUBSCRIBED'){console.info('[InitSync] connected',window._devId);clearTimeout(_reconnectTimer);_reconnectTimer=null;_flushPendingSync()}
     else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'||status==='CLOSED'){
       console.warn('[InitSync] channel lost →',status,err||'',', reconnecting in 2s');
       clearTimeout(_reconnectTimer);
@@ -1918,7 +1920,7 @@ function initSync(){try{if(!_SB||!_user?.id)return;
     }
   });
 }catch(e){console.warn('[InitSync]',e);clearTimeout(_reconnectTimer);_reconnectTimer=setTimeout(initSync,3000)}}
-window.syncSend=function(t,p){if(_channel&&_channelStatus==='SUBSCRIBED')_channel.send({type:'broadcast',event:'sync',payload:{...p,type:t,_dev:window._devId,_ts:Date.now()}})};
+window.syncSend=function(t,p){var payload={...p,type:t,_dev:window._devId,_ts:Date.now()};if(_channel&&_channelStatus==='SUBSCRIBED')_sendSyncPayload(payload);else{_pendingSync.push(payload);if(_pendingSync.length>25)_pendingSync=_pendingSync.slice(-25)}};
 window.onSync=function(cb){_syncCbs.push(cb);return function(){_syncCbs=_syncCbs.filter(function(c){return c!==cb})}};
 // Re-establish channel on visibility + online
 if(typeof document!=='undefined'){document.addEventListener('visibilitychange',function(){if(!document.hidden&&_SB&&_user&&_channelStatus!=='SUBSCRIBED')initSync()})}
@@ -3771,10 +3773,14 @@ window.gTimesheet={_id:null,
 // ══════════════════════════════════════════════════════
 window.DB={
   // Sessions
-  async saveSess(s,uid,email){if(!_SB)return;try{await _SB.schema('autodial').from('sessions').insert({
-    user_id:uid,email,start_time:new Date(s.startTime).toISOString(),end_time:s.endTime?new Date(s.endTime).toISOString():null,
-    elapsed:s.elapsed,dialed:s.dialed,np:s.np,cb:s.cb,ni:s.ni,sets:s.sets,tier:s.tier,
-    hourly_rate:s.hourlyRate,bonus_mult:s.bonusMult||1.5,is_bonus:!!s.bonus,is_full_session:!!s.fullSession,pay:s.pay||0})}catch(e){console.warn('[DB]',e.message)}},
+  async saveSess(s,uid,email){if(!_SB||!s||!uid)return;try{var startIso=new Date(s.startTime).toISOString();var payload={
+    user_id:uid,email,start_time:startIso,end_time:s.endTime?new Date(s.endTime).toISOString():null,
+    elapsed:s.creditHours!=null?Math.round((Number(s.creditHours)||0)*3600):s.elapsed,dialed:s.dialed,np:s.np,cb:s.cb,ni:s.ni,sets:s.sets,tier:s.tier,
+    hourly_rate:s.hourlyRate,bonus_mult:s.bonusMult||1.5,is_bonus:!!s.bonus,is_full_session:!!s.fullSession,pay:s.pay||0};
+    var existing=await _SB.schema('autodial').from('sessions').select('id').eq('user_id',uid).eq('email',email).eq('start_time',startIso).maybeSingle();
+    if(existing?.data?.id){await _SB.schema('autodial').from('sessions').update(payload).eq('id',existing.data.id)}
+    else{await _SB.schema('autodial').from('sessions').insert(payload)}
+  }catch(e){console.warn('[DB]',e.message)}},
   async getSessions(email){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('sessions').select('*').eq('email',email).order('start_time',{ascending:false});return r.data||[]}catch(e){return[]}},
   async getAllSessions(){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('sessions').select('*').order('start_time',{ascending:false});return r.data||[]}catch(e){return[]}},
   async markPaid(email){if(!_SB)return;try{await _SB.schema('autodial').from('sessions').update({paid:true,paid_date:new Date().toISOString()}).eq('email',email).eq('paid',false)}catch(e){}},
@@ -8962,6 +8968,61 @@ function App() {
   // below — it already polls user_settings on focus/visibility/online,
   // we just extend the read to also pick up liveSession.
   var liveSessionPushRef = useRef({ timer: null, lastPushed: '' });
+  function makeLiveSessionSnapshot(sourceSession, overrides = {}) {
+    var src = sourceSession === undefined ? session : sourceSession;
+    var now = Date.now();
+    if (src && !src.ended) return {
+      id: src.id,
+      startTime: src.startTime,
+      email: src.email || myEmail,
+      dialed: src.dialed || 0,
+      np: src.np || 0,
+      cb: src.cb || 0,
+      ni: src.ni || 0,
+      sets: src.sets || 0,
+      selectedSlot: src.selectedSlot || null,
+      sessionTarget: overrides.sessionTarget || sessionTarget || null,
+      queuePriority: overrides.queuePriority || cfg.queuePriority || null,
+      curIdx: typeof overrides.curIdx === 'number' ? overrides.curIdx : typeof curIdx === 'number' ? curIdx : -1,
+      running: typeof overrides.running === 'boolean' ? overrides.running : !!running,
+      phase: overrides.phase || phase || 'idle',
+      ended: false,
+      devId: window._devId,
+      ts: now
+    };
+    if (src && src.ended) return {
+      id: src.id,
+      startTime: src.startTime,
+      email: src.email || myEmail,
+      ended: true,
+      endTime: src.endTime || overrides.endTime || now,
+      running: false,
+      phase: 'idle',
+      devId: window._devId,
+      ts: now
+    };
+    return null;
+  }
+  function hashLiveSessionSnapshot(snapshot) {
+    return snapshot ? JSON.stringify({ id: snapshot.id, startTime: snapshot.startTime, endTime: snapshot.endTime || 0, dialed: snapshot.dialed || 0, sets: snapshot.sets || 0, np: snapshot.np || 0, cb: snapshot.cb || 0, ni: snapshot.ni || 0, ended: !!snapshot.ended, running: !!snapshot.running, phase: snapshot.phase || 'idle', st: snapshot.sessionTarget || null, qp: snapshot.queuePriority || null, cur: snapshot.curIdx ?? -1 }) : 'null';
+  }
+  async function pushLiveSessionSnapshotNow(snapshot) {
+    if (!_SB || !_user || !myEmail) return false;
+    try {
+      var pr = await _SB.schema('autodial').from('user_settings').select('ui_preferences').eq('user_id', _user.id).maybeSingle();
+      var prev = (pr.data && pr.data.ui_preferences) || {};
+      await _SB.schema('autodial').from('user_settings').upsert({
+        user_id: _user.id,
+        ui_preferences: { ...prev, liveSession: snapshot },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+      liveSessionPushRef.current.lastPushed = hashLiveSessionSnapshot(snapshot);
+      return true;
+    } catch (e) {
+      console.warn('[liveSession push]', e?.message || e);
+      return false;
+    }
+  }
   useEffect(() => {
     if (!_SB || !_user || !myEmail) return;
     var ref = liveSessionPushRef.current;
@@ -8971,48 +9032,14 @@ function App() {
     // pointer) all ride along now so all of them sync cross-device.
     // Pre-fix: setting goals or reordering priority on the desktop
     // never reached the mobile.
-    var snapshot = (session && !session.ended) ? {
-      id: session.id,
-      startTime: session.startTime,
-      email: session.email || myEmail,
-      dialed: session.dialed || 0,
-      np: session.np || 0,
-      cb: session.cb || 0,
-      ni: session.ni || 0,
-      sets: session.sets || 0,
-      selectedSlot: session.selectedSlot || null,
-      sessionTarget: sessionTarget || null,
-      queuePriority: cfg.queuePriority || null,
-      curIdx: typeof curIdx === 'number' ? curIdx : -1,
-      ended: false,
-      devId: window._devId,
-      ts: Date.now()
-    } : (session && session.ended) ? {
-      id: session.id,
-      startTime: session.startTime,
-      email: session.email || myEmail,
-      ended: true,
-      endTime: session.endTime || Date.now(),
-      devId: window._devId,
-      ts: Date.now()
-    } : null;
-    var hash = snapshot ? JSON.stringify({ id: snapshot.id, startTime: snapshot.startTime, endTime: snapshot.endTime || 0, dialed: snapshot.dialed || 0, sets: snapshot.sets || 0, np: snapshot.np || 0, cb: snapshot.cb || 0, ni: snapshot.ni || 0, ended: !!snapshot.ended, st: snapshot.sessionTarget || null, qp: snapshot.queuePriority || null, cur: snapshot.curIdx ?? -1 }) : 'null';
+    var snapshot = makeLiveSessionSnapshot(session);
+    var hash = hashLiveSessionSnapshot(snapshot);
     if (hash === ref.lastPushed) return;
     ref.timer = setTimeout(async () => {
-      try {
-        var pr = await _SB.schema('autodial').from('user_settings').select('ui_preferences').eq('user_id', _user.id).maybeSingle();
-        var prev = (pr.data && pr.data.ui_preferences) || {};
-        var next = { ...prev, liveSession: snapshot };
-        await _SB.schema('autodial').from('user_settings').upsert({
-          user_id: _user.id,
-          ui_preferences: next,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
-        ref.lastPushed = hash;
-      } catch (e) { console.warn('[liveSession push]', e?.message || e); }
+      await pushLiveSessionSnapshotNow(snapshot);
     }, 1500);
     return () => clearTimeout(ref.timer);
-  }, [session?.id, session?.startTime, session?.dialed, session?.np, session?.cb, session?.ni, session?.sets, session?.ended, sessionTarget?.type, sessionTarget?.count, JSON.stringify(sessionTarget?.selected || []), JSON.stringify(sessionTarget?.counts || {}), JSON.stringify(cfg.queuePriority || []), curIdx, myEmail]);
+  }, [session?.id, session?.startTime, session?.dialed, session?.np, session?.cb, session?.ni, session?.sets, session?.ended, running, phase, sessionTarget?.type, sessionTarget?.count, JSON.stringify(sessionTarget?.selected || []), JSON.stringify(sessionTarget?.counts || {}), JSON.stringify(cfg.queuePriority || []), curIdx, myEmail]);
   // 0107: cross-device session PULL. Runs on ALL devices (desktop +
   // mobile) — separate from the mobile-only phone_dialer poll
   // because session mirroring needs to flow both ways. Polls the
@@ -9108,6 +9135,12 @@ function App() {
               if (typeof remoteSess.curIdx === 'number' && remoteSess.curIdx >= 0) {
                 setCurIdx(remoteSess.curIdx);
               }
+              if (typeof remoteSess.running === 'boolean') {
+                setRunning(remoteSess.running);
+              } else {
+                setRunning(true);
+              }
+              setPhase(remoteSess.phase || (remoteSess.running === false ? 'idle' : 'calling'));
             }
           }
         } else if (!remoteSess && sessionRef.current && !sessionRef.current.ended && sessionRef.current._mirrored) {
@@ -14117,16 +14150,36 @@ function App() {
       lead: idx >= 0 ? leadsRef.current[idx] : null
     };
   }, [role, adminLeadLinked]);
-  var markPhoneDialHandled = useCallback(d => {
+  var normalizePhoneDialerQueue = d => {
+    if (!d) return [];
+    var q = Array.isArray(d.queue) ? d.queue : d.phone ? [d] : [];
+    return q.filter(x => x && x.phone);
+  };
+  var packPhoneDialerQueue = q => {
+    var clean = (q || []).filter(x => x && x.phone).slice(-10);
+    var latest = clean[clean.length - 1] || {};
+    return { ...latest, queue: clean };
+  };
+  var markPhoneDialHandled = useCallback(async d => {
     if (!_SB || !_user || !myEmail || !d?.id) return;
     try {
+      var r = await _SB.schema('autodial').from('user_settings').select('phone_dialer').eq('user_id', _user.id).maybeSingle();
+      var now = Date.now();
+      var id = d.id;
+      var q = normalizePhoneDialerQueue(r.data ? r.data.phone_dialer : null);
+      if (!q.length) q = [d];
+      q = q.map(item => {
+        var itemId = item.id || ('dial_' + (item.ts || '') + '_' + phoneDigits(item.phone || ''));
+        if (itemId !== id) return item;
+        return {
+          ...item,
+          handledBy: window._devId,
+          handledAt: now
+        };
+      }).filter(item => !item.ts || now - item.ts < 20 * 60000).slice(-10);
       _SB.schema('autodial').from('user_settings').upsert({
         user_id: _user.id,
-        phone_dialer: {
-          ...d,
-          handledBy: window._devId,
-          handledAt: Date.now()
-        },
+        phone_dialer: packPhoneDialerQueue(q),
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'user_id'
@@ -14174,7 +14227,7 @@ function App() {
     });
     return true;
   }, [applyDialState, isMob, callAssist, showNextLeadNotification, markPhoneDialHandled, role, adminLeadLinked]);
-  var writePhoneDialRequest = useCallback(req => {
+  var writePhoneDialRequest = useCallback(async req => {
     if (!_SB || !_user || !myEmail || !req?.phone) return;
     try {
       var payload = {
@@ -14186,9 +14239,15 @@ function App() {
         handledBy: '',
         handledAt: 0
       };
+      var r = await _SB.schema('autodial').from('user_settings').select('phone_dialer').eq('user_id', _user.id).maybeSingle();
+      var now = Date.now();
+      var q = normalizePhoneDialerQueue(r.data ? r.data.phone_dialer : null)
+        .filter(item => !item.ts || now - item.ts < 20 * 60000)
+        .filter(item => !item.handledAt || now - item.handledAt < 5 * 60000);
+      q.push(payload);
       _SB.schema('autodial').from('user_settings').upsert({
         user_id: _user.id,
-        phone_dialer: payload,
+        phone_dialer: packPhoneDialerQueue(q),
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'user_id'
@@ -14312,7 +14371,17 @@ function App() {
   }, [callAssist, running, phase, requestWakeLock, releaseWakeLock]);
   useEffect(() => {
     var unsub = onSync(d => {
-      if (d.type === 'dial' || d.type === 'dial_ready') {
+      if (d.type === 'dial_ready') {
+        if (role === 'admin' && !adminLeadLinked) return;
+        if (isMob) handlePhoneDialRequest(d, {
+          source: 'realtime'
+        });else {
+          if (d.session) setSession(d.session);
+          if (typeof d.curIdx === 'number') setCurIdx(d.curIdx);
+        }
+        return;
+      }
+      if (d.type === 'dial') {
         if (role === 'admin' && !adminLeadLinked) return;
         if (isMob) handlePhoneDialRequest(d, {
           source: 'realtime'
@@ -14392,7 +14461,16 @@ function App() {
       if (stopped) return;
       try {
         var r = await _SB.schema('autodial').from('user_settings').select('phone_dialer').eq('user_id', _user.id).maybeSingle();
-        var d = r.data ? r.data.phone_dialer : null;
+        var q = normalizePhoneDialerQueue(r.data ? r.data.phone_dialer : null);
+        var d = q.find(item => {
+          if (!item || !item.phone || item.devId === window._devId) return false;
+          if (item.ts && Date.now() - item.ts > 20 * 60000) return false;
+          if (item.handledBy) return false;
+          var localLast = '';
+          try { localLast = localStorage.getItem('ad_lastPhoneDialId') || ''; } catch (_e) {}
+          var itemId = item.id || ('dial_' + (item.ts || '') + '_' + String(item.phone || '').replace(/\D/g, ''));
+          return !(localLast && localLast === itemId);
+        }) || null;
         if (!d || !d.phone || d.devId === window._devId) return;
         if (d.ts && Date.now() - d.ts > 20 * 60000) return;
         // 0106: skip if this device already handled this dial — prevents
@@ -15358,6 +15436,9 @@ function App() {
       sheetQueueRef.current = [...q, ...sheetQueueRef.current].slice(-300);
       save('_sheetQueue', sheetQueueRef.current);
       setSheetQueueStatus(p => ({ ...p, lastError: 'Google is not connected', retryAt: Date.now() + 8000 }));
+      sheetFlushInFlight.current = false;
+      clearTimeout(sheetFlushTimer.current);
+      sheetFlushTimer.current = setTimeout(() => flushSheetQueue(), 8250);
       return;
     }
     var bySheet = {};
@@ -15931,6 +16012,80 @@ function App() {
     s.bonusMult = lockedBonusMult;
     s.hourlyRate = isAdminCallingSession ? hourlyRate : 0;
     s.tier = isAdminCallingSession ? tier.label : '';
+    var splitSessionAdjustments = [];
+    if (isAdminCallingSession) {
+      try {
+        var dayKey = _ymdSGT(s.startTime);
+        var emLow = String(s.email || s.adminEmail || myEmail || '').toLowerCase();
+        var sameDayOpen = (sessionLog || []).filter(x => {
+          if (!x || x.paid) return false;
+          if (x.startTime === s.startTime || x.id === s.id) return false;
+          var xEm = String(x.email || x.adminEmail || myEmail || '').toLowerCase();
+          return xEm === emLow && _ymdSGT(x.startTime) === dayKey;
+        });
+        if (sameDayOpen.length) {
+          var _actualHoursOf = x => Math.max(0, Number(x.actualElapsed || x.elapsed || 0) / 3600);
+          var _creditHoursOf = x => {
+            if (x.creditHours != null) return Math.max(0, Number(x.creditHours) || 0);
+            if (x.fullSession) return sessionDurH;
+            return _actualHoursOf(x);
+          };
+          var priorActualH = sameDayOpen.reduce((a, x) => a + _actualHoursOf(x), 0);
+          var priorSets = sameDayOpen.reduce((a, x) => a + (Number(x.sets) || 0), 0);
+          var groupActualH = priorActualH + actualH;
+          var groupSets = priorSets + (Number(s.sets) || 0);
+          var groupFull = mThresh > 0 && groupSets >= mThresh;
+          var groupBonus = nThresh > 0 && groupSets >= nThresh;
+          var groupCreditH = groupFull
+            ? sessionDurH
+            : Math.max(0.5, Math.round(Math.min(groupActualH, sessionDurH) * 2) / 2);
+          if (!groupFull && groupActualH > maxSlotH + 0.33) {
+            groupCreditH = groupActualH;
+            tsNote = tsNote || ('⚠ OVERTIME: Split-day total ' + groupActualH.toFixed(1) + 'h (max slot=' + maxSlotH + 'h). Main: review hours.');
+          }
+          var groupPay = groupCreditH * hourlyRate * (groupBonus ? lockedBonusMult : 1);
+          var priorDesiredPay = 0;
+          var priorCreditH = 0;
+          splitSessionAdjustments = sameDayOpen.map(x => {
+            var ch = Math.min(_creditHoursOf(x), groupCreditH);
+            priorCreditH += ch;
+            var desiredPay = ch * hourlyRate * (groupBonus ? lockedBonusMult : 1);
+            priorDesiredPay += desiredPay;
+            return {
+              key: x.id || x.startTime,
+              session: x,
+              updates: {
+                creditHours: ch,
+                actualElapsed: x.actualElapsed || x.elapsed || 0,
+                hourlyRate,
+                bonusMult: lockedBonusMult,
+                bonus: groupBonus && ch > 0,
+                fullSession: ch >= sessionDurH - 0.01,
+                groupFullSession: groupFull,
+                splitSessionGroup: dayKey,
+                pay: desiredPay
+              }
+            };
+          }).filter(adj => {
+            var x = adj.session, u = adj.updates;
+            return Math.abs((Number(x.pay) || 0) - u.pay) > 0.01
+              || Math.abs(_creditHoursOf(x) - u.creditHours) > 0.01
+              || !!x.bonus !== !!u.bonus
+              || (Number(x.hourlyRate) || 0) !== hourlyRate;
+          });
+          var currentCreditH = Math.max(0, groupCreditH - priorCreditH);
+          s.actualElapsed = finalElapsed;
+          s.creditHours = currentCreditH;
+          s.pay = Math.max(0, groupPay - priorDesiredPay);
+          s.fullSession = currentCreditH >= sessionDurH - 0.01;
+          s.groupFullSession = groupFull;
+          s.bonus = groupBonus && currentCreditH > 0;
+          s.splitSessionGroup = dayKey;
+        }
+      } catch (e) {
+        console.warn('[SplitSession pay]', e?.message || e);
+      }
+    }
     // 0108: target-hit celebration. Walk every selected target type and
     // check if its goal was met. If any was, fire confetti + a congrats
     // toast naming the hit target(s). Pure feedback — no pay/bar effects.
@@ -15995,7 +16150,13 @@ function App() {
       callLog: [...callLog]
     };
     setSession(s);
-    setSessionLog(p => [sessionRecord, ...p]);
+    setSessionLog(p => {
+      var adjusted = (p || []).map(x => {
+        var adj = splitSessionAdjustments.find(a => a.key === (x.id || x.startTime));
+        return adj ? { ...x, ...adj.updates } : x;
+      });
+      return [sessionRecord, ...adjusted];
+    });
     setRunning(false);
     setPhase('idle');
     setShowNextPreview(false);
@@ -16018,13 +16179,19 @@ function App() {
       autoAdvanceTimerRef.current = null;
     }
     clearTimeout(cdRef.current);
-    if (isAdminCallingSession) DB.saveSess(s, _user?.id, myEmail);
+    if (isAdminCallingSession) {
+      DB.saveSess(s, _user?.id, myEmail);
+      splitSessionAdjustments.forEach(adj => {
+        DB.saveSess({ ...adj.session, ...adj.updates }, _user?.id, myEmail);
+      });
+    }
     DB.notify(null, 'session_end', 'Session ended: ' + myEmail, s.sets + ' appts | ' + rank.label, {
       email: myEmail,
       sets: s.sets,
       rank: rank.label
     });
     setCallLog([]);
+    pushLiveSessionSnapshotNow(makeLiveSessionSnapshot(s, { running: false, phase: 'idle', curIdx: -1 })).catch(() => {});
     syncSend('end', {
       session: s
     });
@@ -16085,6 +16252,19 @@ function App() {
           }).catch(() => {});
         }
       }).catch(() => {});
+      splitSessionAdjustments.forEach(adj => {
+        var prior = { ...adj.session, ...adj.updates };
+        var priorFields = {
+          hours: Number(adj.updates.creditHours || 0).toFixed(1),
+          tier: s.tier || prior.tier || '',
+          rate: s.hourlyRate || prior.hourlyRate || 0,
+          bonus: prior.bonus ? (prior.bonusMult || 1.5) + 'x' : '1x',
+          pay: '$' + (prior.pay || 0).toFixed(2),
+          status: prior.tsNote ? 'Unpaid - ' + prior.tsNote : 'Unpaid',
+          action: 'Split-session recalculated by ' + userName
+        };
+        gTimesheet.updateRow(tsId, prior, priorFields, userName, myCfg).catch(() => {});
+      });
       // Audit-log the session end alongside the row update
       try {
         gSheets.appendLog(tsId, {
@@ -16675,7 +16855,7 @@ function App() {
     // we just need to know when it's not happening).
     try {
       var ph = String(lead.phone);
-      _SB.schema('autodial').from('lead_claims').delete().eq('phone', ph).then(
+      _SB.schema('autodial').from('lead_claims').delete().eq('phone', ph).eq('claimed_by', _user.id).then(
         r => { if (r && r.error) console.warn('[releaseClaim]', ph, r.error.message || r.error); },
         e => console.warn('[releaseClaim]', ph, e?.message || e)
       );
@@ -17315,9 +17495,19 @@ function App() {
             // Stamp ended:true on the old liveSession so the other
             // device sees it cleared on next pull.
             try {
+              var endedExisting = {
+                ...existing,
+                ended: true,
+                running: false,
+                phase: 'idle',
+                endTime: Date.now(),
+                ts: Date.now(),
+                devId: window._devId
+              };
+              _rememberSessionEndGuard(endedExisting, endedExisting.endTime);
               await _SB.schema('autodial').from('user_settings').upsert({
                 user_id: _user.id,
-                ui_preferences: { ...(pr.data?.ui_preferences || {}), liveSession: null },
+                ui_preferences: { ...(pr.data?.ui_preferences || {}), liveSession: endedExisting },
                 updated_at: new Date().toISOString()
               }, { onConflict: 'user_id' });
             } catch (_clearErr) {}
@@ -17361,6 +17551,7 @@ function App() {
       name: leads[f].name,
       leads
     };
+    pushLiveSessionSnapshotNow(makeLiveSessionSnapshot(startedSession, { running: true, phase: 'calling', curIdx: f })).catch(() => {});
     syncSend('start', startPayload);
     if (isMob) dial(leads[f].phone);else setTimeout(() => dial(leads[f].phone), 500);
   };
@@ -17379,6 +17570,9 @@ function App() {
     setPhase('idle');
     setShowNextPreview(false);
     clearTimeout(cdRef.current);
+    if (session && !session.ended) {
+      pushLiveSessionSnapshotNow(makeLiveSessionSnapshot(session, { running: false, phase: 'idle', curIdx })).catch(() => {});
+    }
     syncSend('pause', {});
   };
   useEffect(() => {
