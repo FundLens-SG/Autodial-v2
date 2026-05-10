@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.10.0141'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.10.0142'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1393,6 +1393,83 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-script-obj-row .cad-script-read,
   .cad-script-obj-row .cad-objection-list{max-height:420px}
 }
+/* 0142: phone layout rescue. Keep the Claude visual language, but stop
+   the mobile view from feeling desktop-scaled: compact the chrome,
+   avoid topbar clipping, and keep session controls inside the viewport. */
+@media(max-width:640px){
+  html,body{overflow-x:hidden}
+  body{padding-top:var(--ckg-strip-h)!important}
+  .cad-shell{height:calc(100dvh - var(--ckg-strip-h,0px));max-height:calc(100dvh - var(--ckg-strip-h,0px));overflow:hidden}
+  .cad-topbar{height:auto!important;min-height:54px;padding:7px 10px!important;gap:8px;justify-content:flex-start;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+  .cad-topbar::-webkit-scrollbar{display:none}
+  .cad-left,.cad-right{gap:7px;min-width:0;flex:0 0 auto}
+  .cad-right{margin-left:auto}
+  .cad-logo{width:34px;height:34px;border-radius:11px}
+  .cad-brand{font-size:18px;max-width:118px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cad-pill{min-height:28px;padding:4px 9px;font-size:12px}
+  .cad-google-pill{max-width:132px;overflow:hidden;text-overflow:ellipsis}
+  .cad-switch{height:38px;padding:3px}
+  .cad-switch button{width:42px;height:32px}
+  .cad-tab{height:32px;padding:0 10px;font-size:12px}
+  .cad-right>.cad-tab:not(.cad-icon-tab){display:none!important}
+  .cad-avatar{width:34px;height:34px;font-size:12px;flex:0 0 auto}
+  .cad-main,.cad-call-main{padding:14px 12px 22px!important;gap:14px}
+  .cad-dashboard-head,.cad-session-strip{gap:12px}
+  .cad-title{font-size:34px!important;line-height:1.05;letter-spacing:-.02em;margin-top:6px}
+  .cad-dashboard-head .cad-muted{font-size:16px!important;line-height:1.35}
+  .cad-dashboard-head>.cad-inline{width:100%;gap:8px;flex-wrap:wrap}
+  .cad-dashboard-head .cad-btn{min-height:42px;padding:0 14px;font-size:14px}
+  .cad-card{border-radius:16px}
+  .cad-hero-cta{height:auto!important;min-height:142px!important;padding:18px!important;border-radius:18px;margin-bottom:12px}
+  .cad-hero-cta>*{position:relative;z-index:2}
+  .cad-hero-cta:not(.cad-hero-cta--live) .cad-hero-cta__sub,
+  .cad-hero-cta:not(.cad-hero-cta--live) .cad-hero-cta__target,
+  .cad-hero-cta:not(.cad-hero-cta--live) .cad-hero-cta__hint{display:none!important}
+  .cad-hero-cta--live{min-height:268px!important}
+  .cad-hero-cta--live .cad-hero-cta__metrics,
+  .cad-hero-cta--live .cad-hero-cta__hint{display:none!important}
+  .cad-hero-cta__head{margin-bottom:10px}
+  .cad-hero-cta__title{font-size:26px!important;line-height:1.06}
+  .cad-hero-cta__sub{font-size:13px;margin-bottom:12px}
+  .cad-hero-cta__timer{font-size:22px}
+  .cad-hero-cta__tracker{padding:12px!important;margin-bottom:12px}
+  .cad-hero-cta__tracker-num{font-size:32px!important}
+  .cad-hero-cta__metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px}
+  .cad-hero-cta__metric{padding:10px 8px}
+  .cad-hero-cta__metric b{font-size:20px}
+  .cad-hero-cta__btn{min-height:58px!important;border-radius:15px;font-size:17px!important;margin-top:10px}
+  .cad-hero-quickref{grid-template-columns:1fr!important;gap:10px;margin-bottom:12px}
+  .cad-hero-quickref__card{min-height:auto;padding:13px 14px!important;border-radius:16px;gap:12px}
+  .cad-hero-quickref__card .cad-pill{width:42px!important;height:42px!important;font-size:18px!important}
+  .cad-hero-quickref__card b{font-size:18px!important}
+  .cad-hero-quickref__card .cad-subtle{font-size:13px!important;white-space:normal}
+  .cad-session-info{min-width:0}
+  .cad-session-stats{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .cad-session-stats>:nth-child(5){grid-column:1/-1}
+  .cad-session-stat--card{min-height:92px;padding:12px 13px!important;border-radius:15px}
+  .cad-session-stat--card b{font-size:28px!important;line-height:1}
+  .cad-session-stat--card .cad-session-stat__glyph{font-size:15px!important;letter-spacing:.03em}
+  .cad-session-stat--card small{font-size:11px!important}
+  .cad-session-cta{min-height:54px!important;border-radius:16px;font-size:17px!important;width:100%;justify-content:center}
+  .cad-outcomes,.cad-outcomes--five,.cad-outcomes--six{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px}
+  .cad-outcome{min-height:66px!important;padding:10px 12px!important;border-radius:14px}
+  .cad-outcome.set{grid-column:1/-1}
+  .cad-outcome .glyph{font-size:20px!important}
+  .cad-outcome .caption{font-size:11px!important}
+  .cad-lead-card{padding:16px!important}
+  .cad-lead-name{font-size:28px!important;line-height:1.08}
+  .cad-floating-bar{left:10px;right:10px;bottom:calc(10px + env(safe-area-inset-bottom));width:auto;transform:none}
+}
+@media(max-width:390px){
+  .cad-brand{font-size:16px;max-width:98px}
+  .cad-logo,.cad-avatar{width:32px;height:32px}
+  .cad-switch button{width:38px}
+  .cad-google-pill{max-width:112px}
+  .cad-title{font-size:30px!important}
+  .cad-hero-quickref__card b{font-size:16px!important}
+  .cad-session-stat--card{min-height:84px}
+  .cad-session-stat--card b{font-size:24px!important}
+}
 </style>
 </head>
 <body>
@@ -1477,7 +1554,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.10.0141';
+window.APP_VERSION='2026.05.10.0142';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -4193,6 +4270,40 @@ var {
   useMemo
 } = React;
 var isMob = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+var suppressLeaveGuardForTel = (ms = 7000) => {
+  try {
+    var until = Date.now() + Math.max(1000, Number(ms) || 7000);
+    window.__adSuppressLeaveGuardUntil = Math.max(window.__adSuppressLeaveGuardUntil || 0, until);
+    setTimeout(() => {
+      try {
+        if ((window.__adSuppressLeaveGuardUntil || 0) <= Date.now()) window.__adSuppressLeaveGuardUntil = 0;
+      } catch (_e) {}
+    }, Math.max(1000, Number(ms) || 7000) + 250);
+  } catch (_e) {}
+};
+var isLeaveGuardSuppressed = () => {
+  try { return Date.now() < (window.__adSuppressLeaveGuardUntil || 0); } catch (_e) { return false; }
+};
+var openTelHref = (phone, delay = 0) => {
+  var clean = String(phone || '').replace(/[^+\d]/g, '');
+  if (!clean) return;
+  var wait = Math.max(0, Number(delay) || 0);
+  suppressLeaveGuardForTel(Math.max(7000, wait + 5000));
+  setTimeout(() => {
+    suppressLeaveGuardForTel(7000);
+    try {
+      var a = document.createElement('a');
+      a.href = 'tel:' + clean;
+      a.style.display = 'none';
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { try { a.parentNode && a.parentNode.removeChild(a); } catch (_e) {} }, 100);
+    } catch (_e) {
+      try { window.location.href = 'tel:' + clean; } catch (__e) {}
+    }
+  }, wait);
+};
 var LS = k => 'ad3_' + k + '_' + (window._user?.id || 'l');
 var load = k => {
   try {
@@ -8780,6 +8891,7 @@ function App() {
     if (typeof window.ckgRegisterLeaveGuard !== 'function') return;
     window.ckgRegisterLeaveGuard({
       isDirty: function () {
+        if (isLeaveGuardSuppressed()) return false;
         var s = sessionRef.current;
         return !!(s && !s.ended);
       },
@@ -8875,8 +8987,16 @@ function App() {
       ended: false,
       devId: window._devId,
       ts: Date.now()
+    } : (session && session.ended) ? {
+      id: session.id,
+      startTime: session.startTime,
+      email: session.email || myEmail,
+      ended: true,
+      endTime: session.endTime || Date.now(),
+      devId: window._devId,
+      ts: Date.now()
     } : null;
-    var hash = snapshot ? JSON.stringify({ id: snapshot.id, dialed: snapshot.dialed, sets: snapshot.sets, np: snapshot.np, cb: snapshot.cb, ni: snapshot.ni, ended: snapshot.ended, st: snapshot.sessionTarget, qp: snapshot.queuePriority, cur: snapshot.curIdx }) : 'null';
+    var hash = snapshot ? JSON.stringify({ id: snapshot.id, startTime: snapshot.startTime, endTime: snapshot.endTime || 0, dialed: snapshot.dialed || 0, sets: snapshot.sets || 0, np: snapshot.np || 0, cb: snapshot.cb || 0, ni: snapshot.ni || 0, ended: !!snapshot.ended, st: snapshot.sessionTarget || null, qp: snapshot.queuePriority || null, cur: snapshot.curIdx ?? -1 }) : 'null';
     if (hash === ref.lastPushed) return;
     ref.timer = setTimeout(async () => {
       try {
@@ -8909,6 +9029,23 @@ function App() {
         if (remoteSess && remoteSess.devId !== window._devId && remoteSess.ts) {
           var remoteAge = Date.now() - remoteSess.ts;
           if (remoteAge < 20 * 60000) {
+            if (remoteSess.ended) {
+              var endedGuard = _rememberSessionEndGuard(remoteSess, remoteSess.endTime || remoteSess.ts || Date.now());
+              var localEnded = sessionRef.current;
+              if (localEnded && !localEnded.ended && _sessionMatchesEndGuard(localEnded, endedGuard)) {
+                setSession(null);
+                setRunning(false);
+                setPhase('idle');
+                setCurIdx(-1);
+                save('activeSession', null);
+              }
+              return;
+            }
+            if (_shouldRejectRemoteSession(remoteSess, remoteSess.ts)) {
+              DBG('[liveSession] ignored stale active session after an end tombstone');
+              save('activeSession', null);
+              return;
+            }
             var local = sessionRef.current;
             var localTs = local && local.startTime ? Number(local.startTime) : 0;
             var remoteTs = Number(remoteSess.startTime || 0);
@@ -14028,18 +14165,7 @@ function App() {
         // page (the CKG hub or whichever tool they were on before).
         // Programmatic anchor click handles tel: as a side-effect
         // intent without changing the page URL or history.
-        setTimeout(() => {
-          try {
-            var a = document.createElement('a');
-            a.href = 'tel:' + d.phone.replace(/[^+\d]/g, '');
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => { try { a.parentNode && a.parentNode.removeChild(a); } catch (_e) {} }, 100);
-          } catch (_e) {
-            window.location.href = 'tel:' + d.phone.replace(/[^+\d]/g, '');
-          }
-        }, opts.delay || 120);
+        openTelHref(d.phone, opts.delay || 120);
       }
     }
     markPhoneDialHandled({
@@ -14084,9 +14210,7 @@ function App() {
         }
         var focusPhone = qs.get('phone') || '';
         if (focusPhone && isMob) {
-          setTimeout(() => {
-            window.location.href = 'tel:' + focusPhone.replace(/[^+\d]/g, '');
-          }, 250);
+          openTelHref(focusPhone, 250);
         }
         qs.delete('autodialFocus');
         qs.delete('lead');
@@ -14217,16 +14341,7 @@ function App() {
           // handlePhoneDialRequest. Same back-button-bounce fix applied
           // to the broadcast-listener path so cross-tab session starts
           // also stay non-navigating.
-          try {
-            var a = document.createElement('a');
-            a.href = 'tel:' + d.phone.replace(/[^+\d]/g, '');
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            setTimeout(() => { try { a.parentNode && a.parentNode.removeChild(a); } catch (_e) {} }, 100);
-          } catch (_e) {
-            window.location.href = 'tel:' + d.phone.replace(/[^+\d]/g, '');
-          }
+          openTelHref(d.phone);
         }, 800);
       }
       if (d.type === 'pause') {
@@ -15197,18 +15312,7 @@ function App() {
       // 0106: anchor-click instead of location.href so the tel: navigation
       // doesn't get pushed onto browser history (which caused the
       // tab-switch bounce-to-previous-tool bug).
-      setTimeout(() => {
-        try {
-          var a = document.createElement('a');
-          a.href = 'tel:' + ph.replace(/[^+\d]/g, '');
-          a.style.display = 'none';
-          document.body.appendChild(a);
-          a.click();
-          setTimeout(() => { try { a.parentNode && a.parentNode.removeChild(a); } catch (_e) {} }, 100);
-        } catch (_e) {
-          window.location.href = 'tel:' + ph.replace(/[^+\d]/g, '');
-        }
-      }, 80);
+      openTelHref(ph, 80);
     } else {
       // 0103: suppress the standalone dial-sent toast for 1.5s after a
       // skip — the skip toast already says "→ dialing X on phone" so a
@@ -20415,7 +20519,7 @@ function App() {
     var cbUpcoming = cbOpen.filter(c => !cbIsPast(c));
     var markCallbackCalled = c => {
       var phone = cadCleanPhone(c.lead_phone || c.phone || '');
-      if (phone) window.location.href = 'tel:' + phone;
+      if (phone) openTelHref(phone);
       if (c.id) DB.updateCBStatus(c.id, 'called');
       setCbQueue(p => (p || []).map(x => x.id === c.id ? { ...x, status: 'called' } : x));
     };
@@ -24809,7 +24913,7 @@ function App() {
     }
   }, cb.cb_date, " ", cb.cb_time)), React.createElement("button", {
     onClick: () => {
-      window.location.href = 'tel:' + cb.lead_phone.replace(/[^+\d]/g, '');
+      openTelHref(cb.lead_phone);
     },
     style: {
       padding: '4px 12px',
@@ -30542,7 +30646,7 @@ function App() {
       }
     }, React.createElement("button", {
       onClick: () => {
-        window.location.href = 'tel:' + c.lead_phone.replace(/[^+\d]/g, '');
+        openTelHref(c.lead_phone);
         DB.updateCBStatus(c.id, 'called');
         setCbQueue(p => p.map(x => x.id === c.id ? {
           ...x,
