@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.05.0123'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.10.0138'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -975,7 +975,7 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-modal.wide{width:min(760px,100%)}.cad-modal.narrow{width:min(420px,100%)}
 .cad-modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}
 .cad-modal-title{font-size:22px;font-weight:680;letter-spacing:-.02em;margin:0}.cad-modal-sub{margin:5px 0 0;color:var(--ad-t-2);font-size:13px;line-height:1.45}
-.cad-field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}.cad-field label{color:var(--ad-t-3);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+.cad-field{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}.cad-field label{color:var(--ad-t-1);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
 .cad-form-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .cad-modal input,.cad-modal select,.cad-modal textarea{width:100%;min-height:42px;padding:10px 12px;border-radius:11px;border:1px solid var(--ad-line-2)!important;background:var(--ad-bg-2)!important;color:var(--ad-t-0)!important;font:13px 'Inter',system-ui,sans-serif}
 .cad-modal textarea{min-height:92px;resize:vertical;line-height:1.45}
@@ -1477,7 +1477,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.05.0123';
+window.APP_VERSION='2026.05.10.0138';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -3450,6 +3450,13 @@ window.setDailySetsCount=function(n){var ds={date:getTodaySGT(),count:n};localSt
 window.detectGender=function(l){if(l.gender){var g=l.gender.toLowerCase();if(/^(m|male|mr)$/i.test(g))return'male';if(/^(f|female|mrs|ms|miss|mdm)$/i.test(g))return'female'}var n=(l.name||'');if(/^(mr\.?|encik)\s/i.test(n))return'male';if(/^(mrs\.?|ms\.?|miss|mdm)\s/i.test(n))return'female';return null};
 window.parseAgeRange=function(a){if(!a)return null;var s=String(a).trim(),d=parseInt(s);if(!isNaN(d)&&s.length<=3)return{min:d,max:d};var m=s.match(/(\d+)\s*(?:to|-)\s*(\d+)/i);return m?{min:+m[1],max:+m[2]}:null};
 function leadAgeText(lead){var raw=String(lead?.age||lead?.computed_age||'').trim();if(!raw)return'Age ?';var parsed=parseAgeRange(raw);if(parsed&&parsed.min===parsed.max)return'Age '+parsed.min;return'Age '+raw}
+// 0127 fix: optional `wrap` flag. Skip-after-priority-switch broke
+// because high-priority leads sometimes land at indexes BEFORE the
+// current lead — forward-only walk from `after+1` returned -1 and
+// the caller gave up with "No more leads" even though plenty
+// remained. With `wrap: true` we re-scan [0, after) after the
+// forward walk fails. Skip + outcome auto-advance set this; the
+// initial start-dial path doesn't (it already passes after=-1).
 window.getNextDialable=function(leads,after,f){f=f||{};var now=new Date();
   var priority=f.queuePriority||['blank','cb_due','np_retry'];
   function isEligible(l){
@@ -3462,14 +3469,27 @@ window.getNextDialable=function(leads,after,f){f=f||{};var now=new Date();
     return true}
   function isCBDue(l){if(l.status!=='cb')return false;if(f.includeCB)return true;if(!l.cbDate||!l.cbTime)return false;
     try{var diff=(new Date(l.cbDate+'T'+l.cbTime)-now)/6e4;return diff<=15&&diff>=-60}catch(e){return false}}
+  function _bucketHit(bucket,l){
+    if(bucket==='blank'&&l.status==='pending')return true;
+    if(bucket==='cb_due'&&isCBDue(l))return true;
+    if(bucket==='np_retry'&&l.status==='np')return true;
+    if(bucket==='cb_all'&&l.status==='cb')return true;
+    return false}
+  // Forward walk: priority order × [after+1, end)
   for(var p=0;p<priority.length;p++){var bucket=priority[p];
     for(var i=(after>=0?after+1:0);i<leads.length;i++){var l=leads[i];if(!isEligible(l))continue;
-      if(bucket==='blank'&&l.status==='pending')return i;
-      if(bucket==='cb_due'&&isCBDue(l))return i;
-      if(bucket==='np_retry'&&l.status==='np')return i;
-      if(bucket==='cb_all'&&l.status==='cb')return i;}}
+      if(_bucketHit(bucket,l))return i}}
+  // Forward fallback walk (no priority filter)
   for(var i=(after>=0?after+1:0);i<leads.length;i++){var l=leads[i];if(!isEligible(l))continue;
     if(l.status==='cb'&&!isCBDue(l)&&!f.includeCB)continue;return i}
+  // Wrap walk: priority order × [0, after) — same logic, lower
+  // indexes only, skip the anchor itself.
+  if(f.wrap&&after>0){
+    for(var p2=0;p2<priority.length;p2++){var bucket2=priority[p2];
+      for(var j=0;j<after;j++){var l2=leads[j];if(!isEligible(l2))continue;
+        if(_bucketHit(bucket2,l2))return j}}
+    for(var j=0;j<after;j++){var l2=leads[j];if(!isEligible(l2))continue;
+      if(l2.status==='cb'&&!isCBDue(l2)&&!f.includeCB)continue;return j}}
   return-1};
 
 // ══════ TIMESHEET GOOGLE SHEET ══════
@@ -3681,7 +3701,15 @@ window.DB={
   async getSessions(email){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('sessions').select('*').eq('email',email).order('start_time',{ascending:false});return r.data||[]}catch(e){return[]}},
   async getAllSessions(){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('sessions').select('*').order('start_time',{ascending:false});return r.data||[]}catch(e){return[]}},
   async markPaid(email){if(!_SB)return;try{await _SB.schema('autodial').from('sessions').update({paid:true,paid_date:new Date().toISOString()}).eq('email',email).eq('paid',false)}catch(e){}},
-  async markSessPaid(email,startTime){if(!_SB||!email||!startTime)return false;try{await _SB.schema('autodial').from('sessions').update({paid:true,paid_date:new Date().toISOString()}).eq('email',email).eq('start_time',new Date(startTime).toISOString());return true}catch(e){console.warn('[DB.markSessPaid]',e.message);return false}},
+  // 0125 Batch 1 (#3 fix): pre-fix this returned true even when the
+  // update affected 0 rows — Supabase doesn't throw on "no match",
+  // so silent ISO-string drift between local startTime (epoch ms) and
+  // the cloud start_time column made markSessPaid lie about success
+  // and admins could end up with paid=true locally / paid=false
+  // remotely (double-pay risk). Now we .select('id') after each
+  // update and return true only if at least one row matched. dbId
+  // fallback covers the case where start_time differs slightly.
+  async markSessPaid(email,startTime,dbId){if(!_SB||!email)return false;try{var iso=startTime?new Date(startTime).toISOString():null;if(iso){var r=await _SB.schema('autodial').from('sessions').update({paid:true,paid_date:new Date().toISOString()}).eq('email',email).eq('start_time',iso).select('id');if(r&&r.data&&r.data.length)return true}if(dbId){var r2=await _SB.schema('autodial').from('sessions').update({paid:true,paid_date:new Date().toISOString()}).eq('id',dbId).select('id');if(r2&&r2.data&&r2.data.length)return true}console.warn('[DB.markSessPaid] no row matched',{email,startTime,dbId});return false}catch(e){console.warn('[DB.markSessPaid]',e.message);return false}},
   async deleteSess(email,startTime){if(!_SB||!email||!startTime)return false;try{var vals=[startTime];try{var iso=new Date(startTime).toISOString();if(iso&&!vals.includes(iso))vals.push(iso)}catch(_e){}await Promise.all(vals.map(v=>_SB.schema('autodial').from('sessions').delete().eq('email',email).eq('start_time',v).catch(()=>{})));return true}catch(e){console.warn('[DB.deleteSess]',e.message);return false}},
   async deleteSessRecord(s,email){if(!_SB||!s)return false;try{var dbId=s.dbSessionId||s.sessionDbId||s.supabaseId||'';if(dbId){await _SB.schema('autodial').from('sessions').delete().eq('id',dbId)}var em=(email||s.email||s.adminEmail||s._email||s.admin||'').toLowerCase();return await this.deleteSess(em,s.startTime||s.start_time)}catch(e){console.warn('[DB.deleteSessRecord]',e.message);return false}},
 
@@ -7025,6 +7053,12 @@ function App() {
     return s && !s.ended ? true : false;
   });
   var [curIdx, setCurIdx] = useState(() => load('curIdx') || -1);
+  // 0127: ref mirror for curIdx so the optimistic-claim background
+  // task can check "is the user still on the lead I was claiming?"
+  // without rebuilding the proceedToLead callback on every curIdx
+  // change.
+  var curIdxRef = useRef(curIdx);
+  useEffect(() => { curIdxRef.current = curIdx; }, [curIdx]);
   var [countdown, setCountdown] = useState(0);
   // Tracks the phone being dialed RIGHT NOW so the operator UI can show an
   // inline "Dialing…" pill during the 1–2s gap between dial() being invoked
@@ -7134,6 +7168,18 @@ function App() {
         autoAdvanceTimerRef.current = null;
         setShowPostCall(null);
         setShowNextPreview(false);
+        // 0126 sync fix: release the prior lead's claim on Set
+        // auto-advance. Same rationale as the NP/CB/NI advance:
+        // we're done with this lead, drop the lock so teammates see
+        // it as available immediately instead of after the 10-min
+        // takeover window. `li` was captured as curIdx at the top
+        // of this effect, so it points at the lead we just Set.
+        try {
+          var _justSetLead = (typeof li === 'number' && li >= 0)
+            ? leadsRef.current[li]
+            : null;
+          if (_justSetLead && typeof releaseClaim === 'function') releaseClaim(_justSetLead);
+        } catch (_e) {}
         var nextIdx = nextLeadRef.current;
         if (nextIdx === -1) {
           setRunning(false);
@@ -7143,6 +7189,10 @@ function App() {
         } else {
           setCurIdx(nextIdx);
           setPhase('calling');
+          // Pre-claim the next lead so the gap between Set-modal
+          // close and dial doesn't leave the lead unowned (15-admin
+          // queues are hot; another caller could snatch in 200ms).
+          try { if (typeof claimLead === 'function') claimLead(nextIdx); } catch (_e) {}
           setTimeout(() => {
             var l = leadsRef.current[nextIdx];
             if (l) dial(l.phone);
@@ -7663,13 +7713,57 @@ function App() {
     // re-appearing.
     var updated = { ...a, followUp: localStatus, followUpDate: ts };
     setAppointments(p => (p || []).map(x => _matchAppt(x, a) ? updated : x));
+    // 0124: Met → adds the per-admin metIncentive (Main configures in
+    // Admin config). Fly Kite stays $0 by design (set count kept, no
+    // bonus). Closed opens the tip flow so the user can enter the
+    // tip/EFYC amount, which then becomes the incentive. Without this
+    // the Claude past-appt banner + new apptsView outcome buttons
+    // changed status but never paid anyone — incentive came only from
+    // the legacy inline appt-row buttons that the Claude shell skips.
+    if (status === 'met') {
+      var _ownerEm = String(a.admin || a.adminEmail || a.adminName || myEmail || '').toLowerCase();
+      var _adminAc = (adminConfigs || {})[_ownerEm] || {};
+      var _metAmt = n(_adminAc.metIncentive ?? myCfg.metIncentive, 10);
+      if (_metAmt > 0) {
+        setIncentives(p => [...(p || []), {
+          id: Date.now() + Math.random(),
+          admin: a.admin || myEmail,
+          leadName: a.name || a.leadName || '',
+          type: 'met',
+          amount: _metAmt,
+          date: ts,
+          apptOriginalDate: a.createdAt || ts,
+          paid: false
+        }]);
+      }
+    }
     var emoji = status === 'met' ? '✓' : status === 'fly_kite' ? '🪁' : status === 'postponed' ? '⏰' : '🏁';
-    toast(emoji + ' ' + (a.name || 'appointment') + ' → ' + sheetStatus, 'info');
+    if (status === 'met') {
+      var _ownerEm2 = String(a.admin || a.adminEmail || a.adminName || myEmail || '').toLowerCase();
+      var _adminAc2 = (adminConfigs || {})[_ownerEm2] || {};
+      var _metAmt2 = n(_adminAc2.metIncentive ?? myCfg.metIncentive, 10);
+      toast(emoji + ' ' + (a.name || 'appointment') + ' → Met · +$' + _metAmt2 + ' incentive', 'info');
+    } else {
+      toast(emoji + ' ' + (a.name || 'appointment') + ' → ' + sheetStatus, 'info');
+    }
     syncApptSheet(updated, { followUp: sheetStatus }).catch(() => {});
     if (a.admin && a.admin.toLowerCase() !== (myEmail || '').toLowerCase()) {
       _mainWritebackAdminAppt(updated);
     }
-  }, [syncApptSheet, myEmail, _mainWritebackAdminAppt]);
+    if (status === 'closed') {
+      // Tip/EFYC flow — open the tip modal so the user types the amount.
+      // The tipModal save handler at line ~36428 also adds the incentive
+      // and writes status:'closed' + tip back to the sheet, so we let
+      // it own the sheet write for the closed case (`fromMet:false`).
+      setTipModal({ appt: updated, fromMet: false });
+      setTipAmountInput('');
+    }
+    // 0125: deps intentionally omit myCfg.* — myCfg is a derived var
+    // declared further down; reading myCfg.metIncentive at hook-init
+    // time throws (undefined). The closure picks up latest myCfg at
+    // call time, and adminConfigs being in the deps is enough to
+    // refresh the memoized callback when pay settings change.
+  }, [syncApptSheet, myEmail, _mainWritebackAdminAppt, adminConfigs]);
   // 0088: "I set wrongly (delete appointment)" — the misclick path on
   // the past-appt banner. User said: Fly Kite KEEPS the set count
   // (appt was real, prospect didn't show), Misclick REVERSES it
@@ -8631,6 +8725,24 @@ function App() {
   useEffect(() => {
     sessionRef.current = session;
   }, [session]);
+  // 0126 fix (audit): on app load, if we restored an active session
+  // from localStorage, surface a CLEAR cue that calling is paused
+  // pending Resume. Pre-fix the timer kept ticking but the user had
+  // no auto-redial — they had to spot the inactive lead card and
+  // click Start, which wasn't obvious. Now a one-shot toast on mount
+  // tells them what to do. We deliberately do NOT auto-resume the
+  // dial loop (could fire unwanted calls right after a refresh).
+  useEffect(() => {
+    var s = sessionRef.current;
+    if (s && !s.ended && s.startTime) {
+      var elapsedMin = Math.floor((Date.now() - s.startTime) / 60000);
+      var label = elapsedMin > 0 ? elapsedMin + ' min in' : 'just started';
+      try {
+        toast('▶ Session restored (' + label + ') — click Start calling to resume the dial loop', 'info');
+      } catch (_e) {}
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ── ckg leave-guard: ask before navigating away with an active session ──
   // Closure refs so the guard always sees the latest endSession callable.
@@ -8775,11 +8887,32 @@ function App() {
             if (!local || local.ended) {
               shouldApply = true;
             } else if (remoteTs && remoteTs !== localTs) {
-              shouldApply = true;
-            } else if (remoteTs === localTs) {
-              if ((remoteSess.dialed || 0) > (local.dialed || 0) || (remoteSess.sets || 0) > (local.sets || 0)) {
+              // 0126 sync fix: pre-fix this blindly REPLACED the local
+              // session whenever startTime differed — even if the
+              // local user had just started a session and the remote
+              // was a stale leftover from another device. Now we keep
+              // the OLDER session (lower startTime) and warn the user
+              // when the conflict surfaces. Without this, two devices
+              // both tapping Start within seconds of each other would
+              // bounce ownership back and forth, losing counter
+              // updates each round-trip.
+              if (remoteTs < localTs) {
                 shouldApply = true;
+                try { toast('⚠ Switched to a session that was already running on another device', 'info'); } catch (_e) {}
               }
+              // else: local is older — keep ours; our next push will
+              // overwrite the remote naturally.
+            } else if (remoteTs === localTs) {
+              // 0126 sync fix: extend counter check beyond dialed/sets
+              // to include np/cb/ni. Pre-fix, if the remote device
+              // earned 5 NPs but no new dials (e.g. the dialed count
+              // hadn't updated yet, or all 5 were on the same lead),
+              // the receiving device would skip the apply and lose
+              // those NP increments. Now any counter going up
+              // triggers a merge.
+              var remoteSum = (remoteSess.dialed || 0) + (remoteSess.np || 0) + (remoteSess.cb || 0) + (remoteSess.ni || 0) + (remoteSess.sets || 0);
+              var localSum = (local.dialed || 0) + (local.np || 0) + (local.cb || 0) + (local.ni || 0) + (local.sets || 0);
+              if (remoteSum > localSum) shouldApply = true;
             }
             if (shouldApply) {
               setSession({
@@ -8963,6 +9096,128 @@ function App() {
   }, [sessionClearMeta]);
   var filterClearedSessions = useCallback((list, meta) => _filterClearedSessionList(list, meta || sessionClearRef.current), [sessionClearMeta]);
   var [paymentHistory, setPaymentHistory] = useState(load('payh') || []);
+  // 0125: daily invoice ledger. One record per (date, admin) pair. PDF
+  // is regenerated and re-uploaded to Drive each time the underlying
+  // sessions/incentives change OR when payment is confirmed (PAID
+  // stamp). The cloud-synced metadata lets the Main view + pay an
+  // admin's invoices without needing access to the admin's Drive.
+  var [dailyInvoices, setDailyInvoices] = useState(load('dinv') || []);
+  var dailyInvoicesRef = useRef(dailyInvoices);
+  useEffect(() => { dailyInvoicesRef.current = dailyInvoices; }, [dailyInvoices]);
+  // 0125: Main-side payroll drill-down. When a Main clicks an admin's
+  // row in Pay, this stores their email and the row inline-expands to
+  // show that admin's daily invoices. Local-only — never synced.
+  var [payExpandedAdmin, setPayExpandedAdmin] = useState('');
+  // 0125: tether visibility — does the current user have a legitimate
+  // reason to see THIS admin's pay/invoices/sessions? True when:
+  //   - the current user IS the admin (admin sees self)
+  //   - the current user is the Main who hired the admin (tether
+  //     marker `tethered_main_email` matches myEmail)
+  // Mains hiring different admins are siloed: Main-A never sees
+  // Main-B's admins, even though all admin configs cloud-sync into
+  // adminConfigs. This is the per-Main privacy boundary the user
+  // asked for.
+  var _isVisibleAdminEmail = (em) => {
+    var emL = String(em || '').toLowerCase();
+    var meLow = String(myEmail || '').toLowerCase();
+    if (!emL) return false;
+    if (emL === meLow) return role === 'admin'; // self-only when admin
+    if (role !== 'main') return false; // admins never see other admins
+    var ac = (adminConfigs || {})[emL];
+    var owner = String(ac?.tethered_main_email || '').toLowerCase();
+    return owner === meLow;
+  };
+  // 0125 Batch 1: race-safe optimistic write with automatic rollback.
+  // Pattern:
+  //   _writeWithRollback({
+  //     apply: () => setX(next),       // optimistic local update
+  //     undo:  () => setX(prev),       // revert on cloud failure
+  //     cloud: async () => DB.foo(),   // returns truthy/false or throws
+  //     label: 'mark paid'
+  //   });
+  // `undo` runs ONLY if cloud returns falsy or throws. Happy path is
+  // zero-overhead. Centralises the "optimistic local + cloud sync"
+  // pattern that previously had silent failure modes scattered across
+  // confirmClaudePayQR, shareExactScriptToAdmins, sessionLog writes,
+  // etc. — each callsite was handcrafting its own try/catch and
+  // letting cloud errors disappear into console.warn.
+  var _writeWithRollback = async ({apply, undo, cloud, label}) => {
+    if (typeof apply === 'function') apply();
+    try {
+      var ok = await cloud();
+      if (ok === false) {
+        if (typeof undo === 'function') undo();
+        toast('Sync failed — ' + (label || 'change') + ' reverted', 'err');
+        return false;
+      }
+      return true;
+    } catch (e) {
+      if (typeof undo === 'function') undo();
+      toast('Sync error — ' + (label || 'change') + ' reverted: ' + (e?.message || e), 'err');
+      console.warn('[writeWithRollback]', label, e?.message || e);
+      return false;
+    }
+  };
+  // 0125 Batch 5 (#14 fix): invoice-specific visibility check that
+  // honours the tether stamped on the invoice at issue time. If an
+  // admin was re-hired by a different Main, the previous Main's
+  // historical invoices stay invisible to the new Main even though
+  // adminConfigs[em].tethered_main_email now points to the new Main.
+  // Falls back to the live tether for legacy records that pre-date
+  // the tetheredMainAtIssue stamp.
+  var _isInvoiceVisible = (inv) => {
+    if (!inv) return false;
+    var meLow = String(myEmail || '').toLowerCase();
+    var emL = String(inv.admin || '').toLowerCase();
+    if (!emL) return false;
+    if (emL === meLow) return role === 'admin';
+    if (role !== 'main') return false;
+    var atIssue = String(inv.tetheredMainAtIssue || '').toLowerCase();
+    if (atIssue) return atIssue === meLow;
+    // Legacy fallback — pre-stamp records use live tether.
+    return _isVisibleAdminEmail(emL);
+  };
+  // 0125 Batch 6 (#15 fix): hub-pool tether gate shared by
+  // addTeamAdminClaude (Claude shell) and the legacy add-admin path.
+  // Pre-fix the same `hubMatch.tetheredTo !== meLow` check + toast
+  // copy lived in two places (line 19142 and line 30742) and could
+  // drift. This single helper returns {ok, reason, hubMatch} so each
+  // caller can format its own toast or skip-row message.
+  var _assertCanHireAdmin = (em, pool) => {
+    var emL = String(em || '').toLowerCase();
+    var meLow = String(myEmail || '').toLowerCase();
+    var hubMatch = (pool || []).find(p => (p.email || '').toLowerCase() === emL);
+    if (hubMatch && hubMatch.tetheredTo && hubMatch.tetheredTo !== meLow) {
+      return { ok: false, reason: emL + ' is already hired by ' + hubMatch.tetheredTo, hubMatch };
+    }
+    return { ok: true, hubMatch };
+  };
+  // 0125 Batch 1: tether assertion shared by Main-side write paths
+  // (script share, WA template share, payroll write-back, etc).
+  // Returns true when the current user is allowed to write FOR the
+  // given admin; toasts + warns + returns false otherwise. Wraps the
+  // visibility check used everywhere else so the gate is consistent
+  // across read AND write paths.
+  var _assertTetheredOrSelf = (em, opts) => {
+    var emL = String(em || '').toLowerCase();
+    var meLow = String(myEmail || '').toLowerCase();
+    if (!emL) return false;
+    if (emL === meLow) return true; // self-write always OK
+    if (role !== 'main') return false;
+    var ac = (adminConfigs || {})[emL];
+    var owner = String(ac?.tethered_main_email || '').toLowerCase();
+    if (owner === meLow) return true;
+    if (!owner) {
+      // No tether stamped yet — likely a pre-tether-era admin or a
+      // sync race. Allow with a console warn so we can spot drift.
+      console.warn('[tetherCheck] admin', emL, 'has no tether stamp; allowing write');
+      return true;
+    }
+    var quiet = opts && opts.quiet;
+    if (!quiet) toast('🔒 ' + emL + ' is tethered to another Main — write blocked', 'err');
+    console.warn('[tetherCheck] BLOCKED write for', emL, '— owner:', owner, 'me:', meLow);
+    return false;
+  };
   var [adminSessions, setAdminSessions] = useState(() => {
     var _raw = load('asess') || {};
     if (typeof _raw !== 'object' || Array.isArray(_raw)) return {};
@@ -9436,6 +9691,10 @@ function App() {
   // jump straight to dialing them, regardless of their current status.
   var [showLeadJump, setShowLeadJump] = useState(false);
   var [leadJumpQuery, setLeadJumpQuery] = useState('');
+  // 0127: focus state controls the empty-query browse window (full
+  // queue, scroll-to-current, click-to-jump). When the input is
+  // blurred and the query is empty, the dropdown closes.
+  var [leadJumpFocused, setLeadJumpFocused] = useState(false);
   var billingDate = cfg.billingDate || 1;
   // Phase 7B2: usersList / pendingUsers state vars removed — User Management UI
   // moved to the ckgtools.com hub. The avatar-button notice dot and the
@@ -10230,12 +10489,22 @@ function App() {
     if (leadFocusMode === 'blank') return ['blank', ...base.filter(x => x !== 'blank')];
     return base;
   }, [cfg.queuePriority, leadFocusMode]);
-  var dialFilters = useCallback((extra = {}) => ({
+  // 0126 fix (audit): hoist the no-args base object into a useMemo so
+  // it isn't reconstructed on every getNextDialable call. dialFilters()
+  // is hot-path (fires on every outcome / skip / auto-advance + the
+  // mid-session priority recompute), and the base object had ~6
+  // fields whose deps only change on cfg edits. Each call still
+  // returns a fresh object via spread (consumers expect to mutate
+  // safely) — but the spread is cheap once the base is stable.
+  var _dialFiltersBase = useMemo(() => ({
     ...filters,
     npMax: n(myCfg.npMax, 5),
-    queuePriority: dialQueuePriority(),
-    ...extra
+    queuePriority: dialQueuePriority()
   }), [filters, myCfg, dialQueuePriority]);
+  var dialFilters = useCallback((extra = {}) => ({
+    ..._dialFiltersBase,
+    ...extra
+  }), [_dialFiltersBase]);
   var phoneDigits = ph => String(ph || '').replace(/[^\d+]/g, '');
   var hasCallablePhone = ph => phoneDigits(ph).replace(/[^\d]/g, '').length >= 7;
   var getReadiness = (candidateLead = null) => {
@@ -10485,11 +10754,23 @@ function App() {
     var targets = (emails || []).map(e => (e || '').toLowerCase()).filter(e => e && e.includes('@'));
     if (!targets.length) return toast('Choose at least one admin to share with', 'err');
     if (!versionId || !scriptVersions.some(v => v.id === versionId)) return toast('Save and choose a script version first', 'err');
+    // Batch 4 (#8 fix): refuse to write to admins not tethered to this
+    // Main. Pre-fix the row was keyed by admin owner_id alone, so
+    // during a tether-handoff window two Mains could clobber each
+    // other's shared_scripts payload. The tether check fails closed.
+    var rejected = targets.filter(em => !_assertTetheredOrSelf(em, { quiet: true }));
+    targets = targets.filter(em => _assertTetheredOrSelf(em, { quiet: true }));
+    if (rejected.length) toast('Skipped ' + rejected.length + ' admin' + (rejected.length === 1 ? '' : 's') + ' tethered to another Main', 'err');
+    if (!targets.length) return;
     var payload = makeScriptSharePayload(versionId);
+    // Batch 1 (#12 fix): snapshot prior state per-admin so a partial
+    // cloud failure rolls back ONLY the failed targets. Pre-fix the
+    // optimistic local flip stayed even when every cloud upsert
+    // threw — Main saw "shared" but admin saw nothing.
+    var priorSnapshots = {};
+    targets.forEach(em => { priorSnapshots[em] = (adminConfigs && adminConfigs[em]) || null; });
     setAdminConfigs(prev => {
-      var next = {
-        ...prev
-      };
+      var next = { ...prev };
       targets.forEach(em => {
         next[em] = {
           ...(next[em] || {}),
@@ -10505,29 +10786,47 @@ function App() {
       toast('Saved locally. Cloud is not ready yet.', 'err');
       return;
     }
-    try {
-      await Promise.all(targets.map(async em => {
-        var oid = await window._uidByEmail(em);
-        if (!oid) return;
-        return _SB.schema('autodial').from('shared_scripts').upsert({
-          owner_id: oid,
-          data: payload,
-          updated_at: new Date().toISOString()
-        }, {
-          onConflict: 'owner_id'
+    var failedTargets = [];
+    var results = await Promise.allSettled(targets.map(async em => {
+      var oid = await window._uidByEmail(em);
+      if (!oid) throw new Error('No uid for ' + em);
+      var r = await _SB.schema('autodial').from('shared_scripts').upsert({
+        owner_id: oid,
+        data: payload,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'owner_id'
+      });
+      if (r && r.error) throw new Error(r.error.message || 'upsert failed');
+      return em;
+    }));
+    results.forEach((r, i) => {
+      if (r.status !== 'fulfilled') failedTargets.push(targets[i]);
+    });
+    if (failedTargets.length) {
+      // Roll back only the failed admins so the success rows stay
+      // marked as shared.
+      setAdminConfigs(prev => {
+        var next = { ...prev };
+        failedTargets.forEach(em => {
+          if (priorSnapshots[em] === null) delete next[em];
+          else next[em] = priorSnapshots[em];
         });
-      }));
+        return next;
+      });
+      toast('Share failed for ' + failedTargets.length + '/' + targets.length + ' admin' + (targets.length === 1 ? '' : 's') + ' — reverted those rows', 'err');
+      console.warn('[shareScript] failed:', failedTargets);
+    } else {
       toast('Shared selected script with ' + targets.length + ' admin' + (targets.length === 1 ? '' : 's'));
       setShowScriptShareModal(false);
-      try {
-        window._bumpSyncVer && window._bumpSyncVer();
-      } catch (_e) {}
-    } catch (e) {
-      toast('Share failed: ' + (e?.message || e), 'err');
     }
-  }, [makeScriptSharePayload, scriptVersions, shareScriptVersionId]);
+    try { window._bumpSyncVer && window._bumpSyncVer(); } catch (_e) {}
+  }, [makeScriptSharePayload, scriptVersions, shareScriptVersionId, adminConfigs]);
   var stopScriptShareForAdmins = useCallback(async emails => {
     var targets = (emails || []).map(e => (e || '').toLowerCase()).filter(e => e && e.includes('@'));
+    if (!targets.length) return;
+    // 0125 Batch 4 (#8 mirror): same tether gate as shareExactScriptToAdmins.
+    targets = targets.filter(em => _assertTetheredOrSelf(em, { quiet: true }));
     if (!targets.length) return;
     setAdminConfigs(prev => {
       var next = {
@@ -10577,6 +10876,15 @@ function App() {
     if (!targets.length) return toast('Choose at least one admin to share with', 'err');
     var selected = _selectedWATemplates(templateIds);
     if (!selected.length) return toast('Choose a WhatsApp template first', 'err');
+    // 0125 Batch 4 (#11 fix): same tether gate as shareScript. Without
+    // this, two Mains overlapping on the same admin in a tether-handoff
+    // window could clobber each other's shared_admin_configs.data row
+    // (last-upsert-wins on the row). Skipped admins are reported in
+    // a single toast so the user knows which targets dropped out.
+    var rejected = targets.filter(em => !_assertTetheredOrSelf(em, { quiet: true }));
+    targets = targets.filter(em => _assertTetheredOrSelf(em, { quiet: true }));
+    if (rejected.length) toast('Skipped ' + rejected.length + ' admin' + (rejected.length === 1 ? '' : 's') + ' tethered to another Main', 'err');
+    if (!targets.length) return;
     var ids = selected.map(_waTplKey);
     var names = selected.map(t => t.name).join(', ');
     var ts = Date.now();
@@ -10641,6 +10949,9 @@ function App() {
   }, [_selectedWATemplates, adminConfigs, myEmail]);
   var stopWATemplateShareForAdmins = useCallback(async emails => {
     var targets = (emails || []).map(e => (e || '').toLowerCase()).filter(e => e && e.includes('@'));
+    if (!targets.length) return;
+    // 0125 Batch 4 (#11 mirror): same tether gate as the share path.
+    targets = targets.filter(em => _assertTetheredOrSelf(em, { quiet: true }));
     if (!targets.length) return;
     var ts = Date.now();
     var nextConfigs = {
@@ -10982,6 +11293,26 @@ function App() {
     save('promo', promotionLog);
     cloudSave('promo', promotionLog);
   }, [promotionLog]);
+  useEffect(() => {
+    // 0125: dailyInvoices is intentionally LOCAL-ONLY (no entry in
+    // SYNC_MAP, no cloudSave). Two reasons:
+    //   1. Privacy — pushing the full dailyInvoices array to the
+    //      cloud would leak invoice metadata across Mains who happen
+    //      to subscribe to the same userState bucket. Keeping it
+    //      local makes cross-Main leakage structurally impossible.
+    //   2. Re-derivable — every value on a record (hours, amount,
+    //      paid status, invoice number) can be re-computed by
+    //      _buildDailyInvoiceRecord from sessionLog + incentives,
+    //      both of which are already RLS-scoped on the server. The
+    //      ONLY non-derivable fields are the Drive file IDs/links,
+    //      which are per-device and recover on next "Open" click
+    //      (which re-uploads to whichever Drive the current user
+    //      has connected).
+    // If you ever want cross-device sync for the same user, add
+    // `autodial.invoices` with row-level (admin_id, main_id) RLS —
+    // do NOT add 'dinv' to SYNC_MAP.
+    save('dinv', dailyInvoices);
+  }, [dailyInvoices]);
   useEffect(() => {
     save('slog', sessionLog);
     cloudSave('slog', sessionLog);
@@ -11448,13 +11779,22 @@ function App() {
             }
           })(), (async () => {
             try {
+              // 0125 Batch 4 (#9 fix): two script-share sources race to
+              // populate the admin's local script — `shared_scripts`
+              // (the "Share script" button payload) and the Drive
+              // backup (the file Main wrote via backupScriptsToDrive).
+              // Pre-fix the Drive payload always won because it ran
+              // second; if Main's quick "Share script" was newer than
+              // their last Drive backup, the admin still saw the
+              // stale Drive copy. Fix: collect both candidates with
+              // their timestamps and apply only the most recent.
+              var candidates = [];
               var sr = await _SB.schema('autodial').from('shared_scripts').select('data').eq('owner_id', _user.id).maybeSingle();
               if (sr.data && sr.data.data) {
-                applySharedScriptPayload(sr.data.data);
+                var srData = sr.data.data;
+                var srTs = Number(srData.ts || srData.scriptShareUpdatedAt || 0);
+                candidates.push({ source: 'shared_scripts', ts: srTs, payload: srData });
               }
-              // Drive-backed scripts: if Main has shared a Drive scripts file
-              // with this admin (file ID written into shared_admin_configs by
-              // Main's backupScriptsToDrive), read it as source of truth.
               var ownCfgRow = await _SB.schema('autodial').from('shared_admin_configs').select('data').eq('admin_id', _user.id).maybeSingle();
               var ownCfg = (ownCfgRow && ownCfgRow.data && ownCfgRow.data.data) || {};
               if (ownCfg.scriptsDriveFileId && localStorage.getItem('ad_gt') && window.gScripts) {
@@ -11464,17 +11804,31 @@ function App() {
                     var sharedOnly = driveScripts.filter(v => v.shareWithAdmins);
                     if (sharedOnly.length) {
                       var pickedVersion = sharedOnly[0];
-                      applySharedScriptPayload({
-                        content: pickedVersion.content || '',
-                        scriptShareName: pickedVersion.name || 'Drive script',
-                        scriptShareUpdatedAt: pickedVersion.updatedAt || Date.now(),
-                        versions: sharedOnly,
-                        _fromDrive: true
+                      var driveTs = Number(pickedVersion.updatedAt || 0);
+                      candidates.push({
+                        source: 'drive',
+                        ts: driveTs,
+                        payload: {
+                          content: pickedVersion.content || '',
+                          scriptShareName: pickedVersion.name || 'Drive script',
+                          scriptShareUpdatedAt: driveTs || Date.now(),
+                          ts: driveTs || Date.now(),
+                          versions: sharedOnly,
+                          _fromDrive: true
+                        }
                       });
-                      DBG('[AutoDial] Loaded ' + sharedOnly.length + ' script version(s) from Main\'s Drive');
                     }
                   }
                 } catch (_driveErr) { console.warn('[Drive scripts admin read]', _driveErr?.message || _driveErr); }
+              }
+              if (candidates.length) {
+                // Take the newer candidate; tie goes to shared_scripts
+                // since the "Share script" button is the explicit
+                // user action while Drive is the rolling backup.
+                candidates.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+                var winner = candidates[0];
+                applySharedScriptPayload(winner.payload);
+                DBG('[AutoDial] Applied script from ' + winner.source + ' (ts=' + winner.ts + ')');
               }
             } catch (e) {}
           })(), (async () => {
@@ -11957,20 +12311,33 @@ function App() {
           setCalRefreshing(false);
           return;
         }
-        var results = await Promise.all(calFetchList.map(async c => {
+        // 0127 fix: pre-fix Promise.all fired N parallel fetches to
+        // googleapis.com/calendar/v3 (one per shared calendar in
+        // calFetchList). With ~5 calendars per Main team this added
+        // 5 simultaneous requests on top of the Supabase storm —
+        // pushing the browser past its per-host concurrency limit
+        // and producing ERR_INSUFFICIENT_RESOURCES on the calendar
+        // GETs (visible in the user's network tab as repeated
+        // googleapis.com errors). Sequentialise so we never have
+        // more than one calendar fetch in flight from this device.
+        var results = [];
+        for (var _ci = 0; _ci < calFetchList.length; _ci++) {
+          var c = calFetchList[_ci];
           try {
-          var evs = c.id === 'primary' ? await gCal.events(start.toISOString(), end.toISOString()) : await gCal.eventsFromCal(c.id, start.toISOString(), end.toISOString());
-          return evs.map(e => ({
-            ...e,
-            _calId: c.id,
-            _calName: c.summary,
-            _calColor: c.backgroundColor
-          }));
+            var evs = c.id === 'primary'
+              ? await gCal.events(start.toISOString(), end.toISOString())
+              : await gCal.eventsFromCal(c.id, start.toISOString(), end.toISOString());
+            results.push(evs.map(e => ({
+              ...e,
+              _calId: c.id,
+              _calName: c.summary,
+              _calColor: c.backgroundColor
+            })));
           } catch (e) {
             rememberBlockedCalendar(c, e);
-            return [];
+            results.push([]);
           }
-        }));
+        }
         var _seen3 = new Map();
         results.flat().forEach(e => {
           var k = e.id || (e.iCalUID || '') + '_' + (e.start?.dateTime || e.start?.date || '');
@@ -12014,7 +12381,15 @@ function App() {
       _stopPoll();
       document.removeEventListener('visibilitychange', _onVisChange);
     };
-  }, [gOk, role, adminConfigs, calShares, calList, myEmail, showAppt, calWeekOffset, tab, calRefreshTrigger, calVisibility, showInvited, showDeclined]);
+    // 0127 fix: pre-fix `adminConfigs` was in the dep array — but
+    // adminConfigs reference changes on every cloud-sync push from
+    // any admin (often). Each change re-mounted this effect, which
+    // re-fired loadWeekEvents() at mount. Combined with the N
+    // parallel calendar GETs, that's the storm signature in the
+    // user's screenshot. Drop adminConfigs (the calFetchList we
+    // actually consume is computed elsewhere); keep the explicit
+    // calRefreshTrigger as the manual-refresh handle.
+  }, [gOk, role, calShares, calList, myEmail, showAppt, calWeekOffset, tab, calRefreshTrigger, calVisibility, showInvited, showDeclined]);
   useEffect(() => {
     if (!_SB || !_user) return;
     var _pullTimer = null,
@@ -12221,6 +12596,24 @@ function App() {
           var payload = buildPayload(value, me, newHash);
           var data = (payload && typeof payload === 'object' && 'data' in payload) ? payload.data : payload;
           if (shortKey === 'acfg') {
+            // 0126 sync fix: send-side merge-by-freshness. Pre-fix
+            // a Main editing the same `admin_config` blob from two
+            // devices (or two Mains hitting it via a tether-handoff)
+            // last-write-wins-clobbered each other — the loser's
+            // edits to OTHER admins in the same blob were silently
+            // lost. Now we pull the cloud row first and call the
+            // existing _mergeAdminCfgsByFreshness helper (which
+            // picks the freshest per-admin entry by ts) before
+            // upserting the merged result. Same race window can
+            // still hit at the upsert itself, but each round is
+            // bounded and the next pull recovers.
+            try {
+              var _existing = await _SB.schema('autodial').from('user_settings').select('admin_config').eq('user_id', _user.id).maybeSingle();
+              var _remoteAcfg = (_existing && _existing.data && _existing.data.admin_config) || {};
+              if (_remoteAcfg && typeof _remoteAcfg === 'object' && Object.keys(_remoteAcfg).length && typeof _mergeAdminCfgsByFreshness === 'function') {
+                data = _mergeAdminCfgsByFreshness(_remoteAcfg, data || {});
+              }
+            } catch (_mergeErr) { /* fall through to plain upsert */ }
             await _SB.schema('autodial').from('user_settings').upsert({
               user_id: _user.id,
               admin_config: data || {},
@@ -12867,24 +13260,73 @@ function App() {
         pullSyncedKey(c);
       });
     };
+    // 0127 fix: _liveSyncPull was the silent culprit behind the
+    // ERR_INSUFFICIENT_RESOURCES storm + the 8-second first-skip
+    // delay. The realtime subscription (DB.subscribeLive) calls
+    // this on every appointment / lead / cb event. A burst of
+    // 10 events from another admin dialing rapidly fired 60
+    // parallel requests (10 × 6 fans) — the browser's per-host
+    // limit (~6 concurrent) immediately filled and the rest came
+    // back as ERR_INSUFFICIENT_RESOURCES. Worse, the user's own
+    // claim/dial requests got queued behind that pile, hence the
+    // 8-second wait on the first skip while requests cleared.
+    //
+    // New behavior: debounced + serialised + single-flight.
+    // Fast realtime bursts collapse into one sequential pull.
+    var _liveSyncDebounce = null;
+    var _liveSyncRunning = false;
+    var _liveSyncQueued = false;
+    var _liveSyncRunSerial = async () => {
+      if (_liveSyncRunning) { _liveSyncQueued = true; return; }
+      _liveSyncRunning = true;
+      try {
+        await pullLive();
+        await pullSharedAdminCfg();
+        await pullAssignedLeads();
+        await pullAppts();
+        await pullAllSynced();
+      } catch (_e) {
+      } finally {
+        _liveSyncRunning = false;
+        if (_liveSyncQueued) {
+          _liveSyncQueued = false;
+          // Re-debounce so a continuing burst doesn't spin indefinitely.
+          clearTimeout(_liveSyncDebounce);
+          _liveSyncDebounce = setTimeout(() => _liveSyncRunSerial(), 600);
+        }
+      }
+    };
     window._liveSyncPull = () => {
-      pullLive();
-      pullSharedAdminCfg();
-      pullAssignedLeads();
-      pullLeads();
-      pullAppts();
-      pullAllSynced();
+      clearTimeout(_liveSyncDebounce);
+      _liveSyncDebounce = setTimeout(() => _liveSyncRunSerial(), 350);
     };
     pullLive();
     pullSharedAdminCfg();
-    var _initialDelay = setTimeout(() => {
-      pullLive();
-      pullSharedAdminCfg();
-      pullAssignedLeads();
-      pullLeads();
-      pullAppts();
-      pullAllSynced();
-    }, 800);
+    // 0126 fix (request storm): initial-mount burst is now serial too.
+    // Pre-fix, all 6 pulls (pullSharedAdminCfg + pullLeads + pullAppts +
+    // pullAllSynced's 5 selects) fired in parallel at +800ms — combined
+    // with sw.js + jspdf + qrcode lazy-loads on the same tick, the
+    // browser's per-host concurrency limit got slammed and 2-3 selects
+    // came back as ERR_INSUFFICIENT_RESOURCES.
+    // 0126 multi-user: jitter the initial-mount burst by 0–700ms per
+    // device so 15 admins refreshing the page within the same minute
+    // don't all hammer Supabase + the polling channel at the same
+    // tick. Without this, a Main pushing a script-share or admin-cfg
+    // edit can trigger 15 simultaneous pulls 2 seconds later when
+    // realtime fans out — easy to hit the project's connection-pool
+    // ceiling. The jitter is per-mount, not per-user, so a single
+    // user reloading repeatedly still spreads load.
+    var _initialJitter = 800 + Math.floor(Math.random() * 700);
+    var _initialDelay = setTimeout(async () => {
+      try {
+        await pullLive();
+        await pullSharedAdminCfg();
+        await pullAssignedLeads();
+        await pullLeads();
+        await pullAppts();
+        await pullAllSynced();
+      } catch (_e) {}
+    }, _initialJitter);
     var _initialLive2 = setTimeout(() => {
       pullLive();
     }, 250);
@@ -12895,12 +13337,17 @@ function App() {
     var _pgChannel = null;
     setSyncStatus('synced');
     setLastSyncAt(Date.now());
+    // 0126 multi-user: jitter the recurring poll by ±400ms per cycle
+    // so two devices that started polling on the same tick (e.g. a
+    // shared morning login push) drift apart over a few minutes
+    // instead of pulsing in lockstep. Cap interval between
+    // [1600, 2400] so stat freshness is unchanged in the average.
     var pollId = setInterval(() => {
       if (document.visibilityState === 'visible') {
         pullLive();
         pullSharedAdminCfg();
       }
-    }, 2000);
+    }, 2000 + Math.floor((Math.random() - 0.5) * 800));
     // ═══ Debounce visibility/focus pulls. Quick alt-tab cycles used to fire
     //   six full pulls every time, and competing responses (e.g. assigned
     //   leads vs. own leads) caused the operator queue to oscillate between
@@ -12914,34 +13361,42 @@ function App() {
       _lastVisPullAt = now;
       return true;
     };
+    // 0126 fix (request storm): the visibility/focus/online bursts
+    // used to fan out 8+ concurrent supabase requests at once
+    // (pullSharedAdminCfg + pullLeads + pullAppts + pullAllSynced
+    // which itself fires 5 selects). Browsers cap concurrent
+    // requests per host (~6 for Chrome), so the 7th onwards came
+    // back as net::ERR_INSUFFICIENT_RESOURCES — visible as a wall
+    // of red GETs in DevTools. Fix: serialise the burst with a
+    // tiny in-flight guard so reconnect/refocus doesn't queue
+    // another 8 calls before the previous run finishes.
+    var _visPullInFlight = false;
+    var _runVisPull = async (includeFullLeads) => {
+      if (_visPullInFlight) return;
+      _visPullInFlight = true;
+      try {
+        await pullLive();
+        await pullSharedAdminCfg();
+        await pullAssignedLeads();
+        if (includeFullLeads) await pullLeads();
+        await pullAppts();
+        await pullAllSynced();
+      } finally { _visPullInFlight = false; }
+    };
     var onVis = () => {
       if (document.visibilityState !== 'visible') return;
       if (!_shouldVisPull()) return;
-      pullLive();
-      pullSharedAdminCfg();
-      pullAssignedLeads();
-      pullLeads();
-      pullAppts();
-      pullAllSynced();
+      _runVisPull(true);
     };
     var onFocus = () => {
       if (!_shouldVisPull()) return;
-      pullLive();
-      pullSharedAdminCfg();
-      pullAssignedLeads();
-      pullAppts();
-      pullAllSynced();
+      _runVisPull(false);
     };
     var onOnline = () => {
-      // Coming back online is rare — always do the full pull regardless of
-      // throttle so we don't show stale data after a network drop.
+      // Coming back online is rare — always do the full pull regardless
+      // of throttle so we don't show stale data after a network drop.
       _lastVisPullAt = Date.now();
-      pullLive();
-      pullSharedAdminCfg();
-      pullAssignedLeads();
-      pullLeads();
-      pullAppts();
-      pullAllSynced();
+      _runVisPull(true);
     };
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('focus', onFocus);
@@ -13912,6 +14367,100 @@ function App() {
     }, 1200);
     return () => clearTimeout(t);
   }, [role, adminSessions, adminConfigs, myCfg, cfg.sheetId, userName]);
+  // 0125 Batch 1 (#16 fix): admin-side cloud reconcile. Pre-fix the
+  // admin's session-end fire-and-forget DB.saveSess + the Main's
+  // markSessPaid had no retry path — if the cloud write failed (e.g.
+  // offline, 401 token expiry, RLS race), the local sessionLog and
+  // adminSessions entries were marked done but the cloud row stayed
+  // stale. Symptom: cross-device pull would revert the "paid" flag
+  // and the user would see the same unpaid pile reappear.
+  //
+  // 0126 fix: this effect MOUNTS ONCE (empty deps) and reads the
+  // freshest adminSessions / sessionLog via refs each tick. Pre-fix
+  // the deps included adminSessions/sessionLog so it re-mounted on
+  // every state change — adding+removing 3 listeners + a setTimeout
+  // each render. During an active session that's hundreds of
+  // mount/unmount cycles a minute, and if the throttle ever leaked
+  // it could double-fire markSessPaid against the same rows.
+  var _retryReconcileRef = useRef({ last: 0, running: false });
+  var sessionLogRef = useRef(sessionLog);
+  var adminSessionsRef = useRef(adminSessions);
+  useEffect(() => { sessionLogRef.current = sessionLog; }, [sessionLog]);
+  useEffect(() => { adminSessionsRef.current = adminSessions; }, [adminSessions]);
+  useEffect(() => {
+    if (!_SB || !_user) return;
+    var run = async () => {
+      var now = Date.now();
+      if (_retryReconcileRef.current.running) return;
+      if (now - _retryReconcileRef.current.last < 8000) return;
+      // Collect flagged sessions across BOTH adminSessions (Main side)
+      // and sessionLog (admin self). The two share the same retry
+      // shape — _paidSyncPending stamped on the row we tried to write.
+      var pending = [];
+      Object.entries(adminSessionsRef.current || {}).forEach(([em, list]) => {
+        (Array.isArray(list) ? list : []).forEach(s => {
+          if (s && s._paidSyncPending && s.startTime) pending.push({ em, s, source: 'adminSessions' });
+        });
+      });
+      (sessionLogRef.current || []).forEach(s => {
+        if (s && s._paidSyncPending && s.startTime) pending.push({ em: (s.email || s.adminEmail || myEmail || '').toLowerCase(), s, source: 'sessionLog' });
+      });
+      if (!pending.length) return;
+      _retryReconcileRef.current.last = now;
+      _retryReconcileRef.current.running = true;
+      try {
+        var clearedAdmin = new Set();
+        var clearedSelf = new Set();
+        for (var i = 0; i < pending.length; i++) {
+          var p = pending[i];
+          try {
+            var ok = await DB.markSessPaid(p.em, p.s.startTime, p.s.dbSessionId || p.s.id);
+            if (ok) {
+              var key = String(p.s.startTime);
+              if (p.source === 'adminSessions') clearedAdmin.add(p.em + '|' + key);
+              else clearedSelf.add(key);
+            }
+          } catch (_e) {}
+        }
+        if (clearedAdmin.size) {
+          setAdminSessions(prev => {
+            var next = { ...prev };
+            clearedAdmin.forEach(combo => {
+              var sep = combo.indexOf('|');
+              var em = combo.slice(0, sep);
+              var key = combo.slice(sep + 1);
+              if (next[em]) {
+                next[em] = next[em].map(s => String(s.startTime) === key ? { ...s, _paidSyncPending: false } : s);
+              }
+            });
+            return next;
+          });
+        }
+        if (clearedSelf.size) {
+          setSessionLog(prev => prev.map(s => clearedSelf.has(String(s.startTime)) ? { ...s, _paidSyncPending: false } : s));
+        }
+        if (clearedAdmin.size + clearedSelf.size > 0) {
+          toast('🔁 Reconciled ' + (clearedAdmin.size + clearedSelf.size) + ' pending payment sync', 'info');
+        }
+      } finally {
+        _retryReconcileRef.current.running = false;
+      }
+    };
+    var onlineHandler = () => { run(); };
+    var focusHandler = () => { run(); };
+    window.addEventListener('online', onlineHandler);
+    window.addEventListener('focus', focusHandler);
+    document.addEventListener('visibilitychange', focusHandler);
+    // Also run once on mount in case there are leftovers from a
+    // previous session that crashed mid-write.
+    var t = setTimeout(run, 1500);
+    return () => {
+      window.removeEventListener('online', onlineHandler);
+      window.removeEventListener('focus', focusHandler);
+      document.removeEventListener('visibilitychange', focusHandler);
+      clearTimeout(t);
+    };
+  }, []);
   var pending = adminLeadLinked ? leads.filter(l => l.status === 'pending' || l.status === 'cb') : [];
   var cur = curIdx >= 0 && curIdx < leads.length ? leads[curIdx] : null;
   var nextLeadRef = useRef(-1);
@@ -14643,7 +15192,25 @@ function App() {
   }, [isMob, callAssist, showNextLeadNotification, session, writePhoneDialRequest, role, adminLeadLinked, adminCfgVerified]);
   var sheetQueueRef = useRef([]);
   var sheetFlushTimer = useRef(null);
+  // 0126 multi-user fix: single-flight guard for sheet flushes. Pre-fix
+  // two flushes could overlap (e.g. one from the 500ms debounce timer
+  // and one from a focus/online listener) — Call 1 mid-await on
+  // gSheets.put when Call 2 starts processing a fresh queue. With
+  // 15 admins each pushing outcomes through the same Sheets API
+  // there's enough concurrency for two writes against the SAME cell
+  // to land out-of-order, and the API has no per-cell ordering
+  // guarantee. The flag serialises flushes from this device; if the
+  // queue is non-empty when the in-flight flush finishes, we re-arm
+  // the timer to drain the rest.
+  var sheetFlushInFlight = useRef(false);
   var flushSheetQueue = useCallback(async () => {
+    if (sheetFlushInFlight.current) {
+      // Already flushing — schedule a follow-up so anything queued
+      // during the in-flight run still gets written.
+      clearTimeout(sheetFlushTimer.current);
+      sheetFlushTimer.current = setTimeout(() => flushSheetQueue(), 600);
+      return;
+    }
     var q = [...sheetQueueRef.current];
     if (!q.length) return;
     if (sheetQueueStatus.retryAt && Date.now() < sheetQueueStatus.retryAt) {
@@ -14651,6 +15218,7 @@ function App() {
       sheetFlushTimer.current = setTimeout(() => flushSheetQueue(), Math.max(1000, sheetQueueStatus.retryAt - Date.now() + 250));
       return;
     }
+    sheetFlushInFlight.current = true;
     sheetQueueRef.current = [];
     setSheetQueueStatus(p => ({ ...p, lastFlushAt: Date.now(), lastError: '' }));
     if (!localStorage.getItem('ad_gt')) {
@@ -14695,6 +15263,16 @@ function App() {
     if (sheetQueueRef.current.length > 300) sheetQueueRef.current = sheetQueueRef.current.slice(-300);
     save('_sheetQueue', sheetQueueRef.current.length ? sheetQueueRef.current : null);
     if (!sheetQueueRef.current.length) setSheetQueueStatus(p => ({ ...p, lastError: '', retryAt: 0 }));
+    // 0126 multi-user fix: single-flight release. If anything queued
+    // up while we were awaiting Sheets API responses, re-arm the
+    // debounce so the next batch flushes too. Without the follow-up
+    // timer we'd drain the snapshot from the start of this call but
+    // not the new arrivals.
+    sheetFlushInFlight.current = false;
+    if (sheetQueueRef.current.length) {
+      clearTimeout(sheetFlushTimer.current);
+      sheetFlushTimer.current = setTimeout(() => flushSheetQueue(), 600);
+    }
   }, [cfg.sheetId, sheetQueueStatus.retryAt]);
   var queueSheetValue = useCallback(async (lead, value) => {
     var sheetId = lead?._sourceSheetId || cfg.sheetId || '';
@@ -14756,6 +15334,17 @@ function App() {
     }
     var startedAt = Date.now();
     var sessionId = 'sess_' + startedAt + '_' + Math.random().toString(36).slice(2, 8);
+    // 0125 Batch 2 (#7 fix): freeze the slot's bonus multiplier at
+    // session start so mid-session config edits by Main don't change
+    // the rate retroactively. apptsBar/bonusBar/hours were already
+    // locked into chosenSlot when the picker fired; bonusMult was the
+    // one piece that was still being read live from myCfg at end-time
+    // and during bar-clear toasts. Promote it into selectedSlot so
+    // EVERY downstream pay calc reads from the same frozen snapshot.
+    var slotFrozen = chosenSlot ? {
+      ...chosenSlot,
+      bonusMult: chosenSlot.bonusMult != null ? chosenSlot.bonusMult : n(myCfg.bonusMult, 1.5)
+    } : null;
     var nextSession = {
       id: sessionId,
       timesheetAutoId: sessionId,
@@ -14770,7 +15359,7 @@ function App() {
       cb: 0,
       sets: 0,
       ended: false,
-      selectedSlot: chosenSlot || null
+      selectedSlot: slotFrozen
     };
     setSession(nextSession);
     // 0110: pre-fill the multi-select sessionTarget from the chosen slot.
@@ -14833,6 +15422,293 @@ function App() {
     }
     return nextSession;
   };
+  // 0125: invoice helpers hoisted to component scope so endSession can
+  // reach them (originally defined inside renderClaudeAssimilatedApp,
+  // which is a different closure). Inputs come from the top-level
+  // state (sessionLog, incentives, myCfg, adminConfigs, dailyInvoicesRef)
+  // — moving them up doesn't change semantics.
+  var _ymdSGT = (ts) => {
+    var d = new Date(typeof ts === 'number' ? ts : (ts || Date.now()));
+    var sgt = new Date(d.getTime() + 8 * 3600 * 1000);
+    return sgt.toISOString().slice(0, 10);
+  };
+  var _buildInvoicePDFBlob = async (info, opts) => {
+    opts = opts || {};
+    var paid = !!opts.paid;
+    if (typeof window._loadJspdf !== 'function') throw new Error('jsPDF loader unavailable');
+    await window._loadJspdf();
+    var doc = new jspdf.jsPDF();
+    var bizName = info.bizName || info.admin || 'Freelance Admin';
+    var mainName = info.mainName || 'Main Manager';
+    var mainEmail = info.mainEmail || '';
+    var payNowId = info.payNowId || '';
+    var amount = Number(info.amount) || 0;
+    var totalHrs = Number(info.totalHrs) || 0;
+    var invNum = info.invNum || ('INV-' + Date.now().toString(36).toUpperCase());
+    var workDateStr = info.workDate
+      ? new Date(info.workDate + 'T00:00:00').toLocaleDateString('en-SG', { day: 'numeric', month: 'long', year: 'numeric' })
+      : new Date().toLocaleDateString('en-SG', { day: 'numeric', month: 'long', year: 'numeric' });
+    var paidDateStr = info.paidAt
+      ? new Date(info.paidAt).toLocaleDateString('en-SG', { day: 'numeric', month: 'long', year: 'numeric' })
+      : '';
+    doc.setFontSize(24); doc.setFont('helvetica', 'bold');
+    doc.text('INVOICE', 20, 25);
+    doc.setFontSize(10); doc.setFont('helvetica', 'normal');
+    doc.text('Invoice #: ' + invNum, 140, 20);
+    doc.text('Service date: ' + workDateStr, 140, 26);
+    doc.line(20, 38, 190, 38);
+    doc.setFontSize(11); doc.setFont('helvetica', 'bold');
+    doc.text('FROM (Freelance Admin):', 20, 48);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    doc.text(bizName, 20, 55);
+    doc.text('Independent contractor', 20, 61);
+    if (info.adminEmail) doc.text(info.adminEmail, 20, 67);
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+    doc.text('BILL TO:', 120, 48);
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+    doc.text(mainName, 120, 55);
+    if (mainEmail) doc.text(mainEmail, 120, 61);
+    var rows = [
+      ['Freelance Admin Services', totalHrs > 0 ? totalHrs.toFixed(1) + ' hrs' : '—', '$' + amount.toFixed(2)]
+    ];
+    doc.autoTable({
+      startY: 78,
+      head: [['Description', 'Hours', 'Amount']],
+      body: rows,
+      styles: { fontSize: 10, cellPadding: 5 },
+      headStyles: { fillColor: [148, 119, 84] },
+      foot: [['TOTAL', totalHrs > 0 ? totalHrs.toFixed(1) + ' hrs' : '—', '$' + amount.toFixed(2)]],
+      footStyles: { fillColor: [240, 240, 240], textColor: [0], fontStyle: 'bold' }
+    });
+    var fY = (doc.lastAutoTable?.finalY || 110) + 12;
+    if (payNowId) {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(0);
+      doc.text('Please PayNow to:', 20, fY);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(10);
+      doc.text(payNowId + '  ·  ' + bizName, 20, fY + 6);
+      doc.text('Reference: ' + invNum, 20, fY + 12);
+      try {
+        var qrPayload = (typeof buildPayNowPayload === 'function') ? buildPayNowPayload(payNowId, amount, bizName, invNum) : '';
+        if (qrPayload && typeof generateQRDataURL === 'function') {
+          var qrUrl = await generateQRDataURL(qrPayload, 320);
+          if (qrUrl && qrUrl.indexOf('data:') === 0) {
+            doc.addImage(qrUrl, 'PNG', 140, fY - 4, 50, 50);
+            doc.setFontSize(8); doc.setTextColor(100);
+            doc.text('Scan with your banking app', 140, fY + 50);
+            doc.text('Auto-fills payee, amount, ref', 140, fY + 54);
+            doc.setTextColor(0);
+          }
+        }
+      } catch (_qrErr) {}
+      fY += 60;
+    } else {
+      fY += 4;
+    }
+    if (paid) {
+      var stampY = (doc.lastAutoTable?.finalY || 110) - 4;
+      doc.setTextColor(34, 197, 94);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(64);
+      try { doc.text('PAID', 105, stampY, { align: 'center', angle: -14 }); }
+      catch (_) { doc.text('PAID', 75, stampY); }
+      doc.setDrawColor(34, 197, 94);
+      doc.setLineWidth(1.4);
+      try { doc.rect(60, stampY - 22, 90, 30); } catch (_) {}
+      doc.setTextColor(0);
+      if (paidDateStr) {
+        doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(22, 101, 52);
+        doc.text('PAID via PayNow on ' + paidDateStr, 20, fY + 6);
+        doc.setTextColor(0);
+      }
+    }
+    doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(80);
+    var footerY = 268;
+    doc.text('This invoice is issued by the above freelance admin as an independent', 20, footerY);
+    doc.text('contractor for services rendered. No employer-employee relationship', 20, footerY + 5);
+    doc.text('exists; CPF and other employee benefits do not apply.', 20, footerY + 10);
+    doc.setTextColor(0);
+    var safeBiz = String(bizName).replace(/[^a-z0-9]+/gi, '_').slice(0, 32) || 'admin';
+    // 0125: PAID filenames carry an HHmm SGT timestamp so a Main who
+    // pays the same admin twice in one day produces TWO distinct
+    // files in their Drive folder (no overwrite). Unpaid filename
+    // stays stable so re-uploads of the in-progress invoice replace
+    // each other cleanly.
+    var paidStamp = '';
+    if (paid) {
+      var sgtNow = new Date(Date.now() + 8 * 3600 * 1000);
+      var hh = String(sgtNow.getUTCHours()).padStart(2, '0');
+      var mm = String(sgtNow.getUTCMinutes()).padStart(2, '0');
+      paidStamp = '_' + hh + mm;
+    }
+    var fname = 'Invoice_' + safeBiz + '_' + invNum + (paid ? '_PAID' + paidStamp : '') + '.pdf';
+    var blob = doc.output('blob');
+    return { blob, fname, doc };
+  };
+  var _uploadInvoiceToDrive = async (blob, fname) => {
+    if (!window.gDriveUpload || typeof window.gDriveUpload.upload !== 'function') return null;
+    if (!localStorage.getItem('ad_gt')) return null;
+    try {
+      var file = new File([blob], fname, { type: 'application/pdf' });
+      var res = await window.gDriveUpload.upload(file, fname);
+      return { fileId: res?.id || '', webViewLink: res?.webViewLink || '' };
+    } catch (e) { console.warn('[invoiceDrive]', e?.message || e); return null; }
+  };
+  var _buildDailyInvoiceRecord = (date, adminEm) => {
+    var emLow = String(adminEm || '').toLowerCase();
+    var sessionsForDay = (sessionLog || []).filter(s => {
+      var emL = String(s.email || s.adminEmail || '').toLowerCase();
+      return emL === emLow && _ymdSGT(s.startTime) === date;
+    });
+    var incForDay = (incentives || []).filter(x => {
+      var emL = String(x.admin || '').toLowerCase();
+      return emL === emLow && _ymdSGT(x.date || x.createdAt) === date;
+    });
+    if (!sessionsForDay.length && !incForDay.length) return null;
+    var totalHrs = sessionsForDay.reduce((a, s) => {
+      return a + (s.creditHours != null ? s.creditHours : (s.fullSession ? n(myCfg.sessionDur, 5) : (s.elapsed || 0) / 3600));
+    }, 0);
+    var totalAmount = sessionsForDay.reduce((a, s) => a + (s.pay || 0), 0)
+                    + incForDay.reduce((a, x) => a + (x.amount || 0), 0);
+    var invNum = 'INV-' + date.replace(/-/g, '') + '-' + emLow.replace(/[^a-z0-9]/gi, '').slice(0, 6).toUpperCase();
+    var allPaid = sessionsForDay.every(s => !!s.paid) && incForDay.every(x => !!x.paid);
+    return {
+      id: date + '|' + emLow,
+      invNum,
+      date,
+      admin: emLow,
+      sessionCount: sessionsForDay.length,
+      incentiveCount: incForDay.length,
+      hours: totalHrs,
+      amount: totalAmount,
+      derivedPaid: allPaid && (sessionsForDay.length + incForDay.length) > 0
+    };
+  };
+  var _ensureDailyInvoice = async (date, adminEm, opts) => {
+    opts = opts || {};
+    var rec = _buildDailyInvoiceRecord(date, adminEm);
+    if (!rec) return null;
+    var emLow = rec.admin;
+    var ac = (adminConfigs || {})[emLow] || {};
+    var isOwn = emLow === (myEmail || '').toLowerCase();
+    var bizName = (isOwn ? (myCfg.bizName || '') : ac.bizName) || emLow;
+    var payNowId = (isOwn ? (myCfg.payNow || '') : ac.payNow) || '';
+    var existing = (dailyInvoicesRef.current || []).find(x => x.id === rec.id) || {};
+    var paid = opts.paid !== undefined ? !!opts.paid : (existing.paid || rec.derivedPaid);
+    var paidAt = opts.paidAt || existing.paidAt || (paid ? new Date().toISOString() : null);
+    // 0125 Batch 5 (#14 fix): stamp the tether at issue time. If the
+    // admin is later re-hired by a different Main, that new Main
+    // shouldn't see invoices the previous Main was billed for. The
+    // visibility filter for invoices reads tetheredMainAtIssue first
+    // (preserving history), then falls back to current tether for
+    // legacy records that pre-date this stamp.
+    var tetheredMainAtIssue = existing.tetheredMainAtIssue
+      || ac.tethered_main_email
+      || (isOwn ? (ac.tethered_main_email || '') : (myEmail || ''));
+    var info = {
+      admin: emLow,
+      adminEmail: emLow,
+      bizName,
+      payNowId,
+      amount: rec.amount,
+      totalHrs: rec.hours,
+      invNum: rec.invNum,
+      workDate: date,
+      paidAt,
+      mainName: isOwn ? (ac.mainBizName || 'Main Manager') : (myCfg.bizName || userName || 'Main Manager'),
+      mainEmail: isOwn ? (ac.mainEmail || '') : (myEmail || '')
+    };
+    var pdfBlob = null, fname = null, driveInfo = null;
+    try {
+      var built = await _buildInvoicePDFBlob(info, { paid });
+      pdfBlob = built.blob; fname = built.fname;
+    } catch (e) { console.warn('[invoicePDF]', e?.message || e); }
+    // 0125: Drive upload always runs when current user has a Google
+    // token. Both sides (admin issuer + Main payer) keep their own
+    // copy in their own Drive — `issuerDrive*` for the admin's
+    // canonical record, `payerDrive*` for the Main's payment proof.
+    // Each role reads the slot relevant to them when displaying
+    // links; cloud sync of the metadata stamps both slots over time.
+    if (pdfBlob && fname) {
+      driveInfo = await _uploadInvoiceToDrive(pdfBlob, fname);
+    }
+    var driveFields = {};
+    var historyEntry = null;
+    if (driveInfo) {
+      var slot = paid ? 'Paid' : '';
+      var rolePrefix = isOwn ? 'issuer' : 'payer';
+      driveFields[rolePrefix + slot + 'DriveFileId'] = driveInfo.fileId;
+      driveFields[rolePrefix + slot + 'DriveLink'] = driveInfo.webViewLink;
+      // Back-compat: keep legacy driveLink/paidDriveLink populated
+      // so older UIs that read those keys still resolve a link.
+      // Issuer's link wins when both upload, since the admin owns
+      // the canonical invoice.
+      if (isOwn) {
+        driveFields[(paid ? 'paid' : '') + 'DriveFileId'] = driveInfo.fileId;
+        driveFields[(paid ? 'paid' : '') + 'DriveLink'] = driveInfo.webViewLink;
+      }
+      // 0125: every PAID upload is appended to a per-record history.
+      // Mains who pay the same admin twice on the same day produce
+      // TWO distinct files (the filename has HHmm SGT stamped) and
+      // both entries are preserved here. Unpaid uploads (just the
+      // working draft) don't accumulate — only the latest matters.
+      if (paid) {
+        historyEntry = {
+          role: rolePrefix,
+          fileId: driveInfo.fileId,
+          link: driveInfo.webViewLink,
+          fname,
+          uploadedAt: new Date().toISOString(),
+          amount: rec.amount
+        };
+      }
+    }
+    var prevHistory = Array.isArray(existing.paidHistory) ? existing.paidHistory : [];
+    var merged = {
+      ...existing,
+      ...rec,
+      bizName,
+      payNowId,
+      invNum: rec.invNum,
+      paid,
+      paidAt: paid ? paidAt : null,
+      tetheredMainAtIssue,
+      ...driveFields,
+      paidHistory: historyEntry ? [historyEntry, ...prevHistory].slice(0, 20) : prevHistory,
+      updatedAt: new Date().toISOString()
+    };
+    setDailyInvoices(p => {
+      var rest = (p || []).filter(x => x.id !== merged.id);
+      return [merged, ...rest];
+    });
+    if (opts.download && pdfBlob && fname) {
+      try {
+        var url = URL.createObjectURL(pdfBlob);
+        var a = document.createElement('a'); a.href = url; a.download = fname;
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      } catch (_dlErr) {}
+    }
+    return merged;
+  };
+  // 0125: pick the Drive link slot relevant to the viewer. Admin
+  // (issuer) gets their issuerDriveLink; Main (payer) gets their
+  // payerDriveLink. Falls back to the legacy `driveLink` keys for
+  // older records, then to the other side's link as a last resort.
+  var _bestDriveLinkFor = (inv) => {
+    if (!inv) return '';
+    var meLow = String(myEmail || '').toLowerCase();
+    var isOwn = (inv.admin || '').toLowerCase() === meLow;
+    var paid = !!inv.paid;
+    var roleP = isOwn ? 'issuer' : 'payer';
+    var otherP = isOwn ? 'payer' : 'issuer';
+    var slot = paid ? 'Paid' : '';
+    return inv[roleP + slot + 'DriveLink']
+      || inv[roleP + (paid ? '' : 'Paid') + 'DriveLink']
+      || (paid ? inv.paidDriveLink : inv.driveLink)
+      || inv[otherP + slot + 'DriveLink']
+      || inv[otherP + (paid ? '' : 'Paid') + 'DriveLink']
+      || '';
+  };
   var endSession = () => {
     if (!session) return;
     var endedAt = Date.now();
@@ -14893,17 +15769,33 @@ function App() {
       s.suggestedHours = nextSlot;
       if (!full) creditH = actualH;
     }
+    // 0125 Batch 2 (#7 fix): bonusMult comes from the FROZEN slot
+    // (stamped at session start), not live myCfg. If Main edited the
+    // global bonusMult mid-session, the admin still gets the rate
+    // they signed up for at start. Falls back to current myCfg only
+    // when the session pre-dates the freeze (older records).
+    var lockedBonusMult = (matchedSlot && matchedSlot.bonusMult != null)
+      ? Number(matchedSlot.bonusMult)
+      : n(myCfg.bonusMult, 1.5);
     s.matchedSlot = {
       hours: sessionDurH,
       apptsBar: mThresh,
-      bonusBar: nThresh
+      bonusBar: nThresh,
+      bonusMult: lockedBonusMult
     };
-    s.pay = isAdminCallingSession ? creditH * hourlyRate * (bonus ? n(myCfg.bonusMult, 1.5) : 1) : 0;
+    // 0125 Batch 2 (#6 confirmation): hourlyRate is the LIVE current
+    // rate (recomputed each render from totalSets → tier → payRate).
+    // If the admin crosses a tier boundary during this session, the
+    // entire session pays at the NEW rate — exactly what the user
+    // wants ("new pay applies to SAME SESSION onwards"). Past
+    // sessions in sessionLog already wrote their s.pay at their own
+    // end-time and stay locked at the pre-promotion rate.
+    s.pay = isAdminCallingSession ? creditH * hourlyRate * (bonus ? lockedBonusMult : 1) : 0;
     s.creditHours = creditH;
     s.tsNote = tsNote;
     s.fullSession = full;
     s.bonus = bonus;
-    s.bonusMult = n(myCfg.bonusMult, 1.5);
+    s.bonusMult = lockedBonusMult;
     s.hourlyRate = isAdminCallingSession ? hourlyRate : 0;
     s.tier = isAdminCallingSession ? tier.label : '';
     // 0108: target-hit celebration. Walk every selected target type and
@@ -14932,28 +15824,35 @@ function App() {
     try {
       save('activeSession', null);
     } catch (_e) {}
-    var _prevSess = sessionLog[0];
-    if (isAdminCallingSession && _prevSess && _prevSess.tier && _prevSess.tier !== tier.label) {
+    // 0125 Batch 2 (#6 fix): walk sessionLog back to the most recent
+    // session that HAS a tier stamped, not just sessionLog[0]. Pre-
+    // fix, an admin whose previous session pre-dated tier tracking
+    // (or had a blank tier for any reason) silently skipped the
+    // promotion celebration even though the rate had just upgraded.
+    var _prevSess = (sessionLog || []).find(x => x && x.tier && (x.email === s.email || (x.adminEmail && x.adminEmail === s.adminEmail)));
+    var _prevTierLabel = _prevSess ? _prevSess.tier : '';
+    var _prevTierRate = _prevSess ? (_prevSess.hourlyRate || 0) : 0;
+    if (isAdminCallingSession && _prevTierLabel && _prevTierLabel !== tier.label) {
       var _tierOrder = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Platinum Ruby', 'Platinum Elite'];
-      var _prevIdx = _tierOrder.indexOf(_prevSess.tier);
+      var _prevIdx = _tierOrder.indexOf(_prevTierLabel);
       var _curIdx = _tierOrder.indexOf(tier.label);
       if (_curIdx > _prevIdx && _curIdx !== -1) {
         s.promoted = true;
-        s.promotedFrom = _prevSess.tier;
+        s.promotedFrom = _prevTierLabel;
         s.promotedTo = tier.label;
-        s.promotedFromRate = _prevSess.hourlyRate || 0;
+        s.promotedFromRate = _prevTierRate;
         s.promotedToRate = hourlyRate;
         setPromotionLog(p => [{
           date: new Date().toISOString(),
           admin: myEmail,
-          fromTier: _prevSess.tier,
+          fromTier: _prevTierLabel,
           toTier: tier.label,
           atSets: totalSets,
-          fromRate: _prevSess.hourlyRate || 0,
+          fromRate: _prevTierRate,
           toRate: hourlyRate,
           sessionStartTime: s.startTime
         }, ...p]);
-        toast('🎉 Promoted to ' + tier.label + '! Rate: $' + (_prevSess.hourlyRate || 0) + '/hr → $' + hourlyRate + '/hr', 'info');
+        toast('🎉 Promoted to ' + tier.label + '! Rate: $' + _prevTierRate + '/hr → $' + hourlyRate + '/hr', 'info');
         setConfetti(true);
         setTimeout(() => setConfetti(false), 3000);
       }
@@ -14970,6 +15869,16 @@ function App() {
     setNextPreviewIdx(-1);
     setShowPostCall(null);
     setPostCallNote('');
+    // 0126 fix (audit): release the lead claim on session end too.
+    // Pre-fix the lead held at the moment the user stopped the
+    // session stayed "in use" in autodial.lead_claims for the next
+    // operator. Same pattern as pauseDial / skipCurrentLead.
+    try {
+      var _heldLeadEnd = curIdx >= 0 && curIdx < (leadsRef.current || []).length
+        ? leadsRef.current[curIdx]
+        : null;
+      if (_heldLeadEnd) releaseClaim(_heldLeadEnd);
+    } catch (_e) {}
     setCurIdx(-1);
     if (autoAdvanceTimerRef.current) {
       clearTimeout(autoAdvanceTimerRef.current);
@@ -15057,6 +15966,18 @@ function App() {
         });
       } catch (_logErr) {}
     }
+    // 0125: auto-issue (or refresh) the daily Freelance-Admin invoice
+    // on session end. Runs ONLY for admin-calling sessions — Mains
+    // don't earn per-session pay, so they don't issue invoices to
+    // themselves. Background: fire-and-forget so a slow Drive upload
+    // doesn't delay the post-session UI; the invoice metadata is
+    // saved synchronously to local + cloud regardless of upload.
+    if (isAdminCallingSession && typeof _ensureDailyInvoice === 'function') {
+      var _invDate = _ymdSGT(s.startTime);
+      Promise.resolve()
+        .then(() => _ensureDailyInvoice(_invDate, myEmail, {}))
+        .catch(e => console.warn('[dailyInvoice end]', e?.message || e));
+    }
   };
   // Keep the ckg leave-guard ref pointing at the freshest endSession
   // closure so the modal's "Stop session" button always commits with
@@ -15136,10 +16057,15 @@ function App() {
       } else if (apptsBar && sets < apptsBar) {
         warn = '\n\n⚠  Below the ' + apptsBar + '-set bar — pay credit may be partial.';
       }
+      // 0124: spell out the financial side-effect — wrapping up tabulates
+      // pay using the matched slot + session-bar credit and writes the
+      // session row as final/Unpaid. Admin can no longer keep dialing
+      // toward bars/bonus on this session after confirm.
+      warn += '\n\n💵  Pay will be tabulated and finalised on confirm.';
     }
     var ok = await confirmAsync(bodyLines.join('\n') + warn, {
       title: 'Wrap up this session?',
-      confirmLabel: 'Wrap up',
+      confirmLabel: role === 'admin' ? 'Finalise pay & wrap up' : 'Wrap up',
       cancelLabel: 'Keep going',
       danger: true
     });
@@ -15185,33 +16111,55 @@ function App() {
   useEffect(() => {}, [role]);
   var applyOutcome = useCallback((status, extra = {}) => {
     var idx = curIdx;
-    setLeads(p => p.map((l, i) => {
-      if (i !== idx) return l;
+    // 0126 fix (audit): pre-fix the setLeads(p => p.map(...)) updater
+    // also called syncSheet(...) and setAppointments(...) inside the
+    // map callback. State-updater functions are supposed to be pure;
+    // React strict mode invokes them twice for double-render safety,
+    // which would have fired two writes per outcome (visible as
+    // duplicate sheet rows + ghost appointments). Now we compute the
+    // updated lead `u` once, fire the side-effects ONCE outside the
+    // updater, then pass a pre-built array into setLeads.
+    var prevLead = (idx >= 0 && idx < (leadsRef.current || []).length) ? leadsRef.current[idx] : null;
+    var u = null;
+    var sheetStatus = null;
+    if (prevLead) {
       var now = new Date().toLocaleString();
-      var u = {
-        ...l,
-        calledAt: now,
-        ...extra
-      };
+      u = { ...prevLead, calledAt: now, ...extra };
       if (status === 'np') {
-        var nc = (l.npCount || 0) + 1;
+        var nc = (prevLead.npCount || 0) + 1;
         u.npCount = nc;
-        u.status = nc >= n(myCfg.npMax, 5) ? 'ni' : 'np';
-        if (l.status === 'cb' && l.cbDate) u.cbHistory = [...(l.cbHistory || []), {
-          date: l.cbDate + ' ' + l.cbTime,
+        // 0126 fix (audit): pre-fix the LOCAL flip used myCfg.npMax (so
+        // a Main configured 3 NP-then-NI behaved correctly on screen)
+        // but the SHEET writeback was hardcoded `nc >= 5`. Result:
+        // local lead status said NI after 3 NPs, sheet still said NP.
+        // Now both read the same npMax so the writeback agrees.
+        var _npMax = n(myCfg.npMax, 5);
+        u.status = nc >= _npMax ? 'ni' : 'np';
+        if (prevLead.status === 'cb' && prevLead.cbDate) u.cbHistory = [...(prevLead.cbHistory || []), {
+          date: prevLead.cbDate + ' ' + prevLead.cbTime,
           result: 'NP'
         }];
-        syncSheet(u, nc >= 5 ? 'ni' : 'np');
+        sheetStatus = nc >= _npMax ? 'ni' : 'np';
       } else if (status === 'cb') {
         u.status = 'cb';
         u.cbDate = extra.cbDate || '';
         u.cbTime = extra.cbTime || '';
         u.cbFlexible = !!extra.cbFlexible;
-        syncSheet(u, 'cb');
+        sheetStatus = 'cb';
       } else if (status === 'set') {
         u.status = 'set';
-        syncSheet(u, 'set');
-        var _delSet = _getDelIds();
+        sheetStatus = 'set';
+      } else if (status === 'ni') {
+        u.status = 'ni';
+        sheetStatus = 'ni';
+      } else {
+        u.status = status;
+      }
+    }
+    // Side-effects fire BEFORE setLeads so they happen exactly once.
+    if (u && sheetStatus) syncSheet(u, sheetStatus);
+    if (u && status === 'set') {
+      var _delSet = _getDelIds();
         var _undoForPendingAppt = {
           ...(appStateRef.current._pendingSetUndoBase || {}),
           leadId: u.id,
@@ -15223,63 +16171,61 @@ function App() {
           sheetTab: u._sourceSheetTab || appStateRef.current._pendingSetUndoBase?.sheetTab || cfg.sheetTab || 'Sheet1',
           savedAt: new Date().toISOString()
         };
-        setAppointments(p => {
-          var _scrubbed = p.filter(a => !isApptDeleted(a, _delSet));
-          var existingIdx = _scrubbed.findIndex(a => (a.leadId === u.id || a.phone === u.phone && a.phone) && (!a.followUp || a.followUp === 'pending' || a.followUp === 'postponed'));
-          if (existingIdx >= 0) {
-            var _ex = _scrubbed[existingIdx];
-            if (_ex.followUp === 'postponed') {
-              var next = _scrubbed.slice();
-              next[existingIdx] = {
-                ..._ex,
-                followUp: 'pending',
-                followUpDate: null,
-                apptDate: '',
-                apptTime: '',
-                shaky: false,
-                needsDetails: true,
-                _setUndo: _undoForPendingAppt
-              };
-              return next;
-            }
-            var _nextExisting = _scrubbed.slice();
-            _nextExisting[existingIdx] = {
+      setAppointments(p => {
+        var _scrubbed = p.filter(a => !isApptDeleted(a, _delSet));
+        var existingIdx = _scrubbed.findIndex(a => (a.leadId === u.id || a.phone === u.phone && a.phone) && (!a.followUp || a.followUp === 'pending' || a.followUp === 'postponed'));
+        if (existingIdx >= 0) {
+          var _ex = _scrubbed[existingIdx];
+          if (_ex.followUp === 'postponed') {
+            var next = _scrubbed.slice();
+            next[existingIdx] = {
               ..._ex,
-              needsDetails: !_ex.apptDate || !_ex.apptTime,
-              _setUndo: {
-                ...(_ex._setUndo || {}),
-                ..._undoForPendingAppt
-              }
+              followUp: 'pending',
+              followUpDate: null,
+              apptDate: '',
+              apptTime: '',
+              shaky: false,
+              needsDetails: true,
+              _setUndo: _undoForPendingAppt
             };
-            return _nextExisting;
+            return next;
           }
-          return [..._scrubbed, {
-            id: Date.now() + Math.random(),
-            leadId: u.id,
-            name: u.name,
-            phone: u.phone,
-            gender: u.gender || detectGender(u) || '',
-            age: u.age || '',
-            apptDate: '',
-            apptTime: '',
-            location: '',
-            industry: '',
-            remarks: '',
-            followUp: 'pending',
-            tip: 0,
-            tipPaid: false,
-            createdAt: new Date().toISOString(),
-            admin: myEmail,
-            needsDetails: true,
-            _setUndo: _undoForPendingAppt
-          }];
-        });
-      } else if (status === 'ni') {
-        u.status = 'ni';
-        syncSheet(u, 'ni');
-      } else u.status = status;
-      return u;
-    }));
+          var _nextExisting = _scrubbed.slice();
+          _nextExisting[existingIdx] = {
+            ..._ex,
+            needsDetails: !_ex.apptDate || !_ex.apptTime,
+            _setUndo: {
+              ...(_ex._setUndo || {}),
+              ..._undoForPendingAppt
+            }
+          };
+          return _nextExisting;
+        }
+        return [..._scrubbed, {
+          id: Date.now() + Math.random(),
+          leadId: u.id,
+          name: u.name,
+          phone: u.phone,
+          gender: u.gender || detectGender(u) || '',
+          age: u.age || '',
+          apptDate: '',
+          apptTime: '',
+          location: '',
+          industry: '',
+          remarks: '',
+          followUp: 'pending',
+          tip: 0,
+          tipPaid: false,
+          createdAt: new Date().toISOString(),
+          admin: myEmail,
+          needsDetails: true,
+          _setUndo: _undoForPendingAppt
+        }];
+      });
+    }
+    // Pure update — pre-built `u` written in. If u is null (no
+    // current lead), setLeads becomes a no-op which is what we want.
+    if (u) setLeads(p => p.map((l, i) => i === idx ? u : l));
     if (cur) DB.logAction(session?.id || null, _user?.id, status, cur.name, cur.phone, {
       npCount: cur.npCount,
       cbDate: extra.cbDate,
@@ -15393,22 +16339,83 @@ function App() {
       return p;
     });
   }, [curIdx, dialFilters, dial]);
-  var claimLead = useCallback(leadIdx => {
-    if (!_SB || !_user || leadIdx < 0 || leadIdx >= leads.length) return;
-    var lead = leads[leadIdx];
-    _SB.schema('autodial').from('lead_claims').upsert({
-      phone: String(lead.phone),
-      claimed_by: _user.id,
-      claimed_at: new Date().toISOString(),
-      data: {
-        email: myEmail,
-        name: window._prof?.full_name || myEmail,
-        leadName: lead.name
-      }
-    }, {
-      onConflict: 'phone'
-    }).catch(() => {});
+  // 0126 sync fix: atomic lead claim. Pre-fix this was a fire-and-
+  // forget upsert with onConflict='phone' — meaning two concurrent
+  // claim attempts on the same lead BOTH succeeded, last write
+  // overwriting the first. With 15 admins working from a shared
+  // queue, that's a real risk. New flow:
+  //   1. INSERT — succeeds atomically if no claim exists.
+  //   2. On unique-violation (23505), SELECT to read the holder.
+  //      a. Holder is me → idempotent re-claim, ok.
+  //      b. Holder claim is stale (>10 min) → CAS update guarded by
+  //         claimed_at, so only one of N concurrent takeover
+  //         attempts wins.
+  //      c. Holder is active and not me → return failure with
+  //         holder details so UI can surface them.
+  // Returns { ok, fresh?, mine?, tookOver?, heldByEmail?, heldByName? }
+  // so callers can decide whether to dial / advance / show conflict.
+  var claimLead = useCallback(async leadIdx => {
+    if (!_SB || !_user) return { ok: false, error: 'no-supabase' };
+    var curLeads = leadsRef.current || leads || [];
+    if (leadIdx < 0 || leadIdx >= curLeads.length) return { ok: false, error: 'bad-idx' };
+    var lead = curLeads[leadIdx];
+    var phone = String(lead.phone || '');
+    if (!phone) return { ok: false, error: 'no-phone' };
+    var claimAt = new Date().toISOString();
+    var claimData = {
+      email: myEmail,
+      name: window._prof?.full_name || myEmail,
+      leadName: lead.name
+    };
+    // 1. Try a fresh INSERT. The lead_claims table has a UNIQUE
+    //    constraint on `phone` (the upsert onConflict='phone' from
+    //    the pre-fix code implies it), so two concurrent inserts
+    //    can't both succeed.
+    var ins = await _SB.schema('autodial').from('lead_claims').insert({
+      phone, claimed_by: _user.id, claimed_at: claimAt, data: claimData
+    });
+    if (!ins.error) return { ok: true, fresh: true };
+    if (ins.error.code !== '23505') {
+      console.warn('[claimLead INSERT]', ins.error.message || ins.error);
+      return { ok: false, error: ins.error };
+    }
+    // 2. Conflict — read who holds it.
+    var sel = await _SB.schema('autodial').from('lead_claims')
+      .select('claimed_by, claimed_at, data').eq('phone', phone).maybeSingle();
+    var existing = sel.data;
+    if (!existing) {
+      // Race: row gone between insert and select. One more shot.
+      var ins2 = await _SB.schema('autodial').from('lead_claims').insert({
+        phone, claimed_by: _user.id, claimed_at: claimAt, data: claimData
+      });
+      if (!ins2.error) return { ok: true, fresh: true };
+      return { ok: false, error: ins2.error };
+    }
+    if (existing.claimed_by === _user.id) {
+      return { ok: true, fresh: false, mine: true };
+    }
+    var existingTs = new Date(existing.claimed_at).getTime();
+    if (!Number.isFinite(existingTs) || Date.now() - existingTs > 600000) {
+      // Stale — CAS takeover. The .eq('claimed_at', existing.claimed_at)
+      // is the optimistic guard: if another caller updated the row
+      // between our SELECT and UPDATE, our update affects 0 rows
+      // and we correctly fail.
+      var upd = await _SB.schema('autodial').from('lead_claims')
+        .update({ claimed_by: _user.id, claimed_at: claimAt, data: claimData })
+        .eq('phone', phone).eq('claimed_at', existing.claimed_at).select();
+      if (upd.data && upd.data.length) return { ok: true, fresh: true, tookOver: true };
+      // CAS lost — reread once for an accurate error.
+      var sel2 = await _SB.schema('autodial').from('lead_claims').select('data').eq('phone', phone).maybeSingle();
+      var c2 = (sel2.data && sel2.data.data) || {};
+      return { ok: false, heldByEmail: c2.email, heldByName: c2.name };
+    }
+    var c = existing.data || {};
+    return { ok: false, heldByEmail: c.email, heldByName: c.name, claimedAt: existing.claimed_at };
   }, [leads, myEmail]);
+  // checkClaim retained for places that want a NON-binding probe of
+  // who holds a lead (e.g. a "currently calling" pill). It does NOT
+  // reserve the claim — callers that need to actually dial should
+  // call claimLead instead, which is atomic.
   var checkClaim = useCallback(async leadIdx => {
     if (!_SB || leadIdx < 0 || leadIdx >= leads.length) return null;
     var lead = leads[leadIdx];
@@ -15430,13 +16437,30 @@ function App() {
   // dialFilters() screen. After the outcome lands, the normal queue
   // logic resumes from the new curIdx, so filters reapply for whatever
   // comes next.
-  var adHocDialLead = useCallback(idx => {
+  var adHocDialLead = useCallback(async idx => {
     var curLeads = leadsRef.current || [];
     if (idx < 0 || idx >= curLeads.length) return;
     var lead = curLeads[idx];
     if (!lead || !lead.phone) {
       toast('No phone for this lead', 'err');
       return;
+    }
+    // 0126 sync fix: atomic claim. Pre-fix this used checkClaim
+    // (read-only probe) which had a TOCTOU race — two devices could
+    // both see "free" and both proceed. The All-Leads picker is a
+    // common multi-device path (operator searches by name on phone
+    // while still logged in on laptop), so the race was easy to
+    // hit. claimLead is now atomic (INSERT-or-CAS-takeover).
+    var claimRes = await claimLead(idx);
+    if (!claimRes || !claimRes.ok) {
+      var holderName = (claimRes && (claimRes.heldByName || claimRes.heldByEmail)) || 'Another caller';
+      var override = await confirmAsync(
+        '⚠️ ' + holderName + ' is already on ' + (lead.name || 'this lead') + '.\n\nDial anyway? The other caller will keep their claim — two devices on one lead double-writes to the sheet.',
+        { title: 'Lead already in use', confirmLabel: 'Dial anyway', cancelLabel: 'Cancel', danger: true }
+      );
+      if (!override) return;
+      // User overrode: don't try to claim again, just proceed. The
+      // other caller stays in lead_claims.
     }
     setShowAllLeadsModal(false);
     if (!session || session.ended) {
@@ -15452,13 +16476,14 @@ function App() {
       if (l?.phone) dial(l.phone);
     }, 200);
     toast('📞 Dialing ' + (lead.name || lead.phone));
-  }, [session, myCfg.sessionSlots, startSession, dial]);
-  var proceedToLead = useCallback(async idx => {
+  }, [session, myCfg.sessionSlots, startSession, dial, claimLead, confirmAsync]);
+  var proceedToLead = useCallback(idx => {
     var curLeads = leadsRef.current;
     if (idx >= 0 && idx < curLeads.length && (curLeads[idx].status === 'ni' || curLeads[idx].status === 'set')) {
       console.warn('[AutoDial] proceedToLead: lead ' + idx + ' is ' + curLeads[idx].status + ', finding next…');
       idx = getNextDialable(curLeads, idx, {
-        ...dialFilters()
+        ...dialFilters(),
+        wrap: true
       });
     }
     if (idx === -1 || idx >= curLeads.length) {
@@ -15469,46 +16494,121 @@ function App() {
       toast('No more leads', 'info');
       return;
     }
-    var claim = await checkClaim(idx);
-    if (claim) {
-      toast('⚠️ ' + claim.name + ' is already calling ' + leadsRef.current[idx]?.name, 'err');
-      var nextIdx = getNextDialable(leadsRef.current, idx, {
-        ...dialFilters()
-      });
-      if (nextIdx === -1) {
-        setRunning(false);
-        setPhase('idle');
-        setCurIdx(-1);
-        return;
-      }
-      idx = nextIdx;
-    }
     if (blockIfNotReady(curLeads[idx])) return;
+    // 0127 fix: OPTIMISTIC dial. Pre-fix this awaited claimLead
+    // (which round-trips Supabase) BEFORE setting curIdx and
+    // dialing — so a slow first call (cold connection / token
+    // refresh / request-storm congestion) showed up as an
+    // 8-second skip lag. The atomic claim still happens, just
+    // in the background. If the claim fails (rare with
+    // INSERT-or-CAS atomicity), we surface a toast + auto-skip
+    // to the next lead. The brief window where two callers
+    // could both be on the lead is bounded by the claim round
+    // trip — and the loser's claim attempt fails so they
+    // auto-advance.
     setCurIdx(idx);
     setRunning(true);
     setPhase('calling');
     setShowNextPreview(false);
-    claimLead(idx);
     setTimeout(() => {
       var l = leadsRef.current[idx];
       if (l) dial(l.phone);
     }, 300);
-  }, [dial, dialFilters, checkClaim, claimLead, blockIfNotReady]);
+    // Background claim with auto-skip on conflict.
+    Promise.resolve(claimLead(idx)).then(claimRes => {
+      if (claimRes && claimRes.ok) return;
+      // Conflict — only react if we're still on the lead we were
+      // trying to claim. If the user has already moved on, we
+      // don't want to pull them off their new lead.
+      if (curIdxRef.current !== idx) return;
+      var holderName = (claimRes && (claimRes.heldByName || claimRes.heldByEmail)) || 'Another caller';
+      toast('⚠️ ' + holderName + ' was on ' + (curLeads[idx]?.name || 'this lead') + ' — auto-skipping', 'err');
+      var nextIdx = getNextDialable(leadsRef.current, idx, { ...dialFilters(), wrap: true });
+      if (nextIdx === -1) {
+        setRunning(false); setPhase('idle'); setCurIdx(-1);
+        toast('No more dialable leads', 'info');
+        return;
+      }
+      proceedToLead(nextIdx);
+    }).catch(_e => { /* swallow — claim is best-effort in background */ });
+  }, [dial, dialFilters, claimLead, blockIfNotReady]);
   var releaseClaim = useCallback(lead => {
     if (!_SB || !lead?.phone) return;
+    // 0126 fix (audit): pre-fix the .then(()=>{}, ()=>{}) swallowed
+    // every failure. RLS denial / 401 / network errors all left the
+    // claim row alive while the local UI thought it was released —
+    // teammates would still see the lead as "in use" indefinitely.
+    // Now log the failure (still no throw — release is best-effort,
+    // we just need to know when it's not happening).
     try {
-      _SB.schema('autodial').from('lead_claims').delete().eq('phone', String(lead.phone)).then(() => {}, () => {});
-    } catch (_e) {}
+      var ph = String(lead.phone);
+      _SB.schema('autodial').from('lead_claims').delete().eq('phone', ph).then(
+        r => { if (r && r.error) console.warn('[releaseClaim]', ph, r.error.message || r.error); },
+        e => console.warn('[releaseClaim]', ph, e?.message || e)
+      );
+    } catch (e) { console.warn('[releaseClaim throw]', e?.message || e); }
   }, []);
   var skipCurrentLead = useCallback(() => {
     var curLeads = leadsRef.current || [];
-    if (!running || curIdx < 0 || curIdx >= curLeads.length) return;
-    var skipped = curLeads[curIdx];
-    var skippedIdx = curIdx;
+    // 0126 fix: pre-fix this returned early when curIdx < 0, but the
+    // Claude shell's Skip-Lead button stays enabled whenever there's
+    // a previewable activeLead — including the "session running but
+    // no dial yet" state where curIdx is -1 and the lead card shows
+    // pending[0]. Result: clicking Skip did nothing. Fix: when
+    // curIdx < 0, treat the first dialable from the queue start as
+    // the lead being skipped and advance from there.
+    if (!running) return;
+    var skippedIdx = curIdx >= 0 && curIdx < curLeads.length ? curIdx : -1;
+    var skipped = skippedIdx >= 0 ? curLeads[skippedIdx] : null;
+    if (!skipped) {
+      // No active lead to skip; just find any next dialable so the
+      // queue advances. If there's nothing dialable, we land in the
+      // "All leads done" branch below.
+      // 0126 fix (audit): clear any pending auto-advance timer before
+      // jumping to the next lead. Pre-fix a stale auto-advance from
+      // a prior dial could fire during/after the skip and re-route
+      // the queue mid-flight.
+      if (autoAdvanceTimerRef.current) {
+        clearTimeout(autoAdvanceTimerRef.current);
+        autoAdvanceTimerRef.current = null;
+      }
+      var startSearch = -1;
+      // wrap:true is harmless here (after=-1 means we scan the whole
+      // queue forward already), but kept for symmetry with the
+      // skipped-lead path.
+      var firstDialable = getNextDialable(curLeads, startSearch, { ...dialFilters(), wrap: true });
+      if (firstDialable === -1) {
+        setRunning(false);
+        setPhase('idle');
+        setCurIdx(-1);
+        toast('No more leads', 'info');
+        return;
+      }
+      // Advance to firstDialable and dial it (no skip undo entry —
+      // there's nothing to "un-skip").
+      proceedToLead(firstDialable);
+      return;
+    }
+    // Same defensive timer clear when we DO have a lead to skip —
+    // proceedToLead below kicks off a fresh dial, so any stale
+    // pending advance must die first.
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current);
+      autoAdvanceTimerRef.current = null;
+    }
     callbackReturnIdxRef.current = -1;
     setCallbackBookmark(null);
-    var nextIdx = getNextDialable(curLeads, curIdx, {
-      ...dialFilters()
+    // 0127 fix: wrap-aware advance. Pre-fix the user reported "skip
+    // doesn't work after switching priority" — what was happening
+    // is that the priority change shifted high-priority leads to
+    // indexes BEFORE curIdx, the forward-only walk returned -1, and
+    // skipCurrentLead bailed with "No more leads" even though
+    // plenty of dialable leads remained earlier in the queue. With
+    // wrap:true we now re-scan from index 0 if the forward walk
+    // hits the end.
+    var nextIdx = getNextDialable(curLeads, skippedIdx, {
+      ...dialFilters(),
+      wrap: true
     });
     releaseClaim(skipped);
     if (nextIdx === -1) {
@@ -15797,6 +16897,19 @@ function App() {
   }, [callbackLookupLeadIdx, callbackLookupStatus, myCfg.npMax, syncSheet, cfg.sheetId, cfg.sheetTab, myEmail, userName, role, mainMode, session, running]);
   var handleOutcome = useCallback((status, extra = {}) => {
     var leadIdx = curIdx;
+    // 0126 fix (audit): pre-fix, clicking NP/CB/NI/Set with curIdx<0
+    // (running session but no lead actively dialled — happens between
+    // "Start session" and the first dial, or after a "no eligible
+    // leads" return) silently bumped the SESSION counters via the
+    // setSession update further down, but didn't update any lead
+    // since applyOutcome maps over `leads` filtering by `idx === -1`
+    // which never matches. Result: ghost dials/sets/etc. inflating
+    // the session stats with no corresponding lead status change.
+    // Guard now early-returns for the non-advance statuses.
+    if (status !== 'pending' && (leadIdx < 0 || !leads[leadIdx])) {
+      toast('Start a call first — no active lead to mark', 'err');
+      return;
+    }
     callbackReturnIdxRef.current = -1;
     setCallbackBookmark(null);
     if (status === 'pending') {
@@ -15844,8 +16957,37 @@ function App() {
       if (session) {
         var s = session.sets + 1;
         if (s === 1) checkAchievement('first_set', 'First Blood!', '🩸');
-        if (s === n(session.selectedSlot?.apptsBar || myCfg.mThresh, 2)) if (s === n(session.selectedSlot?.bonusBar || myCfg.nThresh, 3)) {
+        // 0124: per-session bar-clear celebrations. The pre-fix nested-if
+        // (s === apptsBar) (s === bonusBar) only fired when both bars were
+        // the same number — Bonus Hunter never triggered in normal config.
+        // Split into two distinct checks. For admins, layer a payout toast
+        // + confetti so they see the dollar impact at the moment they
+        // cross each bar (numbers come from the active selectedSlot so
+        // they match Main's predetermined session length).
+        // 0125 Batch 2 (#7 fix): _bonusMult now reads from the FROZEN
+        // slot too — pre-fix it read live myCfg.bonusMult, so a Main
+        // who edited the global mult mid-session would change the
+        // toast amount mid-flight even though the actual end-session
+        // pay was about to use the locked rate. Now both agree.
+        var _apptsBar = n(session.selectedSlot?.apptsBar || myCfg.mThresh, 2);
+        var _bonusBar = n(session.selectedSlot?.bonusBar || myCfg.nThresh, 3);
+        var _sessionDurH = n(session.selectedSlot?.hours || myCfg.sessionDur, 5);
+        var _bonusMult = n((session.selectedSlot && session.selectedSlot.bonusMult) || myCfg.bonusMult, 1.5);
+        if (_apptsBar > 0 && s === _apptsBar) {
+          checkAchievement('appts_bar_hit', 'Bar Cleared!', '🎯');
+          if (role === 'admin') {
+            var _fullPay = _sessionDurH * hourlyRate;
+            toast('🎯 Appts bar cleared! Unlocked full session pay (+$' + _fullPay.toFixed(0) + ')', 'info');
+            try { setConfetti(true); setTimeout(() => setConfetti(false), 2500); } catch (_e) {}
+          }
+        }
+        if (_bonusBar > 0 && s === _bonusBar) {
           checkAchievement('bonus_hit', 'Bonus Hunter!', '💎');
+          if (role === 'admin') {
+            var _bonusExtra = _sessionDurH * hourlyRate * Math.max(0, _bonusMult - 1);
+            toast('💎 Bonus unlocked! Extra +$' + _bonusExtra.toFixed(0) + ' (' + _bonusMult + 'x session)', 'info');
+            try { setConfetti(true); setTimeout(() => setConfetti(false), 3000); } catch (_e) {}
+          }
         }
       }
       var lead = leadIdx >= 0 && leadIdx < leads.length ? {
@@ -15906,8 +17048,13 @@ function App() {
       };
       return l;
     });
+    // 0127 fix: outcome auto-advance also wraps. Same root cause as
+    // skipCurrentLead — priority changes shift queue order, so the
+    // next-dialable lookup must consider the front of the queue
+    // when forward walk hits end.
     nextLeadRef.current = getNextDialable(simulated, leadIdx, {
-      ...dialFilters()
+      ...dialFilters(),
+      wrap: true
     });
     if (status === 'ni' || status === 'np' || status === 'cb') {
       appStateRef.current._lastUndo = {
@@ -15929,6 +17076,16 @@ function App() {
       setShowNextPreview(false);
       setNextPreviewIdx(-1);
       setPostCallNote('');
+      // 0126 sync fix: release the claim on the lead we just
+      // outcome'd before advancing. Pre-fix the prior lead stayed
+      // "in use" in lead_claims for up to 10 min after NP/CB/NI —
+      // teammates would see it as locked even though we'd moved on.
+      // With 15 admins burning through queue, that's hundreds of
+      // ghost claims at any time.
+      try {
+        var _outcomedLead = leadsRef.current[leadIdx];
+        if (_outcomedLead) releaseClaim(_outcomedLead);
+      } catch (_e) {}
       var _nextIdx = nextLeadRef.current;
       if (_nextIdx === -1) {
         setRunning(false);
@@ -15938,13 +17095,20 @@ function App() {
       } else {
         setCurIdx(_nextIdx);
         setPhase('calling');
+        // Atomically claim the next lead too — if it gets snatched
+        // by another caller in the gap between outcome and dial,
+        // we'd otherwise dial right over them. claimLead is fire-
+        // and-forget here because we've already committed to this
+        // index; if the claim fails we'll discover it via the next
+        // checkClaim probe / sheet write conflict.
+        try { claimLead(_nextIdx); } catch (_e) {}
         setTimeout(() => {
           var l = leadsRef.current[_nextIdx];
           if (l) dial(l.phone);
         }, 400);
       }
     }
-  }, [applyOutcome, curIdx, leads, filters, cfg, myCfg, bestStreak, session, dial, dialFilters]);
+  }, [applyOutcome, curIdx, leads, filters, cfg, myCfg, bestStreak, session, dial, dialFilters, releaseClaim, claimLead]);
   // Note: the legacy `finishPostCall` callback and its associated post-call
   // notes card were removed in 2026.05.03.0021 — the showPostCall state was
   // never set to a truthy value anywhere in the app, so the entire flow was
@@ -15961,7 +17125,7 @@ function App() {
       dial(cur.phone);
     }
   }, [phase, countdown, running, cur, dial]);
-  var startDial = chosenSlot => {
+  var startDial = async chosenSlot => {
     if (role === 'admin' && !adminLeadLinked) {
       toast(adminCfgVerified ? 'Manager has not linked a leads sheet for this admin' : 'Checking manager leads link...', 'err');
       setRunning(false);
@@ -15985,6 +17149,47 @@ function App() {
         setRunning(false);
         setPhase('idle');
         return;
+      }
+      // 0126 sync fix: cross-device session conflict guard. Pre-fix
+      // tapping Start on phone when laptop ALREADY had a live
+      // session for the same user pushed a fresh startTime to cloud
+      // (1.5s debounce later) — laptop's pull then forced laptop to
+      // adopt phone's session, losing all in-flight counters from
+      // laptop. Now we read the cloud's liveSession first; if it's
+      // owned by a different device and < 20 min old, ask the user
+      // whether to take it over (which ends the other device's loop)
+      // or join it as a mirror.
+      if (_SB && _user) {
+        try {
+          var pr = await _SB.schema('autodial').from('user_settings').select('ui_preferences').eq('user_id', _user.id).maybeSingle();
+          var existing = pr.data && pr.data.ui_preferences ? pr.data.ui_preferences.liveSession : null;
+          if (existing && existing.devId && existing.devId !== window._devId && existing.startTime
+              && Date.now() - (existing.ts || 0) < 20 * 60000 && !existing.ended) {
+            var minsAgo = Math.round((Date.now() - existing.startTime) / 60000);
+            var takeover = await confirmAsync(
+              'Another device started a session ' + minsAgo + ' min ago and is still tracking dials/sets there.\n\n' +
+              '• "Join" mirrors that session here (live counters sync both ways).\n' +
+              '• "Take over" clears the cloud claim and starts fresh — the other device will go quiet on its next refresh.',
+              { title: 'Active session on another device', confirmLabel: 'Take over', cancelLabel: 'Join existing', danger: true }
+            );
+            if (takeover === false) {
+              // Join — the existing session-pull effect will mirror
+              // the cloud session into local state on its next tick.
+              toast('▶ Joining session from other device — counters will mirror', 'info');
+              return;
+            }
+            // takeover === true → fall through to startSession below.
+            // Stamp ended:true on the old liveSession so the other
+            // device sees it cleared on next pull.
+            try {
+              await _SB.schema('autodial').from('user_settings').upsert({
+                user_id: _user.id,
+                ui_preferences: { ...(pr.data?.ui_preferences || {}), liveSession: null },
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'user_id' });
+            } catch (_clearErr) {}
+          }
+        } catch (_e) { /* offline / RLS — fall through to local start */ }
       }
       var slots = (myCfg.sessionSlots || []).filter(sl => n(sl.hours, 0) > 0);
       if (slots.length > 1 && !chosenSlot) {
@@ -16027,6 +17232,16 @@ function App() {
     if (isMob) dial(leads[f].phone);else setTimeout(() => dial(leads[f].phone), 500);
   };
   var pauseDial = () => {
+    // 0126 fix (audit): release the lead claim on pause so another
+    // operator can pick it up if needed. Pre-fix the claim row in
+    // autodial.lead_claims persisted across pauses indefinitely —
+    // showing the lead as "in use" to teammates even after the
+    // operator paused. Same release pattern as skipCurrentLead.
+    try {
+      var curLeads = leadsRef.current || [];
+      var heldLead = curIdx >= 0 && curIdx < curLeads.length ? curLeads[curIdx] : null;
+      if (heldLead) releaseClaim(heldLead);
+    } catch (_e) {}
     setRunning(false);
     setPhase('idle');
     setShowNextPreview(false);
@@ -17945,7 +19160,28 @@ function App() {
     // 0098: outcome buttons disabled when no session is running, so a
     // mis-tap (or accidental keyboard shortcut, since the same handler
     // fires on hotkey) can't dirty the session stats.
-    var outcomeButton = (status, glyph, caption, keyHint) => h('button', { className: 'cad-outcome ' + status, disabled: !running, onClick: () => status === 'cb' ? (setShowCb(true), setCbDate(''), setCbTime('')) : handleOutcome(status), type: 'button' }, h('span', { className: 'key' }, keyHint), h('span', { className: 'glyph' }, glyph), h('span', { className: 'caption' }, caption));
+    // 0126 fix (audit): outcome buttons now also require an active lead
+    // (curIdx >= 0). Pre-fix the buttons stayed enabled the whole
+    // session, but `applyOutcome`/`handleOutcome` mapped over leads
+    // by `i === curIdx` — so clicking an outcome before the first
+    // dial of a session was a silent no-op (and worse, `setSession`
+    // still incremented session counters → ghost np/cb/ni/set
+    // numbers in the session pill). Disabling at the button matches
+    // the existing keyboard-shortcut guard (`&& cur` on line 16832)
+    // so all entry points behave the same.
+    // 0126 fix (audit #8): the CB-open onClick used a comma-expression
+    // (setShowCb(true), setCbDate(''), setCbTime('')) that always
+    // fired all three setters together — including resetting cbDate/
+    // cbTime even when something elsewhere had pre-populated them
+    // (e.g. from a "snooze for 3 days" preset). Pulled into a named
+    // handler so the intent is explicit; same end result, easier to
+    // see what's reset when.
+    var _openCbModal = () => {
+      setShowCb(true);
+      setCbDate('');
+      setCbTime('');
+    };
+    var outcomeButton = (status, glyph, caption, keyHint) => h('button', { className: 'cad-outcome ' + status, disabled: !running || curIdx < 0, onClick: () => status === 'cb' ? _openCbModal() : handleOutcome(status), type: 'button' }, h('span', { className: 'key' }, keyHint), h('span', { className: 'glyph' }, glyph), h('span', { className: 'caption' }, caption));
     var callView = h('div', { className: 'cad-shell' }, topbar, h('div', { className: 'cad-call-body' },
       h('main', { className: 'cad-call-main' },
         cadSessionTargetPanel(true),
@@ -18080,46 +19316,69 @@ function App() {
               // the input is always present + always typable; results
               // appear in a popover dropdown below the input as the
               // user types, click any to dial. Zero friction.
-              h('div', { className: 'cad-lead-jump-inline' },
+              // 0127: Find-lead dropdown now also opens on FOCUS with an
+              // empty query, showing a windowed slice of the queue
+                              // around the current lead (3 before + current + 12 after,
+                              // expandable). User asked: "I should be able to see the
+                              // leads before and after the current one (scrollable
+                              // and selectable) in case I wanna jump back". The
+                              // current lead is highlighted and auto-scrolled into
+                              // view via a ref. Typing into the input swaps to the
+                              // search-results view.
+                              h('div', { className: 'cad-lead-jump-inline' },
                 h('input', {
                   type: 'search',
                   className: 'cad-lead-jump-inline__input',
-                  placeholder: '🔍 Find lead by name / phone…',
+                  placeholder: '🔍 Find lead — or click here to browse',
                   value: leadJumpQuery,
-                  onChange: e => { setLeadJumpQuery(e.target.value); setShowLeadJump(false); },
-                  onFocus: () => { /* dropdown shows when query non-empty */ },
-                  onKeyDown: e => { if (e.key === 'Escape') { setLeadJumpQuery(''); e.currentTarget.blur(); } }
+                  onChange: e => { setLeadJumpQuery(e.target.value); },
+                  onFocus: () => { setLeadJumpFocused(true); },
+                  // Delay blur close so the click on a result row registers.
+                  onBlur: () => { setTimeout(() => setLeadJumpFocused(false), 150); },
+                  onKeyDown: e => {
+                    if (e.key === 'Escape') { setLeadJumpQuery(''); setLeadJumpFocused(false); e.currentTarget.blur(); }
+                  }
                 }),
-                leadJumpQuery && h('div', { className: 'cad-lead-jump-inline__results' },
+                (leadJumpQuery || leadJumpFocused) && h('div', {
+                  className: 'cad-lead-jump-inline__results',
+                  ref: el => {
+                    // 0127: when the empty-state browser opens, scroll the
+                    // current lead's row into view so the operator sees
+                    // their context immediately. Skip when typing.
+                    if (!el || leadJumpQuery) return;
+                    var anchor = el.querySelector('[data-current-lead="1"]');
+                    if (anchor && typeof anchor.scrollIntoView === 'function') {
+                      try { anchor.scrollIntoView({ block: 'center' }); } catch (_e) {}
+                    }
+                  }
+                },
                   (() => {
-                    var q = String(leadJumpQuery || '').toLowerCase().trim();
-                    var qDigits = q.replace(/\D/g, '');
-                    var hits = (leads || []).filter(l => {
-                      var nameHit = String(l.name || '').toLowerCase().includes(q);
-                      var phoneHit = qDigits && String(l.phone || '').replace(/\D/g, '').includes(qDigits);
-                      var emailHit = String(l.email || '').toLowerCase().includes(q);
-                      return nameHit || phoneHit || emailHit;
-                    }).slice(0, 8);
-                    if (hits.length === 0) return h('div', { className: 'cad-lead-jump-inline__empty' }, 'No matches for "' + leadJumpQuery + '"');
-                    return hits.map((l, i) => {
+                    var renderRow = (l, originalIdx, isCurrent) => {
                       var status = String(l.status || 'pending').toLowerCase();
                       var statusLabel = status === 'set' ? '✓ Set' : status === 'cb' ? '🔔 CB' : status === 'ni' ? 'NI' : status === 'np' ? 'NP×' + (l.npCount || 1) : '·';
                       var statusTone = status === 'set' ? 'green' : status === 'cb' ? 'blue' : status === 'ni' ? 'red' : status === 'np' ? 'amber' : '';
                       return h('button', {
-                        key: l.id || l.phone || i,
+                        key: l.id || l.phone || originalIdx,
                         type: 'button',
-                        className: 'cad-lead-jump-inline__row',
+                        className: 'cad-lead-jump-inline__row' + (isCurrent ? ' is-current' : ''),
+                        'data-current-lead': isCurrent ? '1' : null,
+                        style: isCurrent ? {
+                          background: 'rgba(214,168,122,.18)',
+                          border: '1px solid rgba(214,168,122,.55)',
+                          borderRadius: 8
+                        } : null,
                         onMouseDown: e => e.preventDefault(),
                         onClick: () => {
-                          var idx = (leads || []).findIndex(x => x === l || (l.id && x.id === l.id));
-                          if (idx < 0) return;
+                          var jumpIdx = originalIdx >= 0 ? originalIdx : (leads || []).findIndex(x => x === l || (l.id && x.id === l.id));
+                          if (jumpIdx < 0) return;
                           setLeadJumpQuery('');
+                          setLeadJumpFocused(false);
                           var needsStart = !running || !session || session.ended;
                           if (needsStart) {
                             try { startDial(); } catch (_e) {}
-                            setTimeout(() => { setCurIdx(idx); setRunning(true); setPhase('calling'); if (l.phone) dial(l.phone); }, 120);
+                            setTimeout(() => { setCurIdx(jumpIdx); setRunning(true); setPhase('calling'); if (l.phone) dial(l.phone); }, 120);
                           } else {
-                            setCurIdx(idx);
+                            setCurIdx(jumpIdx);
                             setPhase('calling');
                             if (l.phone) dial(l.phone);
                           }
@@ -18133,15 +19392,45 @@ function App() {
                         // the email is regular text.
                         h('span', { style: { textAlign: 'left', flex: 1, minWidth: 0, overflow: 'hidden' } },
                           h('b', { style: { display: 'block', fontSize: 12.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } },
+                            isCurrent && h('span', { style: { fontSize: 10, color: 'var(--ad-brass-2)', marginRight: 6, fontWeight: 700 } }, '▶ NOW'),
                             l.name || 'Unnamed',
                             l.age && h('span', { className: 'cad-subtle', style: { fontWeight: 500, fontSize: 11, marginLeft: 6 } }, '· age ', l.age)
                           ),
-                          h('small', { className: 'cad-mono cad-subtle', style: { display: 'block', fontSize: 10.5, marginTop: 2 } }, l.phone || 'no phone'),
+                          h('small', { className: 'cad-mono cad-subtle', style: { display: 'block', fontSize: 10.5, marginTop: 2 } }, '#', originalIdx + 1, ' · ', l.phone || 'no phone'),
                           l.email && h('small', { className: 'cad-subtle', style: { display: 'block', fontSize: 10, marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, '✉ ', l.email)
                         ),
                         h('span', { className: 'cad-pill ' + statusTone, style: { fontSize: 9.5, padding: '2px 7px' } }, statusLabel)
                       );
-                    });
+                    };
+                    if (leadJumpQuery) {
+                      var q = String(leadJumpQuery || '').toLowerCase().trim();
+                      var qDigits = q.replace(/\D/g, '');
+                      var hits = [];
+                      (leads || []).forEach((l, idx) => {
+                        var nameHit = String(l.name || '').toLowerCase().includes(q);
+                        var phoneHit = qDigits && String(l.phone || '').replace(/\D/g, '').includes(qDigits);
+                        var emailHit = String(l.email || '').toLowerCase().includes(q);
+                        if (nameHit || phoneHit || emailHit) hits.push({ l, idx });
+                      });
+                      hits = hits.slice(0, 20);
+                      if (hits.length === 0) return h('div', { className: 'cad-lead-jump-inline__empty' }, 'No matches for "' + leadJumpQuery + '"');
+                      return hits.map(({ l, idx }) => renderRow(l, idx, idx === curIdx));
+                    }
+                    // Empty-query browse window: show ALL leads with current
+                    // highlighted + auto-scrolled. 803 rows in a scrollable
+                    // box is fine for browsers; heavier virtualisation is
+                    // unnecessary at this list size.
+                    var allLeads = leads || [];
+                    if (!allLeads.length) {
+                      return h('div', { className: 'cad-lead-jump-inline__empty' }, 'No leads loaded yet.');
+                    }
+                    var anchorIdx = curIdx >= 0 ? curIdx : 0;
+                    return [
+                      h('div', { key: '_header', className: 'cad-subtle', style: { padding: '6px 10px', fontSize: 10.5, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase' } },
+                        'Browse · ', allLeads.length, ' leads · current is #', anchorIdx + 1
+                      ),
+                      ...allLeads.map((l, idx) => renderRow(l, idx, idx === curIdx))
+                    ];
                   })()
                 )
               ),
@@ -18384,7 +19673,17 @@ function App() {
             // they set (matched by lowercased a.admin against myEmail).
             // Greyed-out chrome the user complained about is gone — if you
             // can see the buttons, you can use them.
+            // 0124: pending rows now expose the four outcome buttons
+            // (Met/Closed/Postpone/Fly Kite) that the legacy non-Claude
+            // shell had inline. Met fires the metIncentive, Closed opens
+            // the tip modal, Fly Kite keeps the set count without a
+            // payout, Postpone routes through the reschedule flow. All
+            // four call resolvePastApptStatus → same handlers used by
+            // the past-appt banner, so no duplicate state paths.
             h('span', { className: 'cad-appt-actions' },
+              _canEditAppt(a) && (a.followUp || 'pending') === 'pending' && h('button', { className: 'cad-btn ghost', onClick: () => resolvePastApptStatus(a, 'met'), title: 'Prospect attended — adds the configured met incentive' }, '✓ Met'),
+              _canEditAppt(a) && (a.followUp || 'pending') === 'pending' && h('button', { className: 'cad-btn ghost', onClick: () => resolvePastApptStatus(a, 'closed'), title: 'Met + signed/paid — enter the tip/EFYC amount next' }, '🏁 Closed'),
+              _canEditAppt(a) && (a.followUp || 'pending') === 'pending' && h('button', { className: 'cad-btn ghost', onClick: () => resolvePastApptStatus(a, 'fly_kite'), title: "Prospect didn't show — set count kept, no incentive" }, '🪁 Fly Kite'),
               _canEditAppt(a) && h('button', { className: 'cad-btn ghost', onClick: () => _openRescheduleFlow(a), title: 'Edit / reschedule (syncs to Calendar + Sheets)' }, '✎ Edit'),
               _canEditAppt(a) && !a.needsDetails && h('button', { className: 'cad-btn ghost danger', onClick: () => _deleteAppt(a), title: 'Remove this appointment from the calendar + sheet' }, '🗑 Delete'),
               a.needsDetails && h('button', { className: 'cad-btn ghost danger', onClick: () => undoIncompleteSetAppt(a) }, 'Undo'),
@@ -18435,8 +19734,12 @@ function App() {
     var addTeamAdminClaude = async () => {
       var em = String(newAdminEmail || '').trim().toLowerCase();
       if (!em.includes('@')) return toast('Enter a valid admin email', 'err');
-      var hubMatch = (hubAdminPool || []).find(p => p.email === em);
-      if (hubMatch && hubMatch.tetheredTo && hubMatch.tetheredTo !== (myEmail || '').toLowerCase()) return toast(em + ' is already hired by another Main', 'err');
+      // 0125 Batch 6 (#15 fix): use the shared _assertCanHireAdmin
+      // helper so this Claude-shell add path and the legacy add path
+      // can't drift. Same hub-pool check, same reason string.
+      var canHire = _assertCanHireAdmin(em, hubAdminPool);
+      if (!canHire.ok) return toast(canHire.reason, 'err');
+      var hubMatch = canHire.hubMatch;
       var proceed = await confirmAsync('Add ' + em + ' to this AutoDial team? This creates a shared admin config for that account.', { title: 'Add team admin', confirmLabel: 'Add admin' });
       if (!proceed) return;
       var nextCfg = {
@@ -19147,10 +20450,44 @@ function App() {
       ),
       duplicatePhones.length > 0 && h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Duplicate phone watch'), h('div', { className: 'cad-list-stack' }, duplicatePhones.map(([phone, count]) => h('div', { className: 'cad-list-row slim tone-amber', key: phone }, h('span', { className: 'cad-mono' }, phone), h('span', { className: 'cad-muted' }, count + ' rows'), h('button', { className: 'cad-btn ghost', onClick: () => mergeDuplicatePhone && mergeDuplicatePhone(phone) }, 'Review')))))
     ));
-    var payAdminRows = Object.entries(adminSessions || {}).filter(([em]) => em && em.toLowerCase() !== myEmail.toLowerCase()).map(([em, ss]) => {
-      var rows = Array.isArray(ss) ? ss : [];
-      var unpaid = rows.filter(s => !s.paid).reduce((a, s) => a + (s.pay || 0), 0) + (incentives || []).filter(x => !x.paid && (x.admin || '').toLowerCase() === em.toLowerCase()).reduce((a, x) => a + (x.amount || 0), 0);
-      var hours = rows.reduce((a, s) => a + (s.fullSession ? (adminConfigs[em]?.sessionDur || myCfg.sessionDur || 0) : (s.elapsed || 0) / 3600), 0);
+    // 0125: scope payroll rows to admins tethered to this Main only.
+    // Pre-fix, Main saw EVERY admin in adminSessions (which includes
+    // admins hired by other Mains via cross-Main cloud sync). Now
+    // _isVisibleAdminEmail enforces the tether boundary so each
+    // Main's payroll view stays siloed to their own team.
+    // 0125 Batch 2 (#2 fix): hours used to chain to `myCfg.sessionDur`
+    // when the per-admin sessionDur was missing — that's WRONG for
+    // teams where different admins have different slot hours, since
+    // a 3h-slot admin's full sessions would over-credit at Main's 5h
+    // default. Fix: prefer s.creditHours (locked at session-end),
+    // then admin's own sessionDur, then raw elapsed. Never use Main's
+    // own sessionDur as the cross-admin fallback.
+    // 0125 Batch 3 (#1 fix): also surface admins who have ONLY
+    // incentives (no sessions yet) — pre-fix they were invisible in
+    // payroll because the keyset came from adminSessions only.
+    var _payRowsByEmail = {};
+    Object.entries(adminSessions || {}).forEach(([em, ss]) => {
+      if (!em || em.toLowerCase() === myEmail.toLowerCase()) return;
+      if (!_isVisibleAdminEmail(em)) return;
+      _payRowsByEmail[em.toLowerCase()] = { email: em.toLowerCase(), sessions: Array.isArray(ss) ? ss : [] };
+    });
+    (incentives || []).forEach(x => {
+      var emL = (x.admin || '').toLowerCase();
+      if (!emL || emL === myEmail.toLowerCase()) return;
+      if (!_isVisibleAdminEmail(emL)) return;
+      if (!_payRowsByEmail[emL]) _payRowsByEmail[emL] = { email: emL, sessions: [] };
+    });
+    var payAdminRows = Object.values(_payRowsByEmail).map(r => {
+      var rows = r.sessions || [];
+      var em = r.email;
+      var unpaid = rows.filter(s => !s.paid).reduce((a, s) => a + (s.pay || 0), 0)
+                 + (incentives || []).filter(x => !x.paid && (x.admin || '').toLowerCase() === em).reduce((a, x) => a + (x.amount || 0), 0);
+      var hours = rows.reduce((a, s) => {
+        if (s.creditHours != null) return a + s.creditHours;
+        var sd = (adminConfigs[em] || {}).sessionDur || 0;
+        if (s.fullSession && sd > 0) return a + sd;
+        return a + (s.elapsed || 0) / 3600;
+      }, 0);
       return { email: em, name: (adminConfigs[em] || {}).bizName || em, sessions: rows.length, hours, unpaid };
     }).sort((a, b) => b.unpaid - a.unpaid);
     var timesheetView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
@@ -19170,9 +20507,136 @@ function App() {
         stat('Cycles', (billingCycles || []).length, 'closed cycles', 'var(--ad-green)')
       ]),
       role === 'admin' ? h('div', { className: 'cad-page-grid' },
+        // 0124: Admin self-PayNow QR — auto-generated from current unpaid
+        // pay calculations + the admin's own PayNow handle. Admin shows
+        // this to their Main, who scans it to settle. Empty-state and
+        // no-paynow-set cases get clear hints to Settings → Prefs.
+        h('div', { className: 'cad-card cad-editor-card' },
+          cadSectionHead('Request payment'),
+          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 } },
+            h('div', { style: { flex: 1, minWidth: 200 } },
+              h('span', { className: 'cad-label' }, 'Unpaid · ready to collect'),
+              h('h3', { style: { fontSize: 28, color: 'var(--ad-brass-2)', margin: '4px 0 4px' } }, cadMoney(unpaidEarnings)),
+              h('p', { className: 'cad-muted', style: { fontSize: 12 } },
+                myCfg.payNow ? 'Show your PayNow QR to your Main to receive payment.' : '⚠ Add your PayNow handphone in Settings → Prefs first.'
+              )
+            ),
+            h('button', {
+              className: 'cad-btn primary',
+              disabled: !(unpaidEarnings > 0) || !myCfg.payNow,
+              onClick: () => {
+                var unpaidSessCount = (sessionLog || []).filter(s => !s.paid).length;
+                var unpaidIncCount = (incentives || []).filter(x => !x.paid && (x.admin || '').toLowerCase() === (myEmail || '').toLowerCase()).length;
+                var unpaidHrs = (sessionLog || []).filter(s => !s.paid).reduce((a, s) => a + (s.fullSession ? (myCfg.sessionDur || 0) : (s.elapsed || 0) / 3600), 0);
+                setPayQRModal({
+                  email: myEmail,
+                  admin: myEmail,
+                  bizName: myCfg.bizName || userName || myEmail,
+                  payNowId: myCfg.payNow || '',
+                  amount: unpaidEarnings,
+                  sessCount: unpaidSessCount,
+                  totalHrs: unpaidHrs,
+                  incCount: unpaidIncCount,
+                  invNum: 'REQ-' + Date.now().toString(36).toUpperCase(),
+                  _selfDisplay: true
+                });
+              }
+            }, icon('Sheet', 13), myCfg.payNow ? 'Show my PayNow QR' : 'Add PayNow first')
+          )
+        ),
+        // 0125: admin invoices — daily Freelance-Admin invoices, the
+        // canonical billing record. Click an invoice to open the Drive
+        // copy (or re-issue if the upload failed earlier). PAID stamp
+        // is rendered inline as a green pill; the underlying PDF
+        // carries the diagonal stamp overlay.
+        (() => {
+          var myLow = (myEmail || '').toLowerCase();
+          var myInvoices = (dailyInvoices || []).filter(x => (x.admin || '').toLowerCase() === myLow).slice().sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 12);
+          return h('div', { className: 'cad-card cad-editor-card' },
+            cadSectionHead('My invoices'),
+            myInvoices.length ? h('div', { className: 'cad-list-stack' }, myInvoices.map(inv => h('div', { className: 'cad-list-row slim', key: inv.id },
+              h('span', null,
+                h('b', null, inv.date || ''),
+                h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, inv.invNum || '')
+              ),
+              h('span', { className: 'cad-mono cad-muted' }, (Number(inv.hours) || 0).toFixed(1) + 'h'),
+              h('span', { className: 'cad-pill ' + (inv.paid ? 'green' : 'amber') }, cadMoney(inv.amount || 0)),
+              h('button', {
+                className: 'cad-btn ghost',
+                onClick: async () => {
+                  var link = _bestDriveLinkFor(inv);
+                  if (link) { window.open(link, '_blank', 'noopener'); return; }
+                  // No Drive link — re-issue the PDF locally so the
+                  // user still gets the invoice. Download triggers
+                  // the browser save dialog and re-uploads to Drive.
+                  await _ensureDailyInvoice(inv.date, inv.admin, { download: true, paid: inv.paid });
+                }
+              }, inv.paid ? '✓ Paid · view' : 'Open')
+            ))) : h('p', { className: 'cad-page-note' }, "No invoices yet — finish a session to generate today's.")
+          );
+        })(),
         h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Recent sessions'), (sessionLog || []).length ? h('div', { className: 'cad-list-stack' }, sessionLog.slice(0, 8).map((s, i) => h('div', { className: 'cad-list-row slim', key: s.id || s.startTime || i }, h('span', null, h('b', null, new Date(s.startTime || Date.now()).toLocaleDateString('en-SG')), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, (s.dialed || 0) + ' dialed - ' + (s.sets || 0) + ' set')), h('span', { className: 'cad-mono cad-muted' }, ((s.elapsed || 0) / 3600).toFixed(1) + 'h'), h('span', { className: 'cad-pill ' + (s.paid ? 'green' : 'amber') }, cadMoney(s.pay || 0))))) : h('p', { className: 'cad-page-note' }, 'No completed sessions yet.')),
         h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Payments received'), (paymentsReceived || []).length ? h('div', { className: 'cad-list-stack' }, paymentsReceived.slice(0, 8).map((p, i) => h('div', { className: 'cad-list-row slim tone-green', key: p.id || i }, h('span', null, h('b', null, p.from || p.payer || 'Payment'), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, p.date || p.createdAt || '')), h('span', { className: 'cad-mono cad-muted' }, p.method || 'record'), h('span', { className: 'cad-pill green' }, cadMoney(p.amount || 0))))) : h('p', { className: 'cad-page-note' }, 'No payment receipts recorded.'))
-      ) : h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Admin payroll'), payAdminRows.length ? h('div', { className: 'cad-list-stack' }, payAdminRows.map(r => { var ac = adminConfigs[r.email] || {}; return h('div', { className: 'cad-list-row', key: r.email }, h('span', null, h('b', null, r.name), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, r.email)), h('span', { className: 'cad-mono cad-muted' }, r.hours.toFixed(1) + 'h'), h('span', { className: 'cad-muted' }, r.sessions + ' sessions'), h('span', { className: 'cad-pill ' + (r.unpaid ? 'amber' : 'green') }, cadMoney(r.unpaid)), h('button', { className: 'cad-btn primary', disabled: !r.unpaid, onClick: () => setPayQRModal({ email: r.email, admin: r.email, bizName: ac.bizName || r.name || r.email, payNowId: ac.payNow || '', amount: r.unpaid, sessCount: r.sessions, totalHrs: r.hours, incCount: 0, invNum: 'AD-' + Date.now() }) }, 'Pay QR')); })) : h('p', { className: 'cad-page-note' }, 'No admin sessions loaded yet.'))
+      ) : h('div', { className: 'cad-card cad-editor-card' }, cadSectionHead('Admin payroll'),
+          payAdminRows.length ? h('div', { className: 'cad-list-stack' }, payAdminRows.map(r => {
+            var ac = adminConfigs[r.email] || {};
+            // 0125: per-admin drill-down. Click a row to expand and
+            // see every daily invoice issued by that admin (tethered
+            // to this Main only — non-tethered admins are filtered
+            // out at payAdminRows level). Pay QR remains the action
+            // button. Each invoice opens the Drive copy if available
+            // (Main's payerDriveLink first, falls back to admin's
+            // issuerDriveLink), or re-issues a fresh PDF locally.
+            var isExpanded = payExpandedAdmin === r.email;
+            // 0125 Batch 5 (#14 fix): per-invoice visibility honours
+            // the tether stamped at issue time, so a re-hired admin
+            // doesn't leak invoices from a previous Main to the
+            // current one. Legacy invoices without the stamp fall
+            // through to live-tether check via _isInvoiceVisible.
+            var adminInvoices = (dailyInvoices || []).filter(inv => (inv.admin || '').toLowerCase() === r.email.toLowerCase() && _isInvoiceVisible(inv)).slice().sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+            return h('div', { key: r.email, style: { display: 'flex', flexDirection: 'column' } },
+              h('div', { className: 'cad-list-row' },
+                h('button', {
+                  className: 'cad-btn ghost',
+                  style: { textAlign: 'left', padding: 0, background: 'transparent', border: 'none' },
+                  onClick: () => setPayExpandedAdmin(p => p === r.email ? '' : r.email),
+                  title: isExpanded ? 'Hide invoices' : 'Show invoices'
+                },
+                  h('span', null,
+                    h('b', null, r.name),
+                    h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, r.email, '  ', isExpanded ? '▾' : '▸')
+                  )
+                ),
+                h('span', { className: 'cad-mono cad-muted' }, r.hours.toFixed(1) + 'h'),
+                h('span', { className: 'cad-muted' }, r.sessions + ' sessions · ', adminInvoices.length, ' inv'),
+                h('span', { className: 'cad-pill ' + (r.unpaid ? 'amber' : 'green') }, cadMoney(r.unpaid)),
+                h('button', { className: 'cad-btn primary', disabled: !r.unpaid, onClick: () => setPayQRModal({ email: r.email, admin: r.email, bizName: ac.bizName || r.name || r.email, payNowId: ac.payNow || '', amount: r.unpaid, sessCount: r.sessions, totalHrs: r.hours, incCount: 0, invNum: 'AD-' + Date.now() }) }, 'Pay QR')
+              ),
+              isExpanded && h('div', { className: 'cad-card', style: { marginTop: 6, marginBottom: 6, padding: 14, background: 'var(--ad-bg-2)' } },
+                h('span', { className: 'cad-label' }, r.name + ' · invoices'),
+                adminInvoices.length ? h('div', { className: 'cad-list-stack', style: { marginTop: 8 } }, adminInvoices.slice(0, 30).map(inv => h('div', { className: 'cad-list-row slim', key: inv.id },
+                  h('span', null,
+                    h('b', null, inv.date || ''),
+                    h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, inv.invNum || '')
+                  ),
+                  h('span', { className: 'cad-mono cad-muted' }, (Number(inv.hours) || 0).toFixed(1) + 'h'),
+                  h('span', { className: 'cad-pill ' + (inv.paid ? 'green' : 'amber') }, cadMoney(inv.amount || 0)),
+                  h('button', {
+                    className: 'cad-btn ghost',
+                    onClick: async () => {
+                      var link = _bestDriveLinkFor(inv);
+                      if (link) { window.open(link, '_blank', 'noopener'); return; }
+                      // No Drive link visible to this Main yet —
+                      // (re)issue locally, which uploads to MAIN'S
+                      // Drive (payerDrive*) and triggers a download.
+                      await _ensureDailyInvoice(inv.date, inv.admin, { download: true, paid: inv.paid });
+                    }
+                  }, inv.paid ? '✓ Paid · view' : 'Open')
+                ))) : h('p', { className: 'cad-page-note', style: { marginTop: 8 } }, 'No invoices issued yet for this admin.')
+              )
+            );
+          })) : h('p', { className: 'cad-page-note' }, 'No tethered admins with sessions yet. Hire admins from Settings → Team to see them here.')
+        )
     ));
     var rankDenom = nextRank ? Math.max(1, nextRank.cumStars || nextRank.threshold || 1) : Math.max(1, monthlyAppts || 1);
     var rankPct = nextRank ? Math.min(100, monthlyAppts / rankDenom * 100) : 100;
@@ -19376,10 +20840,33 @@ function App() {
           (() => {
             var slots = Array.isArray(ac.sessionSlots) ? ac.sessionSlots : [];
             var open = !!ac._sessionSlotsOpen;
-            var setSlots = next => cadUpdateAdminConfig(em, { sessionSlots: next });
-            var addSlot = () => setSlots([...(slots || []), { hours: 5, apptsBar: ac.mThresh ?? 2, bonusBar: ac.nThresh ?? 3, unlimited: false, targetDials: 50 }]);
-            var removeSlot = i => setSlots(slots.filter((_s, j) => j !== i));
-            var updateSlot = (i, patch) => setSlots(slots.map((s, j) => j === i ? { ...s, ...patch } : s));
+            // 0127 fix: pre-fix add/remove/updateSlot read `slots`
+            // from the OUTER render closure. If the user clicked Add
+            // twice in quick succession (or clicked Add right after
+            // removing a slot), both clicks saw the SAME slots array
+            // and produced the same final state — losing one of the
+            // additions / hiding one of the removals. Functional
+            // setState reads the latest from the React state, so
+            // each click composes correctly even when fired faster
+            // than the render cycle. Same for removeSlot/updateSlot.
+            var _mutateSlots = mutator => {
+              setAdminConfigs(p => {
+                var prev = (p || {})[em] || {};
+                var prevSlots = Array.isArray(prev.sessionSlots) ? prev.sessionSlots : [];
+                var nextSlots = mutator(prevSlots, prev);
+                if (nextSlots === prevSlots) return p;
+                return {
+                  ...(p || {}),
+                  [em]: { ...prev, sessionSlots: nextSlots, updatedAt: new Date().toISOString() }
+                };
+              });
+            };
+            var addSlot = () => _mutateSlots((prev, ac2) => [
+              ...prev,
+              { hours: 5, apptsBar: ac2.mThresh ?? 2, bonusBar: ac2.nThresh ?? 3, unlimited: false, targetDials: 50 }
+            ]);
+            var removeSlot = i => _mutateSlots(prev => prev.filter((_s, j) => j !== i));
+            var updateSlot = (i, patch) => _mutateSlots(prev => prev.map((s, j) => j === i ? { ...s, ...patch } : s));
             return h('div', { style: { marginTop: 14 } },
               h('button', {
                 type: 'button',
@@ -19706,7 +21193,20 @@ function App() {
       h('div', { className: 'cad-option-list', style: { marginBottom: 14 } }, cbPicks.map(([label, p]) => h('button', { className: 'cad-option', key: label, onClick: () => { handleOutcome('cb', { cbDate: p.date, cbTime: p.time }); setShowCb(false); setCbDate(''); setCbTime(''); } }, h('span', null, label), h('span', { className: 'cad-mono cad-muted' }, p.date, ' ', p.time)))),
       h('button', { className: 'cad-option', onClick: () => { var p = makeCbPick(3, 10, 0); handleOutcome('cb', { cbDate: p.date, cbTime: p.time, cbFlexible: true }); setShowCb(false); setCbDate(''); setCbTime(''); } }, h('span', null, 'No fixed date/time'), h('span', { className: 'cad-muted' }, 'Soft 3-day reminder')),
       h('div', { className: 'cad-form-grid', style: { marginTop: 14 } }, cadField('Date', h('input', { type: 'date', value: cbDate, onChange: e => setCbDate(e.target.value) })), cadField('Time', h('input', { type: 'time', value: cbTime, onChange: e => setCbTime(e.target.value) }))),
-      h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => { setShowCb(false); setCbDate(''); setCbTime(''); } }, 'Cancel'), h('button', { className: 'cad-btn primary', onClick: () => { if (!cbDate || !cbTime) return toast('Pick date and time', 'err'); handleOutcome('cb', { cbDate, cbTime }); setShowCb(false); setCbDate(''); setCbTime(''); } }, 'Set callback'))
+      // 0126 fix (audit): CB submit now also rejects past dates. Pre-fix
+      // the only check was non-empty, so a typo'd date in the past
+      // (or a stale modal left open across midnight) silently created
+      // a callback that the queue would never surface as "due" — it
+      // landed in the queue marked overdue from the moment it was
+      // saved. Now the user gets a clear "must be in the future" toast.
+      h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => { setShowCb(false); setCbDate(''); setCbTime(''); } }, 'Cancel'), h('button', { className: 'cad-btn primary', onClick: () => {
+        if (!cbDate || !cbTime) return toast('Pick date and time', 'err');
+        var _cbDt = new Date(cbDate + 'T' + cbTime);
+        if (!Number.isFinite(_cbDt.getTime())) return toast('Invalid date/time', 'err');
+        if (_cbDt.getTime() <= Date.now()) return toast('Callback time must be in the future', 'err');
+        handleOutcome('cb', { cbDate, cbTime });
+        setShowCb(false); setCbDate(''); setCbTime('');
+      } }, 'Set callback'))
     ));
     var calAddPickerModal = cadModal(showCalAddApptPicker, '', () => { setShowCalAddApptPicker(false); setCalAddSlot(null); setCalAddSearch(''); }, showCalAddApptPicker && (() => {
       var allCandidates = getTodayCalledLeadCandidates(true);
@@ -19843,16 +21343,53 @@ function App() {
       var m = payQRModal;
       if (!m) return;
       var em = (m.admin || m.email || '').toLowerCase();
+      // Batch 6 (#15): centralised tether gate. Pre-fix the Pay QR
+      // button only got disabled at render time via _isVisibleAdminEmail
+      // — but the modal could survive a sync race where the admin's
+      // tether changed mid-flow. Re-check at write time.
+      if (em !== (myEmail || '').toLowerCase() && !_assertTetheredOrSelf(em)) {
+        setPayQRModal(null);
+        return;
+      }
       var paidAt = new Date().toISOString();
       var ac = (adminConfigs || {})[em] || {};
       var rows = (adminSessions || {})[em] || [];
       var sessionsForSheet = rows.filter(s => m._cycleId ? s.cycleId === m._cycleId : (!s.paid && !s.cycleId));
       var paidSessionKeys = new Set(sessionsForSheet.map(s => String(s.startTime || s.start_time || s.id || '')));
-      setAdminSessions(p => ({ ...p, [em]: (p[em] || []).map(s => paidSessionKeys.has(String(s.startTime || s.start_time || s.id || '')) ? { ...s, paid: true, paidDate: paidAt } : s) }));
+      // Snapshot prior state so we can mark ROW-LEVEL retries when the
+      // cloud write comes back partial. Note: we do NOT roll back the
+      // whole optimistic update on partial cloud failure — the Main
+      // has already transferred money IRL, so undoing local "paid"
+      // status would lie. Instead we stamp `_paidSyncPending: true`
+      // on the rows that didn't make it to Supabase, and a separate
+      // reconcile effect retries on the next focus/online event.
+      setAdminSessions(p => ({ ...p, [em]: (p[em] || []).map(s => paidSessionKeys.has(String(s.startTime || s.start_time || s.id || '')) ? { ...s, paid: true, paidDate: paidAt, _paidSyncPending: true } : s) }));
       setIncentives(p => (p || []).map(x => (m._cycleId ? x.cycleId === m._cycleId : (!x.paid && !x.cycleId && (x.admin || '').toLowerCase() === em)) ? { ...x, paid: true, paidDate: paidAt } : x));
       if (m._cycleId) setBillingCycles(p => p.map(c => c.id === m._cycleId ? { ...c, paid: true, paidDate: paidAt, paidMethod: 'PayNow' } : c));
       setPaymentHistory(p => [{ date: paidAt, admin: em, amount: Number(m.amount) || 0, sessions: m.sessCount || 0, hours: m.totalHrs || 0, incentives: m.incCount || 0, invNum: m.invNum, cycleId: m._cycleId }, ...p]);
-      try { await Promise.allSettled(sessionsForSheet.map(s => DB.markSessPaid(em, s.startTime))); } catch (_e) {}
+      // Batch 1 (#4 fix): await the cloud markSessPaid calls and
+      // record per-session success so we can clear the retry flag.
+      // markSessPaid now returns falsy when 0 rows match (was the
+      // silent-double-pay window); we count failures and toast a
+      // single summary line.
+      var sessFailures = 0;
+      try {
+        var results = await Promise.allSettled(sessionsForSheet.map(s => DB.markSessPaid(em, s.startTime, s.dbSessionId || s.id)));
+        var okKeys = new Set();
+        results.forEach((r, i) => {
+          if (r.status === 'fulfilled' && r.value) {
+            okKeys.add(String(sessionsForSheet[i].startTime || sessionsForSheet[i].start_time || sessionsForSheet[i].id || ''));
+          } else { sessFailures++; }
+        });
+        // Clear the retry flag on the rows that DID land. Failed rows
+        // keep `_paidSyncPending` so the reconcile effect catches them.
+        if (okKeys.size) {
+          setAdminSessions(p => ({ ...p, [em]: (p[em] || []).map(s => okKeys.has(String(s.startTime || s.start_time || s.id || '')) ? { ...s, _paidSyncPending: false } : s) }));
+        }
+      } catch (_e) { sessFailures = sessionsForSheet.length; }
+      if (sessFailures > 0) {
+        toast('⚠ ' + sessFailures + '/' + sessionsForSheet.length + ' session sync failed — will retry on next online', 'err');
+      }
       var paySheetId = ac.timesheetId || myCfg.timesheetId || cfg.sheetId;
       if (paySheetId && localStorage.getItem('ad_gt')) {
         try {
@@ -19864,16 +21401,151 @@ function App() {
         }
       }
       try { _pushPayEvt(em, { toAdmin: em, fromMain: myEmail, amount: Number(m.amount) || 0, bizName: m.bizName, sessCount: m.sessCount || 0, incCount: m.incCount || 0, totalHrs: m.totalHrs || 0, invNum: m.invNum, date: paidAt, method: 'PayNow', cycleId: m._cycleId }); } catch (_e) {}
-      toast((m.bizName || em || 'Admin') + ' marked paid');
+      // 0125: re-stamp every daily invoice for this admin that the
+      // payment covers as PAID. The invoices were issued one-per-day
+      // at session-end (independent of when payment lands), so a
+      // single payment usually clears multiple days' invoices. We
+      // pull the affected dates from the sessions/incentives that
+      // just got marked paid and refresh each invoice with the PAID
+      // overlay + a fresh Drive upload (paidDriveFileId).
+      try {
+        var paidDates = new Set();
+        sessionsForSheet.forEach(s => { var d = _ymdSGT(s.startTime); if (d) paidDates.add(d); });
+        var paidIncs = (incentives || []).filter(x => (x.admin || '').toLowerCase() === em && (m._cycleId ? x.cycleId === m._cycleId : (!x.cycleId)));
+        paidIncs.forEach(x => { var d = _ymdSGT(x.date || x.createdAt); if (d) paidDates.add(d); });
+        // Defensive fallback: if we couldn't derive any dates from the
+        // marked rows, at least refresh today's invoice so the user
+        // gets a confirmation PDF.
+        if (!paidDates.size) paidDates.add(_ymdSGT(paidAt));
+        var dateList = Array.from(paidDates).sort();
+        var firstStamp = null;
+        for (var i = 0; i < dateList.length; i++) {
+          var stamped = await _ensureDailyInvoice(dateList[i], em, {
+            paid: true,
+            paidAt,
+            // Download the most recent (last) PAID invoice as the
+            // Main's receipt. Earlier dates upload to Drive only.
+            download: i === dateList.length - 1
+          });
+          if (i === 0) firstStamp = stamped;
+        }
+      } catch (_invErr) {
+        console.warn('[dailyInvoice paid]', _invErr?.message || _invErr);
+        toast('Payment marked paid, but PAID-stamp regeneration failed', 'err');
+      }
+      toast((m.bizName || em || 'Admin') + ' marked paid · invoice updated');
       setPayQRModal(null);
     };
+    // 0125: invoice helpers (_buildInvoicePDFBlob, _uploadInvoiceToDrive,
+    // _ymdSGT, _buildDailyInvoiceRecord, _ensureDailyInvoice) live at
+    // the top-level component scope so endSession can call them too.
+    // 0124: payQRModal supports two modes:
+    //   - Settle (Main paying admin): default. Generates QR for admin
+    //     PayNow + amount; "I've transferred" button finalises payment.
+    //   - Self-display (admin requesting payment): payQRModal._selfDisplay
+    //     true. Same QR (admin's own PayNow), but no "I've transferred"
+    //     button — admin shows the QR to Main, who scans + pays. Marking
+    //     the payment received stays the Main's flow.
+    var _payIsSelf = !!(payQRModal && payQRModal._selfDisplay);
+    var _payNoQrEmpty = payQRDataURL === 'NO_PAYNOW' ? (_payIsSelf ? 'Add your PayNow handphone in Settings → Prefs to generate a QR.' : 'No PayNow number saved. Open Team → Config for this admin and add their handphone number.') : '';
     var payQrModalClaude = cadModal(!!payQRModal, 'narrow', () => setPayQRModal(null), payQRModal && h(React.Fragment, null,
-      h('div', { className: 'cad-modal-head' }, h('div', null, h('h3', { className: 'cad-modal-title' }, 'Pay via PayNow'), h('p', { className: 'cad-modal-sub' }, payQRModal.bizName || payQRModal.admin || 'Admin', ' · ', cadMoney(payQRModal.amount || 0))), h('button', { className: 'cad-btn ghost', onClick: () => setPayQRModal(null) }, 'x')),
-      payQRDataURL === 'NO_PAYNOW' ? h('div', { className: 'cad-card cad-empty', style: { minHeight: 140, padding: 18 } }, h('p', { className: 'cad-page-note' }, 'No PayNow number saved. Open Team → Config for this admin and add their handphone number.')) :
+      h('div', { className: 'cad-modal-head' }, h('div', null, h('h3', { className: 'cad-modal-title' }, _payIsSelf ? 'Show your PayNow QR' : 'Pay via PayNow'), h('p', { className: 'cad-modal-sub' }, payQRModal.bizName || payQRModal.admin || 'Admin', ' · ', cadMoney(payQRModal.amount || 0))), h('button', { className: 'cad-btn ghost', onClick: () => setPayQRModal(null) }, 'x')),
+      payQRDataURL === 'NO_PAYNOW' ? h('div', { className: 'cad-card cad-empty', style: { minHeight: 140, padding: 18 } }, h('p', { className: 'cad-page-note' }, _payNoQrEmpty)) :
       (payQRDataURL === 'LOADING' || !payQRDataURL) ? h('div', { className: 'cad-card cad-empty', style: { minHeight: 140, padding: 18 } }, h('p', { className: 'cad-page-note' }, 'Generating QR...')) :
       /FAILED|INVALID/.test(payQRDataURL) ? h('div', { className: 'cad-card cad-empty', style: { minHeight: 140, padding: 18 } }, h('p', { className: 'cad-page-note' }, 'QR generation failed. Check PayNow number format.')) :
-      h('div', { style: { textAlign: 'center' } }, h('img', { src: payQRDataURL, alt: 'PayNow QR', style: { width: 240, height: 240, borderRadius: 18, background: '#fff', padding: 10 } }), h('p', { className: 'cad-page-note', style: { marginTop: 10 } }, 'Scan, verify amount, then mark paid.')),
-      h('div', { className: 'cad-modal-actions' }, h('button', { className: 'cad-btn', onClick: () => setPayQRModal(null) }, 'Close'), h('button', { className: 'cad-btn primary', disabled: payQRDataURL === 'NO_PAYNOW' || payQRDataURL === 'LOADING' || /FAILED|INVALID/.test(payQRDataURL || ''), onClick: confirmClaudePayQR }, "I've transferred"))
+      h('div', { style: { textAlign: 'center' } }, h('img', { src: payQRDataURL, alt: 'PayNow QR', style: { width: 240, height: 240, borderRadius: 18, background: '#fff', padding: 10 } }), h('p', { className: 'cad-page-note', style: { marginTop: 10 } }, _payIsSelf ? 'Show this to your Main. They scan, transfer, then mark you paid.' : 'Scan, verify amount, then mark paid.')),
+      h('div', { className: 'cad-modal-actions' },
+        h('button', { className: 'cad-btn', onClick: () => setPayQRModal(null) }, 'Close'),
+        !_payIsSelf && h('button', { className: 'cad-btn primary', disabled: payQRDataURL === 'NO_PAYNOW' || payQRDataURL === 'LOADING' || /FAILED|INVALID/.test(payQRDataURL || ''), onClick: confirmClaudePayQR }, "I've transferred")
+      )
+    ));
+    // 0124: Claude-shell tipModal. The legacy tipModal is rendered after
+    // the early return for the Claude shell, so it never appeared when
+    // an appointment was marked Closed from the new UI. This wraps the
+    // same submit logic (set followUp:'closed' + tip/efyc + add the
+    // matching incentive + sheet writeback) in a cad-styled modal that
+    // the Claude modalStack actually mounts.
+    var _confirmTipClaude = async () => {
+      if (!tipModal) return;
+      var amt = parseFloat(tipAmountInput) || 0;
+      if (amt <= 0) { toast('Enter an amount', 'err'); return; }
+      var a = tipModal.appt;
+      var isMain = role === 'main';
+      var now = new Date().toISOString();
+      var update = isMain
+        ? { efyc: amt, followUp: 'closed', followUpDate: now }
+        : { tip: amt, followUp: 'closed', followUpDate: now };
+      if (a.calEventId && window.gCal) {
+        try {
+          var _baseTitle = 'Appt: ' + (a.name || '') + (a.location ? ' @ ' + a.location : '');
+          var _newTitle = (typeof _withStatusPrefix === 'function') ? _withStatusPrefix(_baseTitle, 'closed', false) : _baseTitle;
+          await gCal.update(a.calEventId, { summary: _newTitle, status: 'confirmed' }, myCfg.targetCalendarId || 'primary');
+          setWeekEvents(prev => prev.map(ev => ev.id === a.calEventId ? { ...ev, summary: _newTitle } : ev));
+        } catch (_ge) { console.warn('[Closed gCal.update]', _ge); }
+      }
+      setAppointments(p => (p || []).map(x => _matchAppt(x, a) ? { ...x, ...update } : x));
+      if (a.admin && a.admin.toLowerCase() !== (myEmail || '').toLowerCase()) {
+        _mainWritebackAdminAppt({ ...a, ...update });
+      }
+      try {
+        await syncApptSheet({ ...a, ...update }, {
+          status: 'Set', followUp: 'Closed', tip: amt,
+          notes: (a.remarks || '') + ' [' + (isMain ? 'EFYC' : 'Tip') + ' $' + amt + ' ' + new Date().toLocaleString('en-SG') + ']'
+        });
+      } catch (_e) {}
+      if (tipModal.fromMet) {
+        // Upgrading Met → Closed: remove the prior met-incentive row so
+        // the closed tip/efyc replaces it (otherwise both pay out).
+        setIncentives(p => (p || []).filter(inc => !(inc.type === 'met' && inc.leadName === a.name && (inc.admin || '').toLowerCase() === (a.admin || myEmail).toLowerCase())));
+      }
+      setIncentives(p => [...(p || []), {
+        id: Date.now() + Math.random(),
+        admin: a.admin || myEmail,
+        leadName: a.name || '',
+        type: isMain ? 'efyc' : 'tip',
+        amount: amt,
+        date: now,
+        apptOriginalDate: a.createdAt || now,
+        paid: false
+      }]);
+      toast('🏁 ' + (a.name || 'appointment') + ' → Closed · +$' + amt + (isMain ? ' EFYC' : ' tip'), 'info');
+      setTipModal(null);
+      setTipAmountInput('');
+    };
+    var _tipPresets = [50, 100, 200, 500, 1000];
+    var tipModalClaude = cadModal(!!tipModal, 'narrow', () => { setTipModal(null); setTipAmountInput(''); }, tipModal && h(React.Fragment, null,
+      h('div', { className: 'cad-modal-head' },
+        h('div', null,
+          h('span', { className: 'cad-pill brass' }, role === 'main' ? '💰 EFYC' : '💰 Tip'),
+          h('h3', { className: 'cad-modal-title', style: { marginTop: 8 } }, tipModal.fromMet ? 'Upgrade Met → Closed' : 'Mark as closed'),
+          h('p', { className: 'cad-modal-sub' }, 'Lead: ', h('b', null, tipModal.appt?.name || 'Appointment'))
+        ),
+        h('button', { className: 'cad-btn ghost', onClick: () => { setTipModal(null); setTipAmountInput(''); } }, 'x')
+      ),
+      cadField('Amount (SGD)',
+        h('div', { className: 'cad-inline', style: { gap: 8, alignItems: 'center' } },
+          h('span', { style: { fontSize: 22, fontWeight: 800, color: 'var(--ad-brass-2)' } }, '$'),
+          h('input', {
+            type: 'number', min: 0, step: 1,
+            value: tipAmountInput,
+            placeholder: '0',
+            autoFocus: true,
+            onChange: e => setTipAmountInput(e.target.value),
+            style: { flex: 1, fontSize: 20, fontWeight: 700 }
+          })
+        )
+      ),
+      h('div', { className: 'cad-inline', style: { flexWrap: 'wrap', gap: 6, marginBottom: 14 } },
+        _tipPresets.map(v => h('button', { className: 'cad-btn ghost', key: v, onClick: () => setTipAmountInput(String(v)) }, '$', v))
+      ),
+      h('p', { className: 'cad-page-note' }, role === 'main'
+        ? 'EFYC counts toward Main revenue tracking; the admin who set this appt does not earn from EFYC.'
+        : 'Tip is added as an incentive to your unpaid pay total. Main settles it in the next billing cycle.'
+      ),
+      h('div', { className: 'cad-modal-actions' },
+        h('button', { className: 'cad-btn', onClick: () => { setTipModal(null); setTipAmountInput(''); } }, 'Cancel'),
+        h('button', { className: 'cad-btn primary', disabled: !(parseFloat(tipAmountInput) > 0), onClick: _confirmTipClaude }, '🏁 Mark closed')
+      )
     ));
     var importModal = cadModal(!!importReview, '', () => setImportReview(null), importReview && h(React.Fragment, null,
       h('div', { className: 'cad-modal-head' }, h('div', null, h('h3', { className: 'cad-modal-title' }, 'Lead Import Review'), h('p', { className: 'cad-modal-sub' }, importReview.meta?.source || 'Import', ' - ', importReview.count, ' leads staged')), h('button', { className: 'cad-btn ghost', onClick: () => setImportReview(null) }, 'x')),
@@ -20073,7 +21745,7 @@ function App() {
       ),
       h('p', { className: 'cad-page-note', style: { marginTop: 12, fontSize: 11 } }, 'Showing ', leadJumpResults.length, ' of ', (leads || []).length, ' loaded leads', leadJumpResults.length === 30 && (leads || []).length > 30 ? ' · refine search for more' : '')
     ));
-    var modalStack = h(React.Fragment, null, undoBar, moreModal, adminConfigModal, cbModal, calAddPickerModal, apptModal, slotModal, waModal, payQrModalClaude, importModal, colPickerModal, calDeletionModal, leadJumpModal, dialogModal, setStampOverlay);
+    var modalStack = h(React.Fragment, null, undoBar, moreModal, adminConfigModal, cbModal, calAddPickerModal, apptModal, slotModal, waModal, payQrModalClaude, tipModalClaude, importModal, colPickerModal, calDeletionModal, leadJumpModal, dialogModal, setStampOverlay);
     var withCadModals = view => h(React.Fragment, null, view, modalStack);
     if ((mainMode === 'call' && tab === 'home') || tab === 'dial') return withCadModals(tab === 'dial' ? dialView : callView);
     if (tab === 'leads') return withCadModals(leadsView);
@@ -20441,7 +22113,12 @@ function App() {
       display: 'block'
     }
   }, "Changes stay local until connection returns"))), tab === 'home' && isManageMode && (() => {
-    var _adminEntriesH = Object.entries(adminSessions || {}).filter(([em]) => (em || '').toLowerCase() !== myEmail.toLowerCase()).map(([em, v]) => [em, Array.isArray(v) ? v : []]);
+    // 0125 Batch 3 (#17 fix): Main's home dashboard previously
+    // aggregated EVERY admin in adminSessions/adminConfigs, including
+    // admins hired by other Mains via cross-Main cloud sync. Filter
+    // through _isVisibleAdminEmail so the dashboard counts only this
+    // Main's tethered team — same boundary as the Pay tab.
+    var _adminEntriesH = Object.entries(adminSessions || {}).filter(([em]) => (em || '').toLowerCase() !== myEmail.toLowerCase() && _isVisibleAdminEmail(em)).map(([em, v]) => [em, Array.isArray(v) ? v : []]);
     var _todayKey = new Date().toDateString();
     var _oneDay = 86400000;
     var _now = Date.now();
@@ -20459,7 +22136,7 @@ function App() {
     var _missedCallbacks = priorityCallbacks.filter(c => c.scheduled_date < todayKey);
     var _newLeads = leads.filter(l => l.status === 'pending').length;
     var _activeAdmins = new Set(_adminEntriesH.filter(([em, ss]) => ss.some(s => new Date(s.startTime).toDateString() === _todayKey)).map(([em]) => em));
-    var _knownAdmins = Object.keys(adminConfigs || {}).filter(em => em && em !== myEmail);
+    var _knownAdmins = Object.keys(adminConfigs || {}).filter(em => em && em !== myEmail && _isVisibleAdminEmail(em));
     var _quietAdmins = _knownAdmins.filter(em => !_activeAdmins.has(em));
     var _todaySessions = _adminEntriesH.flatMap(([em, ss]) => ss).filter(s => new Date(s.startTime).toDateString() === _todayKey);
     var _weakCallers = _todaySessions.filter(s => (s.dialed || 0) >= 10 && (s.sets || 0) === 0).length;
@@ -21892,7 +23569,10 @@ function App() {
   }, (session.dialed / (elapsed / 3600)).toFixed(1), "/hr"))), (() => {
     var sets = session.sets || 0;
     var rate = (myCfg.payRates || [8, 10, 12])[0] || 8;
-    var bonusMult = n(myCfg.bonusMult, 1.5);
+    // 0125 Batch 2 (#7 fix): live estPay reads bonusMult from frozen
+    // slot first, so the on-screen "→ $X if bonus!" hint matches the
+    // locked rate the admin will actually be paid at session-end.
+    var bonusMult = n((session.selectedSlot && session.selectedSlot.bonusMult) || myCfg.bonusMult, 1.5);
     var aBar = n(session.selectedSlot?.apptsBar || myCfg.mThresh, 2);
     var bBar = n(session.selectedSlot?.bonusBar || myCfg.nThresh, 3);
     var maxBar = 10;
