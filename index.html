@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.10.0139'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.10.0140'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1477,7 +1477,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.10.0139';
+window.APP_VERSION='2026.05.10.0140';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -4351,6 +4351,18 @@ function _sanitizeAdminCfgs(raw) {
   return cleaned;
 }
 function _mergeAdminCfgsByFreshness(local, incoming) {
+  // 0140 fix: pre-fix this did `{ ...prev, ...inc }` — meaning the
+  // INCOMING (remote) data clobbered the local for everything except
+  // the two share fields. Net effect: any local edit (add/remove
+  // slot, change pay, etc.) reverted the moment a stale cloud pull
+  // landed, because adminConfigs gets pulled from user_settings on
+  // every visibility/focus tick. Now we compare entry-level
+  // `updatedAt` timestamps: whichever side stamped a fresher
+  // updatedAt wins for the BLOCK of fields, so local edits stick
+  // until the cloud catches up. The two share-fields keep their
+  // own per-field freshness check because they're stamped by a
+  // different Main during cross-Main share flows and shouldn't
+  // get blocked by a recent local config edit.
   var base = _sanitizeAdminCfgs(local);
   var remote = _sanitizeAdminCfgs(incoming);
   var out = {
@@ -4359,18 +4371,35 @@ function _mergeAdminCfgsByFreshness(local, incoming) {
   var keep = (target, source, keys) => keys.forEach(k => {
     if (source[k] !== undefined) target[k] = source[k];
   });
+  var _ts = v => {
+    if (!v) return 0;
+    var t = Date.parse(v);
+    return Number.isFinite(t) ? t : 0;
+  };
   Object.keys(remote).forEach(em => {
     var prev = base[em] || {};
     var inc = remote[em] || {};
-    var merged = {
-      ...prev,
-      ...inc
-    };
+    var prevTs = _ts(prev.updatedAt);
+    var incTs = _ts(inc.updatedAt);
+    // Block-level freshness: whichever side has the newer updatedAt
+    // becomes the dominant source for the merged record. When the
+    // timestamps tie or are missing, fall back to the legacy
+    // remote-wins behaviour so existing flows keep working.
+    var merged;
+    if (prevTs > 0 && prevTs > incTs) {
+      merged = { ...inc, ...prev };
+    } else {
+      merged = { ...prev, ...inc };
+    }
     if (Number(prev.waTemplateShareUpdatedAt || 0) > Number(inc.waTemplateShareUpdatedAt || 0)) {
       keep(merged, prev, ['shareWaTemplates', 'waTemplateShareIds', 'waTemplateShareNames', 'waTemplateShareData', 'waTemplateShareUpdatedAt']);
+    } else if (Number(inc.waTemplateShareUpdatedAt || 0) > Number(prev.waTemplateShareUpdatedAt || 0)) {
+      keep(merged, inc, ['shareWaTemplates', 'waTemplateShareIds', 'waTemplateShareNames', 'waTemplateShareData', 'waTemplateShareUpdatedAt']);
     }
     if (Number(prev.scriptShareUpdatedAt || 0) > Number(inc.scriptShareUpdatedAt || 0)) {
       keep(merged, prev, ['shareScript', 'scriptShareVersionId', 'scriptShareName', 'scriptShareUpdatedAt']);
+    } else if (Number(inc.scriptShareUpdatedAt || 0) > Number(prev.scriptShareUpdatedAt || 0)) {
+      keep(merged, inc, ['shareScript', 'scriptShareVersionId', 'scriptShareName', 'scriptShareUpdatedAt']);
     }
     out[em] = merged;
   });
@@ -20897,7 +20926,7 @@ function App() {
                     h('span', { className: 'cad-pill brass' }, 'Slot ', i + 1, ' · ', s.unlimited ? '∞ unlimited' : (s.hours || 0) + 'h'),
                     h('button', { type: 'button', className: 'cad-btn ghost danger', onClick: () => removeSlot(i), style: { fontSize: 11, padding: '3px 9px' } }, '🗑 Remove')
                   ),
-                  h('label', { className: 'cad-inline', style: { gap: 6, marginBottom: 8, fontSize: 12, cursor: 'pointer' } },
+                  h('label', { className: 'cad-inline', style: { gap: 6, marginBottom: 8, fontSize: 12, cursor: 'pointer', color: 'var(--ad-t-1)' } },
                     h('input', { type: 'checkbox', checked: !!s.unlimited, onChange: e => updateSlot(i, { unlimited: e.target.checked }), style: { width: 'auto' } }),
                     h('span', null, '∞ Unlimited hours (open-ended session)')
                   ),
