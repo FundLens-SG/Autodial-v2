@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0002'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0003'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1684,7 +1684,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0002';
+window.APP_VERSION='2026.05.12.0003';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -7620,6 +7620,29 @@ function App() {
   var [apptInvite, setApptInvite] = useState('');
   var [apptLocation, setApptLocation] = useState('');
   var [apptObs, setApptObs] = useState('');
+  var _savedApptCalendarId = () => {
+    var v = load('apptCalendarId');
+    return v === null || v === undefined ? null : (String(v || '') === 'primary' ? '' : String(v || ''));
+  };
+  var _defaultApptCalendarId = preferred => {
+    if (preferred !== undefined && preferred !== null && String(preferred) !== '') return String(preferred) === 'primary' ? '' : String(preferred);
+    var saved = _savedApptCalendarId();
+    if (saved !== null) return saved;
+    var configured = cfg.targetCalendarId || myCfg?.targetCalendarId || '';
+    return String(configured || '') === 'primary' ? '' : String(configured || '');
+  };
+  var [apptCalendarId, setApptCalendarId] = useState(() => _defaultApptCalendarId());
+  var _rememberApptCalendarId = id => {
+    var clean = String(id || '') === 'primary' ? '' : String(id || '');
+    setApptCalendarId(clean);
+    save('apptCalendarId', clean);
+    if (role !== 'admin') setCfg(s => ({ ...s, targetCalendarId: clean }));
+  };
+  useEffect(() => {
+    if (_savedApptCalendarId() !== null || apptCalendarId) return;
+    var fallback = cfg.targetCalendarId || myCfg?.targetCalendarId || '';
+    if (fallback) setApptCalendarId(fallback);
+  }, [cfg.targetCalendarId, myCfg?.targetCalendarId, apptCalendarId]);
   var [savedInvitees, setSavedInvitees] = useState(load('invitees') || []);
   var [recentApptLocations, setRecentApptLocations] = useState(() => Array.isArray(load('apptRecentLocations')) ? load('apptRecentLocations') : []);
   var [pickerEvents, setPickerEvents] = useState([]);
@@ -8295,6 +8318,7 @@ function App() {
     setApptLocation(draft.apptLocation || a.location || '');
     setApptObs(draft.apptObs || a.remarks || '');
     setApptInvite(draft.apptInvite || a.inviteEmails || '');
+    setApptCalendarId(_defaultApptCalendarId(a.calendarId || a._calId || ''));
     setApptSlotDuration(_slotMinutes(draft.apptSlotDuration ?? a.duration, 60, 1, 480));
     setApptShaky(draft.apptShaky ?? a.shaky ?? false);
     setApptHardOverride(false);
@@ -8322,6 +8346,7 @@ function App() {
     setApptLocation(draft.apptLocation || a.location || '');
     setApptObs(draft.apptObs || a.remarks || '');
     setApptInvite(draft.apptInvite || a.inviteEmails || '');
+    setApptCalendarId(_defaultApptCalendarId(a.calendarId || a._calId || ''));
     setApptTravelBefore(() => _slotMinutes(load('apptTravelBefore'), 0, 0, 240));
     setApptSlotDuration(() => _slotMinutes(draft.apptSlotDuration ?? a.duration, _slotMinutes(load('apptDur'), 60, 1, 480), 1, 480));
     setApptTravelAfter(() => _slotMinutes(load('apptTravelAfter'), 0, 0, 240));
@@ -10289,7 +10314,7 @@ function App() {
     setCalAddKind(role !== 'admin' && !candidates.length ? 'personal' : 'lead');
     setCalPersonalForm({
       title: '',
-      calendarId: cfg.targetCalendarId || myCfg?.targetCalendarId || 'primary',
+      calendarId: _defaultApptCalendarId() || 'primary',
       date: slot?.date || localDateKey(start),
       time: slot?.time || String(start.getHours()).padStart(2, '0') + ':' + String(start.getMinutes()).padStart(2, '0'),
       duration: slotDuration,
@@ -10377,7 +10402,7 @@ function App() {
       return false;
     }
     var e = new Date(s.getTime() + duration * 60000);
-    var targetCal = (hasOpts && opts.calendarId) || cfg.targetCalendarId || 'primary';
+    var targetCal = (hasOpts && opts.calendarId) || _defaultApptCalendarId() || 'primary';
     var calName = (calList || []).find(c => c.id === targetCal)?.summary || (targetCal === 'primary' ? 'Primary' : targetCal);
     var locationText = hasOpts ? String(opts.location || '').trim() : '';
     var desc = ['Created from AutoDial calendar', locationText ? 'Location: ' + locationText : ''].filter(Boolean).join('\n');
@@ -10385,6 +10410,7 @@ function App() {
       toast('Creating event...', 'info');
       var evt = await withTimeout(gCal.create(title, desc, s.toISOString(), e.toISOString(), [], targetCal), 8000, 'Calendar create');
       if (!evt?.id) throw new Error('No event id returned');
+      _rememberApptCalendarId(targetCal === 'primary' ? '' : targetCal);
       if (locationText && window.gCal?.update) {
         try { evt = await withTimeout(gCal.update(evt.id, { location: locationText }, targetCal), 8000, 'Calendar update') || evt; } catch (_locErr) {}
       }
@@ -17640,6 +17666,7 @@ function App() {
       setApptLocation(draft.apptLocation || '');
       setApptObs(draft.apptObs || '');
       setApptInvite(draft.apptInvite || '');
+      setApptCalendarId(_defaultApptCalendarId());
       setApptTravelBefore(() => _slotMinutes(load('apptTravelBefore'), 0, 0, 240));
       setApptSlotDuration(() => _slotMinutes(draft.apptSlotDuration ?? load('apptDur'), 60, 1, 480));
       setApptTravelAfter(() => _slotMinutes(load('apptTravelAfter'), 0, 0, 240));
@@ -17843,6 +17870,7 @@ function App() {
       setApptLocation(draft.apptLocation || '');
       setApptObs(draft.apptObs || '');
       setApptInvite(draft.apptInvite || '');
+      setApptCalendarId(_defaultApptCalendarId());
       setApptTravelBefore(() => _slotMinutes(load('apptTravelBefore'), 0, 0, 240));
       setApptSlotDuration(() => _slotMinutes(load('apptDur'), 60, 1, 480));
       setApptTravelAfter(() => _slotMinutes(load('apptTravelAfter'), 0, 0, 240));
@@ -22077,12 +22105,21 @@ function App() {
         if (rescheduleTargetAppt) {
           var target = rescheduleTargetAppt;
           var evtId = target.calEventId || '';
+          var selectedEventCalId = apptCalendarId || 'primary';
+          var existingEventCalId = target.calendarId || target._calId || selectedEventCalId;
+          var eventCalId = selectedEventCalId;
           if (window.gCal && gOk) {
             try {
               var title = 'Appt: ' + (target.name || lead.name || '') + (apptLocation ? ' @ ' + apptLocation : '');
-              if (evtId) await withTimeout(gCal.update(evtId, { summary: title, status: 'confirmed', start: { dateTime: s.toISOString() }, end: { dateTime: e.toISOString() } }, myCfg.targetCalendarId || 'primary'), 8000, 'Calendar update');
+              if (evtId && existingEventCalId !== selectedEventCalId) {
+                var moved = await withTimeout(gCal.create(title, apptObs || '', s.toISOString(), e.toISOString(), null, selectedEventCalId), 8000, 'Calendar create');
+                try { await gCal.del(evtId, existingEventCalId); } catch (_moveDelErr) {}
+                evtId = moved?.id || '';
+              } else if (evtId) {
+                await withTimeout(gCal.update(evtId, { summary: title, status: 'confirmed', start: { dateTime: s.toISOString() }, end: { dateTime: e.toISOString() } }, eventCalId), 8000, 'Calendar update');
+              }
               else {
-                var created = await withTimeout(gCal.create(title, apptObs || '', s.toISOString(), e.toISOString(), null, myCfg.targetCalendarId || 'primary'), 8000, 'Calendar create');
+                var created = await withTimeout(gCal.create(title, apptObs || '', s.toISOString(), e.toISOString(), null, eventCalId), 8000, 'Calendar create');
                 evtId = created?.id || '';
               }
             } catch (err) {
@@ -22090,7 +22127,8 @@ function App() {
               console.warn('[Claude appointment reschedule]', err?.message || err);
             }
           }
-          var updated = { ...target, apptDate, apptTime, duration: dur, location: apptLocation, remarks: apptObs || target.remarks, calEventId: evtId, followUp: 'pending', followUpDate: new Date().toISOString(), shaky: apptShaky };
+          _rememberApptCalendarId(eventCalId === 'primary' ? '' : eventCalId);
+          var updated = { ...target, apptDate, apptTime, duration: dur, location: apptLocation, remarks: apptObs || target.remarks, calEventId: evtId, calendarId: eventCalId, _calId: eventCalId, followUp: 'pending', followUpDate: new Date().toISOString(), shaky: apptShaky };
           setAppointments(prev => prev.map(a => a.id === target.id ? updated : a));
           if (target.admin && target.admin.toLowerCase() !== myEmail.toLowerCase()) _mainWritebackAdminAppt(updated);
           try { syncApptSheet(updated, { apptDate, apptTime, location: apptLocation, duration: dur, status: 'Set', followUp: 'Pending', notes: apptObs || target.remarks || '' }); } catch (_e) {}
@@ -22105,7 +22143,7 @@ function App() {
         }
         var desc = ['Client: ' + (lead.name || ''), 'Phone: ' + (lead.phone || ''), lead.email ? 'Email: ' + lead.email : '', apptObs ? 'Notes: ' + apptObs : '', lead.notes ? 'Sheet remarks: ' + lead.notes : ''].filter(Boolean).join('\n');
         var invites = apptInvite ? apptInvite.split(',').map(x => x.trim()).filter(Boolean) : [];
-        var eventCalId = myCfg.targetCalendarId || 'primary';
+        var eventCalId = apptCalendarId || 'primary';
         var calendarErr = null;
         var evt = null;
         if (window.gCal && gOk) {
@@ -22127,6 +22165,7 @@ function App() {
           calendarErr = new Error('Google Calendar is not connected');
         }
         if (invites.length) setSavedInvitees(p => Array.from(new Set([...(p || []), ...invites])).slice(0, 20));
+        _rememberApptCalendarId(eventCalId === 'primary' ? '' : eventCalId);
         var savedApptRow = null;
         try {
           savedApptRow = await withTimeout(DB.saveAppt({ admin: myEmail, name: lead.name, phone: lead.phone, apptDate, apptTime, duration: dur, calEventId: evt?.id || '', inviteEmails: apptInvite, location: apptLocation, shaky: apptShaky }, _user?.id), 6500, 'Supabase appointment save');
@@ -22139,7 +22178,7 @@ function App() {
         setAppointments(prev => {
           var list = Array.isArray(prev) ? prev.slice() : [];
           var idx = list.findIndex(a => (a.leadId === lead.id || a.phone === lead.phone && a.phone) && (!a.followUp || a.followUp === 'pending') && !a.apptDate);
-          var row = { id: localId, dbApptId: savedApptRow?.id || '', apptSheetAutoId: localId, leadId: lead.id, name: lead.name, phone: lead.phone, gender: lead.gender || '', age: lead.age || '', apptDate, apptTime, duration: dur, location: apptLocation, industry: lead.industry || '', remarks: apptObs, followUp: 'pending', tip: 0, tipPaid: false, createdAt: new Date().toISOString(), admin: myEmail, calEventId: evt?.id || '', shaky: apptShaky, needsDetails: false };
+          var row = { id: localId, dbApptId: savedApptRow?.id || '', apptSheetAutoId: localId, leadId: lead.id, name: lead.name, phone: lead.phone, gender: lead.gender || '', age: lead.age || '', apptDate, apptTime, duration: dur, location: apptLocation, industry: lead.industry || '', remarks: apptObs, followUp: 'pending', tip: 0, tipPaid: false, createdAt: new Date().toISOString(), admin: myEmail, calEventId: evt?.id || '', calendarId: eventCalId, _calId: eventCalId, shaky: apptShaky, needsDetails: false };
           if (idx >= 0) {
             list[idx] = { ...list[idx], ...row, id: list[idx].id || row.id };
             return list;
@@ -22254,7 +22293,7 @@ function App() {
       var slotText = calAddSlot?.date && calAddSlot?.time ? calAddSlot.date + ' ' + calAddSlot.time : '';
       var isMainCalendarOwner = role !== 'admin';
       var calendarOptions = cadCalendarChoices();
-      var selectedCalId = calPersonalForm.calendarId || cfg.targetCalendarId || 'primary';
+      var selectedCalId = calPersonalForm.calendarId || _defaultApptCalendarId() || 'primary';
       if (!calendarOptions.some(c => c.id === selectedCalId)) {
         calendarOptions = [{ id: selectedCalId, summary: selectedCalId === 'primary' ? 'Primary calendar' : selectedCalId }].concat(calendarOptions);
       }
@@ -22266,7 +22305,7 @@ function App() {
       );
       var personalPane = isMainCalendarOwner && h('div', { className: 'cad-form-grid' },
         cadField('Title', h('input', { value: calPersonalForm.title, placeholder: 'Personal appointment', onChange: e => updatePersonalForm({ title: e.target.value }) })),
-        cadField('Calendar', h('select', { value: selectedCalId, onChange: e => updatePersonalForm({ calendarId: e.target.value }) },
+        cadField('Calendar', h('select', { value: selectedCalId, onChange: e => { updatePersonalForm({ calendarId: e.target.value }); _rememberApptCalendarId(e.target.value); } },
           calendarOptions.map(c => h('option', { key: c.id, value: c.id }, c.summary || c.id))
         )),
         cadField('Date', h('input', { type: 'date', value: calPersonalForm.date, onChange: e => updatePersonalForm({ date: e.target.value }) })),
@@ -22297,6 +22336,10 @@ function App() {
         calAddKind === 'personal' && isMainCalendarOwner ? personalPane : leadPane
       );
     })());
+    var apptCalendarOptions = cadCalendarChoices().filter(c => c.id && c.id !== 'primary');
+    if (apptCalendarId && !apptCalendarOptions.some(c => c.id === apptCalendarId)) {
+      apptCalendarOptions = [{ id: apptCalendarId, summary: apptCalendarId }].concat(apptCalendarOptions);
+    }
     var apptModal = cadModal(showAppt, 'wide', () => { setShowAppt(false); setApptLead(null); setRescheduleTargetAppt(null); setApptShaky(false); }, h(React.Fragment, null,
       h('div', { className: 'cad-modal-head' }, h('div', null, h('span', { className: 'cad-pill green' }, rescheduleTargetAppt ? 'Reschedule' : 'Outcome - Set'), h('h3', { className: 'cad-modal-title', style: { marginTop: 10 } }, rescheduleTargetAppt ? 'Reschedule appointment' : 'Book appointment'), h('p', { className: 'cad-modal-sub' }, (apptLead || activeLead)?.name || 'Lead', (apptLead || activeLead)?.phone ? ' - ' + (apptLead || activeLead).phone : '')), h('button', { className: 'cad-btn ghost', onClick: () => { setShowAppt(false); setApptLead(null); setRescheduleTargetAppt(null); setApptShaky(false); } }, 'x')),
       h('div', { className: 'cad-card', style: { padding: 12, marginBottom: 14 } },
@@ -22318,12 +22361,12 @@ function App() {
       // and lets the user override per-appointment.
       h('div', { className: 'cad-appt-cal-row' },
         cadField('📅 Writing to', h('select', {
-          value: cfg.targetCalendarId || myCfg.targetCalendarId || '',
-          onChange: e => setCfg(s => ({ ...s, targetCalendarId: e.target.value })),
+          value: apptCalendarId || '',
+          onChange: e => _rememberApptCalendarId(e.target.value),
           title: 'Which Google Calendar receives this appointment'
         },
           h('option', { value: '' }, 'Primary calendar'),
-          (calList || []).map(c => h('option', { key: c.id, value: c.id }, c.summary || c.id))
+          apptCalendarOptions.map(c => h('option', { key: c.id, value: c.id }, c.summary || c.id))
         ))
       ),
       cadField('Location', h('input', { value: apptLocation, onChange: e => setApptLocation(e.target.value), placeholder: 'optional - office, home, cafe...' })),
