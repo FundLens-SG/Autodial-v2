@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0150'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0151'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1533,9 +1533,11 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-admin-config-modal .cad-modal-actions{position:static;z-index:auto;margin:14px 0 0;padding:0;background:transparent;border-top:0}
   .cad-admin-config-modal .cad-modal-actions .cad-btn{flex:1;min-height:42px}
   .cad-config-section{padding:0!important;overflow:hidden}
-  .cad-config-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 14px;cursor:pointer;list-style:none}
+  .cad-config-summary{display:grid;grid-template-columns:minmax(0,1fr) auto 18px;align-items:center;gap:10px;padding:13px 14px;cursor:pointer;list-style:none}
+  .cad-config-summary .cad-label{min-width:0;overflow-wrap:anywhere}
+  .cad-config-summary .cad-pill{justify-self:end;min-width:82px;text-align:center;justify-content:center;white-space:nowrap}
   .cad-config-summary::-webkit-details-marker{display:none}
-  .cad-config-summary:after{content:"+";color:var(--ad-t-2);font-weight:900}
+  .cad-config-summary:after{content:"+";color:var(--ad-t-2);font-weight:900;justify-self:end}
   .cad-config-section[open]>.cad-config-summary:after{content:"-"}
   .cad-config-section>*:not(summary){margin-left:14px!important;margin-right:14px!important}
   .cad-config-section>.cad-rank-grid,.cad-config-section>.cad-cal-admin-list{margin-bottom:14px!important}
@@ -1666,7 +1668,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.11.0150';
+window.APP_VERSION='2026.05.11.0151';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -21546,7 +21548,7 @@ function App() {
         ),
         // ─── Pay (green stripe) ─────────────────────────────────────────
         h('details', { className: 'cad-card cad-section-pay cad-config-section', style: { padding: 14, marginTop: 12 } },
-          h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'var(--ad-green)' } }, '💰 Pay & PayNow'), h('span', { className: 'cad-pill ' + (ac.payNow ? 'green' : '') }, ac.payNow ? 'PayNow set' : 'Add PayNow')),
+          h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'var(--ad-green)' } }, '💰 Pay & PayNow'), h('span', { className: 'cad-pill ' + (ac.payNow ? 'green' : '') }, ac.payNow ? 'PayNow Set' : 'Add PayNow')),
           h('div', { className: 'cad-form-grid' },
             cadField('💵 PayNow number', h('input', { value: ac.payNow || '', onChange: e => cadUpdateAdminConfig(em, { payNow: e.target.value }), placeholder: 'Admin handphone / UEN' })),
             cadField('💎 Met incentive ($)', h('input', { type: 'number', min: 0, step: 1, value: ac.metIncentive ?? cfg.metIncentive ?? 10, onChange: e => cadUpdateAdminConfig(em, { metIncentive: Number(e.target.value) || 0 }) }))
@@ -21557,7 +21559,7 @@ function App() {
         // card on the Team page top — moved here so each admin's leads
         // configuration lives with the admin it serves).
         h('details', { className: 'cad-card cad-section-leads cad-config-section', style: { padding: 14, marginTop: 12 } },
-          h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'var(--ad-amber)' } }, '📒 Leads source'), h('span', { className: 'cad-pill ' + (ac.timesheetId && ac.sheetTab ? 'green' : 'amber') }, ac.timesheetId && ac.sheetTab ? 'Linked' : 'Needs sheet/tab')),
+          h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'var(--ad-amber)' } }, '📒 Leads source'), h('span', { className: 'cad-pill ' + (ac.timesheetId && ac.sheetTab ? 'green' : 'amber') }, ac.timesheetId && ac.sheetTab ? 'Linked' : 'Needs Sheet/Tab')),
           // Quick action: copy your current Main sheet/tab into this admin
           cfg.sheetId && cfg.sheetTab && h('button', {
             className: 'cad-btn',
@@ -21616,7 +21618,7 @@ function App() {
               }
             }, 'Unlink')
           ),
-          // Tab + session hours
+          // Lead tab only. Session duration lives under Calling Rules.
           h('div', { className: 'cad-form-grid' },
             cadField('📑 Lead tab',
               (ac._sheetTabs || []).length > 0
@@ -21624,8 +21626,7 @@ function App() {
                     h('option', { value: '' }, 'Select tab…'),
                     (ac._sheetTabs || []).map(t => h('option', { key: t, value: t }, t)))
                 : h('input', { value: ac.sheetTab || '', onChange: e => cadUpdateAdminConfig(em, { sheetTab: e.target.value }), placeholder: cfg.sheetTab || 'Sheet tab name' })
-            ),
-            cadField('⏱ Session hours', h('input', { type: 'number', min: 0.5, step: 0.5, value: ac.sessionDur || cfg.sessionDur || 5, onChange: e => cadUpdateAdminConfig(em, { sessionDur: Number(e.target.value) || 0 }) }))
+            )
           ),
           // Reload tabs button (manual refresh after picking a sheet)
           ac.timesheetId && h('button', {
@@ -21645,10 +21646,11 @@ function App() {
             }
           }, '↻ Reload tabs')
         ),
-        // ─── Calling rules + bars ───────────────────────────────────────
+        // ─── Calling rules + parameters ─────────────────────────────────
         h('details', { className: 'cad-card cad-section-script cad-config-section', style: { padding: 14, marginTop: 12 } },
-          h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'var(--ad-brass-2)' } }, '📞 Calling rules + bars'), h('span', { className: 'cad-pill brass' }, 'tunable')),
+          h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'var(--ad-brass-2)' } }, '📞 Calling rules + parameters'), h('span', { className: 'cad-pill brass' }, 'Tunable')),
           h('div', { className: 'cad-form-grid' },
+            cadField('⏱ Default Session Hours', h('input', { type: 'number', min: 0.5, step: 0.5, value: ac.sessionDur || cfg.sessionDur || 5, onChange: e => cadUpdateAdminConfig(em, { sessionDur: Number(e.target.value) || 0 }) })),
             cadField('🚫 NP → NI threshold', h('input', { type: 'number', min: 1, max: 20, step: 1, value: ac.npMax || cfg.npMax || 5, onChange: e => cadUpdateAdminConfig(em, { npMax: Math.max(1, parseInt(e.target.value || '5', 10) || 5) }) })),
             cadField('🎯 Default appts bar (full credit)', h('input', { type: 'number', min: 0, max: 10, step: 1, value: ac.mThresh ?? cfg.mThresh ?? 2, onChange: e => cadUpdateAdminConfig(em, { mThresh: Number(e.target.value) || 0 }) })),
             cadField('🚀 Default bonus bar', h('input', { type: 'number', min: 0, max: 10, step: 1, value: ac.nThresh ?? cfg.nThresh ?? 3, onChange: e => cadUpdateAdminConfig(em, { nThresh: Number(e.target.value) || 0 }) })),
@@ -21734,7 +21736,7 @@ function App() {
         ),
         // ─── Gamification: rank tiers (purple stripe) ───────────────────
         h('details', { className: 'cad-card cad-section-gamify cad-config-section', style: { padding: 14, marginTop: 12 } },
-          h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'oklch(0.78 0.18 320)' } }, '🏆 Rank tiers (per-admin gamification)'), h('span', { className: 'cad-pill' }, '6 tiers')),
+          h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'oklch(0.78 0.18 320)' } }, '🏆 Rank tiers (per-admin gamification)'), h('span', { className: 'cad-pill' }, '6 Tiers')),
           h('p', { className: 'cad-page-note', style: { marginBottom: 10 } }, 'Each tier has its own $/hr and the minimum appointments needed to reach it. Used for the rank-up celebrations on the admin\'s call view.'),
           // 0095: admin tier cards upgraded to match the Main rank-card
           // visual language — gradient head, big emoji, glow on achieved
@@ -21816,7 +21818,7 @@ function App() {
         ),
         // ─── Calendars (blue stripe) ────────────────────────────────────
         calList.length > 0 && h('details', { className: 'cad-card cad-section-cal cad-config-section', style: { padding: 14, marginTop: 12 } },
-          h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'var(--ad-blue)' } }, '📅 Shared calendars'), h('span', { className: 'cad-pill blue' }, (ac.sharedCals || []).length, ' visible')),
+          h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'var(--ad-blue)' } }, '📅 Shared calendars'), h('span', { className: 'cad-pill blue' }, (ac.sharedCals || []).length, ' Visible')),
           h('p', { className: 'cad-page-note', style: { marginBottom: 10 } }, 'Tick a calendar to share its busy windows with this admin (so their slot picker avoids your appointments). "Busy only" hides event titles — admin sees the slot is taken without the meeting details.'),
           h('div', { className: 'cad-cal-admin-list' }, calList.map(c => {
             var current = (ac.sharedCals || []).find(x => x.id === c.id);
