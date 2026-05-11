@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0153'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0001'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1393,7 +1393,7 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-script-obj-row .cad-script-read,
   .cad-script-obj-row .cad-objection-list{max-height:420px}
 }
-.cad-mobile-nav,.cad-mobile-agenda{display:none}
+.cad-mobile-nav,.cad-mobile-agenda,.cad-mobile-outcome-dock{display:none}
 /* 0142: phone layout rescue. Keep the Claude visual language, but stop
    the mobile view from feeling desktop-scaled: compact the chrome,
    avoid topbar clipping, and keep session controls inside the viewport. */
@@ -1420,8 +1420,9 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-right>.cad-tab:not(.cad-icon-tab){display:none!important}
   .cad-right>.cad-icon-tab{width:34px;min-width:34px;padding:0}
   .cad-avatar{display:none!important}
-  .cad-main,.cad-call-main{padding:12px 12px calc(112px + env(safe-area-inset-bottom))!important;gap:12px}
-  .cad-call-body{padding-bottom:calc(112px + env(safe-area-inset-bottom))}
+  .cad-main{padding:12px 12px calc(112px + env(safe-area-inset-bottom))!important;gap:12px}
+  .cad-call-main{padding:12px 12px calc(168px + env(safe-area-inset-bottom))!important;gap:12px}
+  .cad-call-body{padding-bottom:calc(168px + env(safe-area-inset-bottom))}
   .cad-dashboard-head,.cad-session-strip{gap:12px}
   .cad-title{font-size:22px!important;line-height:1.12;letter-spacing:0;margin-top:4px}
   .cad-dashboard-head .cad-muted{font-size:13px!important;line-height:1.35}
@@ -1480,6 +1481,14 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-hero-cta__target-row input[type=range]{flex:1 1 100%;margin-bottom:6px}
   .cad-outcomes,.cad-outcomes--five,.cad-outcomes--six{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px}
   .cad-call-actions-sticky{position:relative!important;bottom:auto!important;z-index:auto;margin-top:10px;padding:8px 0 6px!important;background:linear-gradient(180deg,transparent,var(--ad-bg-0) 18%,var(--ad-bg-0))}
+  .cad-mobile-outcome-dock.on{position:fixed;left:10px;right:10px;bottom:calc(68px + env(safe-area-inset-bottom));z-index:445;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;padding:6px;border-radius:16px;background:rgba(13,16,21,.97);border:1px solid var(--ad-line-2);box-shadow:0 18px 42px -24px rgba(0,0,0,.9),0 0 0 1px rgba(214,168,122,.10) inset;backdrop-filter:blur(18px)}
+  .cad-mobile-outcome-btn{height:42px;border:1px solid var(--ad-line-1);border-radius:12px;background:var(--ad-bg-2);color:var(--ad-t-1);font:850 11px 'Inter',system-ui,sans-serif;letter-spacing:.01em}
+  .cad-mobile-outcome-btn.np{color:var(--ad-amber);background:var(--ad-amber-dim);border-color:var(--ad-amber-line)}
+  .cad-mobile-outcome-btn.cb{color:var(--ad-blue);background:var(--ad-blue-dim);border-color:oklch(0.72 0.12 240 / .34)}
+  .cad-mobile-outcome-btn.ni{color:var(--ad-red);background:var(--ad-red-dim);border-color:oklch(0.68 0.18 25 / .34)}
+  .cad-mobile-outcome-btn.set{color:var(--ad-green);background:var(--ad-green-dim);border-color:oklch(0.74 0.16 150 / .38)}
+  .cad-mobile-outcome-btn.skip,.cad-mobile-outcome-btn.undo{color:var(--ad-t-1)}
+  .cad-mobile-outcome-btn:disabled{opacity:.36;filter:grayscale(.4)}
   .cad-kb-hint{display:none!important}
   .cad-outcome{min-height:54px!important;padding:8px 10px!important;border-radius:13px}
   .cad-outcome.set{grid-column:1/-1}
@@ -1487,8 +1496,12 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-outcome .caption{font-size:10px!important;letter-spacing:.035em}
   .cad-outcome .key{font-size:9px!important;top:6px!important;right:7px!important}
   .cad-outcomes--idle .cad-outcome{opacity:.34;filter:grayscale(.35);box-shadow:none}
-  .cad-lead-card{padding:16px!important}
+  .cad-lead-card{padding:14px!important}
   .cad-lead-name{font-size:28px!important;line-height:1.08}
+  .cad-lead-jump-inline__results{position:fixed!important;left:12px!important;right:12px!important;top:calc(var(--ckg-strip-h,0px) + 108px)!important;bottom:calc(134px + env(safe-area-inset-bottom))!important;max-height:none!important;z-index:520;padding:8px!important;border-radius:16px!important;background:rgba(13,16,21,.98)!important;border-color:var(--ad-brass-line)!important;box-shadow:0 22px 58px -20px rgba(0,0,0,.95),0 0 0 1px rgba(214,168,122,.14) inset!important}
+  .cad-lead-jump-inline__row{min-height:52px;padding:9px 10px!important;border-radius:12px!important}
+  .cad-lead-jump-inline__row b{font-size:13.5px!important;line-height:1.18}
+  .cad-lead-jump-inline__row small{font-size:10.5px!important}
   .cad-empty{min-height:220px;padding:24px 18px}
   .cad-table{border:0;overflow:visible;display:flex;flex-direction:column;gap:10px}
   .cad-tr.head{display:none!important}
@@ -1515,8 +1528,9 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-mobile-agenda-item small{display:block;margin-top:2px;color:var(--ad-t-2);font-size:11px;line-height:1.25}
   .cad-mobile-agenda-item.free{border-color:oklch(0.74 0.16 150 / .38);background:var(--ad-green-dim);color:var(--ad-green)}
   .cad-mobile-agenda-item.free small{color:oklch(0.84 0.15 150)}
-  .cad-time-board{max-height:58vh}
-  .cad-time-head,.cad-time-body{grid-template-columns:44px repeat(7,minmax(82px,1fr));min-width:618px}
+  .cad-time-board{max-height:58vh;overflow:auto}
+  .cad-time-head,.cad-time-body{grid-template-columns:44px repeat(7,minmax(104px,1fr))!important;min-width:772px!important}
+  .cad-modal .cad-time-head,.cad-modal .cad-time-body{grid-template-columns:42px repeat(7,minmax(102px,1fr))!important;min-width:756px!important}
   .cad-time-head>div{padding:7px 3px;font-size:11px}
   .cad-time-label{font-size:9px;padding-right:4px}
   .cad-time-block{left:3px!important;right:3px!important;padding:3px 4px}
@@ -1583,6 +1597,8 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-session-stat--card b{font-size:22px!important}
   .cad-mobile-nav{left:8px;right:8px;gap:3px}
   .cad-mobile-nav button{font-size:9.5px}
+  .cad-mobile-outcome-dock.on{left:8px;right:8px;gap:3px}
+  .cad-mobile-outcome-btn{font-size:10px}
 }
 </style>
 </head>
@@ -1668,7 +1684,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.11.0153';
+window.APP_VERSION='2026.05.12.0001';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -10585,12 +10601,39 @@ function App() {
       npCount: u.prevNpCount || 0,
       sheetValue: u.prevSheetValue || lead.sheetValue || lead.notes || ''
     } : null;
-    setLeads(p => p.map((l, i) => i === u.leadIdx || undoPhone && normalizePhone(l.phone || '') === normalizePhone(undoPhone) ? {
-      ...l,
-      status: u.prevStatus || 'pending',
-      npCount: u.prevNpCount || 0,
-      sheetValue: u.prevSheetValue || l.sheetValue || l.notes || ''
-    } : l));
+    var restoredIdx = u.callbackReturnIdx >= 0 ? u.callbackReturnIdx : u.leadIdx;
+    var restoredPhone = normalizePhone(u.callbackReturnPhone || undoPhone || '');
+    var nextLeadState = (leadsRef.current || leads || []).map((l, i) => {
+      var isUndoLead = i === u.leadIdx || undoPhone && normalizePhone(l.phone || '') === normalizePhone(undoPhone);
+      if (!isUndoLead) return l;
+      return {
+        ...l,
+        status: u.prevStatus || 'pending',
+        npCount: u.prevNpCount || 0,
+        sheetValue: u.prevSheetValue || l.sheetValue || l.notes || ''
+      };
+    });
+    leadsRef.current = nextLeadState;
+    setLeads(nextLeadState);
+    if ((restoredIdx < 0 || !nextLeadState[restoredIdx] || restoredPhone && normalizePhone(nextLeadState[restoredIdx].phone || '') !== restoredPhone) && restoredPhone) {
+      restoredIdx = nextLeadState.findIndex(l => normalizePhone(l.phone || '') === restoredPhone);
+    }
+    if (restoredIdx < 0 && u.leadIdx >= 0 && nextLeadState[u.leadIdx]) restoredIdx = u.leadIdx;
+    if (restoredIdx >= 0) {
+      setCurIdx(restoredIdx);
+      setPhase('calling');
+      if (running || session && !session.ended) setRunning(true);
+    }
+    if (u.status === 'set') {
+      setAppointments(p => (p || []).filter(a => !_apptHardMatch(a, {
+        id: u.apptId,
+        dbApptId: u.dbApptId,
+        calEventId: u.calEventId,
+        phone: undoPhone,
+        apptDate: u.apptDate,
+        apptTime: u.apptTime
+      })));
+    }
     step('Lead status reverted locally', true);
     if (restoredLead) {
       try {
@@ -19205,6 +19248,23 @@ function App() {
     var leadPhone = activeLead?.phone || '';
     var leadAge = activeLead?.age ? 'age ' + activeLead.age : '';
     var leadNotes = activeLead?.notes || activeLead?.note || (demo ? demoLead.notes : 'Add notes to this lead so callers have context before dialing.');
+    var cadLeadHasActiveSet = l => {
+      if (!l) return false;
+      var lp = normalizePhone(l.phone || '');
+      return (appointments || []).some(a => {
+        if (!a || a._deleted) return false;
+        var follow = String(a.followUp || 'pending').toLowerCase();
+        if (follow && !['pending', 'postponed'].includes(follow)) return false;
+        if (l.id && String(a.leadId || a.lead_id || '') === String(l.id)) return true;
+        return lp && normalizePhone(a.phone || a.lead_phone || '') === lp;
+      });
+    };
+    var cadLeadStatusMeta = l => {
+      var status = cadLeadHasActiveSet(l) ? 'set' : String(l?.status || 'pending').toLowerCase();
+      var label = status === 'set' ? 'Set' : status === 'cb' ? 'CB' : status === 'ni' ? 'NI' : status === 'np' ? 'NP×' + (l?.npCount || 1) : 'Pending';
+      var tone = status === 'set' ? 'green' : status === 'cb' ? 'blue' : status === 'ni' ? 'red' : status === 'np' ? 'amber' : '';
+      return { status, label, tone };
+    };
     var queueTotal = Math.max((leads || []).filter(l => l && l.phone && l.status !== 'ni' && l.status !== 'set').length, demo ? 124 : 0);
     var queuePos = curIdx >= 0 ? curIdx + 1 : Math.min(Math.max((leads || []).length - (pending || []).length + 1, 1), queueTotal || 1);
     var queuePct = queueTotal ? Math.min(100, Math.max(3, Math.round(queuePos / queueTotal * 100))) : 0;
@@ -20173,9 +20233,10 @@ function App() {
                 },
                   (() => {
                     var renderRow = (l, originalIdx, isCurrent) => {
-                      var status = String(l.status || 'pending').toLowerCase();
-                      var statusLabel = status === 'set' ? '✓ Set' : status === 'cb' ? '🔔 CB' : status === 'ni' ? 'NI' : status === 'np' ? 'NP×' + (l.npCount || 1) : '·';
-                      var statusTone = status === 'set' ? 'green' : status === 'cb' ? 'blue' : status === 'ni' ? 'red' : status === 'np' ? 'amber' : '';
+                      var meta = cadLeadStatusMeta(l);
+                      var status = meta.status;
+                      var statusLabel = meta.status === 'pending' ? '·' : meta.label;
+                      var statusTone = meta.tone;
                       return h('button', {
                         key: l.id || l.phone || originalIdx,
                         type: 'button',
@@ -22654,7 +22715,8 @@ function App() {
         leadJumpResults.length === 0
           ? h('p', { className: 'cad-page-note', style: { textAlign: 'center', padding: '20px 0', fontStyle: 'italic' } }, leadJumpQuery ? 'No leads match "' + leadJumpQuery + '"' : 'No leads loaded')
           : leadJumpResults.map((l, i) => {
-              var status = String(l.status || 'pending').toLowerCase();
+              var meta = cadLeadStatusMeta(l);
+              var status = meta.status;
               var statusLabel = status === 'set' ? '✓ Set' : status === 'cb' ? '🔔 Callback' : status === 'ni' ? 'NI' : status === 'np' ? 'NP × ' + (l.npCount || 1) : 'Pending';
               return h('button', {
                 key: l.id || l.phone || i,
@@ -22672,7 +22734,26 @@ function App() {
       ),
       h('p', { className: 'cad-page-note', style: { marginTop: 12, fontSize: 11 } }, 'Showing ', leadJumpResults.length, ' of ', (leads || []).length, ' loaded leads', leadJumpResults.length === 30 && (leads || []).length > 30 ? ' · refine search for more' : '')
     ));
-    var modalStack = h(React.Fragment, null, undoBar, moreModal, adminConfigModal, cbModal, calAddPickerModal, apptModal, slotModal, waModal, payQrModalClaude, tipModalClaude, importModal, colPickerModal, calDeletionModal, leadJumpModal, dialogModal, setStampOverlay);
+    var showMobileOutcomeDock = running && curIdx >= 0 && ((mainMode === 'call' && tab === 'home') || tab === 'dial');
+    var mobileOutcomeBtn = (cls, label, onClick, disabled) => h('button', {
+      key: cls,
+      className: 'cad-mobile-outcome-btn ' + cls,
+      type: 'button',
+      disabled: disabled,
+      onClick
+    }, label);
+    var mobileOutcomeDock = h('div', {
+      className: 'cad-mobile-outcome-dock' + (showMobileOutcomeDock ? ' on' : ''),
+      'aria-label': 'Quick after-call outcomes'
+    },
+      mobileOutcomeBtn('np', 'NP', () => handleOutcome('np'), !showMobileOutcomeDock),
+      mobileOutcomeBtn('cb', 'CB', _openCbModal, !showMobileOutcomeDock),
+      mobileOutcomeBtn('ni', 'NI', () => handleOutcome('ni'), !showMobileOutcomeDock),
+      mobileOutcomeBtn('set', 'Set', () => handleOutcome('set'), !showMobileOutcomeDock),
+      mobileOutcomeBtn('skip', 'Skip', skipCurrentLead, !showMobileOutcomeDock || !activeLead || !leadPhone),
+      mobileOutcomeBtn('undo', undoInfo ? 'Undo' : 'Undo', () => doUndo(), !undoInfo)
+    );
+    var modalStack = h(React.Fragment, null, undoBar, mobileOutcomeDock, moreModal, adminConfigModal, cbModal, calAddPickerModal, apptModal, slotModal, waModal, payQrModalClaude, tipModalClaude, importModal, colPickerModal, calDeletionModal, leadJumpModal, dialogModal, setStampOverlay);
     var withCadModals = view => h(React.Fragment, null, view, cadMobileNav, modalStack);
     if ((mainMode === 'call' && tab === 'home') || tab === 'dial') return withCadModals(tab === 'dial' ? dialView : callView);
     if (tab === 'leads') return withCadModals(leadsView);
