@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0145'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0147'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1404,17 +1404,17 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-topbar{height:auto!important;min-height:50px;padding:6px 8px!important;gap:6px;justify-content:space-between;overflow:hidden!important}
   .cad-topbar::-webkit-scrollbar{display:none}
   .cad-left,.cad-right{gap:5px;min-width:0}
-  .cad-left{flex:1 1 auto;max-width:calc(100% - 92px)}
-  .cad-right{flex:0 0 auto;max-width:88px;margin-left:0!important;justify-content:flex-end;overflow:visible}
+  .cad-left{flex:1 1 auto;max-width:calc(100% - 162px)}
+  .cad-right{flex:0 0 auto;max-width:158px;margin-left:0!important;justify-content:flex-end;overflow:visible}
   .cad-logo{width:32px;height:32px;border-radius:10px}
-  .cad-brand{font-size:17px;max-width:104px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cad-brand{font-size:17px;max-width:98px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .cad-pill{min-height:28px;padding:4px 8px;font-size:11px}
   .cad-google-pill{width:34px!important;min-width:34px!important;max-width:34px!important;height:34px!important;padding:0!important;font-size:0!important;justify-content:center;overflow:hidden;text-overflow:clip}
   .cad-google-pill .cad-dot{margin:0}
   .cad-google-pill:after{content:"G";font-size:12px;font-weight:850;color:currentColor}
-  .cad-switch{display:none!important}
-  .cad-switch{height:36px;min-width:78px;padding:3px}
-  .cad-switch button{width:36px;height:30px}
+  .cad-switch{display:flex!important;height:34px;min-width:74px;padding:3px;gap:2px;border-color:var(--ad-line-2);box-shadow:0 8px 18px -16px var(--ad-brass)}
+  .cad-switch button{width:33px;height:28px;min-height:0!important;padding:0}
+  .cad-switch button.on{box-shadow:0 6px 16px -12px var(--ad-brass)}
   .cad-tab{height:32px;padding:0 9px;font-size:12px}
   .cad-right>.cad-tab:not(.cad-icon-tab){display:none!important}
   .cad-right>.cad-icon-tab{width:34px;min-width:34px;padding:0}
@@ -1553,10 +1553,13 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-mobile-nav svg{width:16px;height:16px}
 }
 @media(max-width:390px){
-  .cad-left{max-width:calc(100% - 86px)}
-  .cad-right{max-width:82px}
-  .cad-brand{font-size:16px;max-width:138px}
+  .cad-left{max-width:calc(100% - 150px)}
+  .cad-right{max-width:146px;gap:4px}
+  .cad-brand{font-size:16px;max-width:88px}
   .cad-logo{width:31px;height:31px}
+  .cad-switch{min-width:70px;height:32px;padding:3px}
+  .cad-switch button{width:31px;height:26px;min-height:0!important}
+  .cad-right>.cad-icon-tab{width:32px;min-width:32px}
   .cad-google-pill{width:32px!important;min-width:32px!important;max-width:32px!important;height:32px!important}
   .cad-title{font-size:28px!important}
   .cad-hero-quickref__card b{font-size:16px!important}
@@ -1649,7 +1652,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.11.0146';
+window.APP_VERSION='2026.05.11.0147';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
