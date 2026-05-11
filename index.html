@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0001'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0002'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -946,7 +946,7 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
    bottom-fade so the column still reads as "today" without painting
    the whole grid yellow. */
 .cad-time-day.today{background:linear-gradient(180deg,rgba(214,168,122,.08),transparent 35%)}
-.cad-time-day.today::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--ad-brass),var(--ad-brass-2));z-index:3;pointer-events:none}.cad-time-line{height:44px;border-top:1px solid var(--ad-line-1)}.cad-time-block{position:absolute;left:4px;right:4px;border-radius:7px;padding:4px 5px;font-size:10px;font-weight:760;overflow:hidden;text-align:left}.cad-time-free{border:1px solid oklch(0.74 0.16 150 / .52);background:linear-gradient(135deg,rgba(34,197,94,.26),rgba(16,185,129,.12));color:#86efac;box-shadow:0 0 10px rgba(34,197,94,.16);cursor:pointer}.cad-time-free.preferred{background:linear-gradient(135deg,rgba(34,197,94,.42),rgba(14,165,233,.16));border-color:rgba(74,222,128,.78);color:#dcfce7}.cad-time-free.selected{background:linear-gradient(135deg,#22c55e,#10b981);border-color:#22c55e;color:#fff}.cad-time-busy{background:rgba(148,163,184,.13);border:1px solid rgba(148,163,184,.26);color:var(--ad-t-3);pointer-events:none}
+.cad-time-day.today::before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--ad-brass),var(--ad-brass-2));z-index:3;pointer-events:none}.cad-time-line{height:44px;border-top:1px solid var(--ad-line-1)}.cad-time-block{position:absolute;left:4px;right:4px;border-radius:7px;padding:4px 5px;font-size:10px;font-weight:760;overflow:hidden;text-align:left}.cad-time-free{border:1px solid oklch(0.74 0.16 150 / .52);background:linear-gradient(135deg,rgba(34,197,94,.26),rgba(16,185,129,.12));color:#86efac;box-shadow:0 0 10px rgba(34,197,94,.16);cursor:pointer}.cad-time-free.preferred{background:linear-gradient(135deg,rgba(34,197,94,.42),rgba(14,165,233,.16));border-color:rgba(74,222,128,.78);color:#dcfce7}.cad-time-free.selected{background:linear-gradient(135deg,#22c55e,#10b981);border-color:#22c55e;color:#fff}.cad-time-busy{background:rgba(148,163,184,.13);border:1px solid rgba(148,163,184,.26);color:var(--ad-t-3);pointer-events:none}.cad-time-busy.is-clickable{pointer-events:auto;cursor:pointer}
 /* 0077: shaky-appointment block on the calendar grid. Treated as a
    bookable free slot that another lead can override — orange-tinted so
    it reads as "soft-held" rather than locked. Same shape as
@@ -1684,7 +1684,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0001';
+window.APP_VERSION='2026.05.12.0002';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -6791,6 +6791,7 @@ function isApptDeleted(a, delSet) {
   if (!delSet) delSet = _getDelIds();
   if (!delSet.size) return false;
   if (a.id && delSet.has(String(a.id))) return true;
+  if (a.calEventId && delSet.has(String(a.calEventId))) return true;
   if (a.phone) {
     if (delSet.has(a.phone + '_' + (a.createdAt || ''))) return true;
     if (delSet.has(a.phone + '_' + (a.apptDate || ''))) return true;
@@ -7855,9 +7856,11 @@ function App() {
     var winEnd = Date.now() + 60 * 86400000;
     var pulledIds = new Set((calDeletionScanEvents || []).map(e => e?.id).filter(Boolean));
     var dismissed = calDeletionDismissRef.current || {};
+    var deletedIds = _getDelIds();
     var nowMs = Date.now();
     var suspected = (appointments || []).filter(a => {
       if (a?._deleted) return false;
+      if (isApptDeleted(a, deletedIds)) return false;
       if (!a?.calEventId) return false;
       var fu = String(a?.followUp || '').toLowerCase();
       if (fu === 'fly_kite' || fu === 'fly kite' || fu === 'flykite' || fu === 'closed' || fu === 'cancelled') return false;
@@ -8022,12 +8025,12 @@ function App() {
     // restored it. _purgeCloudAppointment iterates the appt's owners
     // (admin / myEmail / _user.email) and removes it from each
     // owner's live + snapshot rows.
-    _purgeCloudAppointment(a).catch(() => {});
+    await _purgeCloudAppointment(a).catch(() => false);
     // 6 + 7: sheet row delete + audit log
     var apptSheetId = a.apptSheetId || myCfg.timesheetId || cfg.sheetId;
     if (apptSheetId && localStorage.getItem('ad_gt')) {
       if (a.apptSheetRange) {
-        try { await gSheets.deleteApptRow(a.id, a, a.apptSheetRange); } catch (_e) {}
+        try { await gSheets.deleteApptRow(apptSheetId, a, a.apptSheetRange); } catch (_e) {}
       }
       try {
         gSheets.appendLog(apptSheetId, {
@@ -8335,6 +8338,16 @@ function App() {
   var [showCalAddApptPicker, setShowCalAddApptPicker] = useState(false);
   var [calAddSlot, setCalAddSlot] = useState(null);
   var [calAddSearch, setCalAddSearch] = useState('');
+  var [calAddKind, setCalAddKind] = useState('lead');
+  var [calPersonalForm, setCalPersonalForm] = useState({
+    title: '',
+    calendarId: 'primary',
+    date: '',
+    time: '',
+    duration: 60,
+    location: ''
+  });
+  var [calPersonalSaving, setCalPersonalSaving] = useState(false);
   var [apptActionModal, setApptActionModal] = useState(null);
   var [calEditForm, setCalEditForm] = useState({
     summary: '',
@@ -8604,8 +8617,7 @@ function App() {
     if (!ev) return false;
     if (role !== 'admin') return true;
     var _r = _calEditRowFor(ev);
-    var _eventOwner = (ev.extendedProperties?.private?.autodialOwner || ev.creator?.email || '').toLowerCase();
-    return !!(_r && (_r.admin || '').toLowerCase() === myEmail.toLowerCase()) || !!(_eventOwner && _eventOwner === myEmail.toLowerCase());
+    return !!(_r && (_r.admin || '').toLowerCase() === myEmail.toLowerCase());
   };
   var _saveCalEditEvent = async () => {
     if (!calEditEvent) return;
@@ -10257,17 +10269,38 @@ function App() {
   };
   var _openCalAddApptPicker = slot => {
     var candidates = getTodayCalledLeadCandidates(true);
-    if (!candidates.length) {
+    if (role === 'admin' && !candidates.length) {
       toast('No leads loaded from this sheet yet. Load or fetch leads first, then add appointment from Cal.', 'err');
       return;
     }
+    var start = null;
+    if (slot?.date && slot?.time) {
+      var dp = String(slot.date).split('-').map(Number);
+      var tp = String(slot.time).split(':').map(Number);
+      if (dp.length >= 3 && tp.length >= 2) start = new Date(dp[0], dp[1] - 1, dp[2], tp[0], tp[1], 0, 0);
+    }
+    if (!start || isNaN(start.getTime())) {
+      start = new Date(Date.now() + 30 * 60000);
+      start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15, 0, 0);
+    }
+    var slotDuration = _slotMinutes(slot?.duration, apptCoreMin || 60, 1, 480);
     setCalAddSlot(slot || null);
     setCalAddSearch('');
+    setCalAddKind(role !== 'admin' && !candidates.length ? 'personal' : 'lead');
+    setCalPersonalForm({
+      title: '',
+      calendarId: cfg.targetCalendarId || myCfg?.targetCalendarId || 'primary',
+      date: slot?.date || localDateKey(start),
+      time: slot?.time || String(start.getHours()).padStart(2, '0') + ':' + String(start.getMinutes()).padStart(2, '0'),
+      duration: slotDuration,
+      location: ''
+    });
     setShowCalAddApptPicker(true);
   };
   var _openCalAddApptForLead = lead => {
     var slot = calAddSlot;
     setShowCalAddApptPicker(false);
+    setCalAddKind('lead');
     _openIncompleteApptFlow(lead);
     if (slot?.date && slot?.time) {
       setApptDate(slot.date);
@@ -10306,11 +10339,12 @@ function App() {
     cancelLabel: opts.cancelLabel || 'Cancel',
     resolve
   })), []);
-  var _createPersonalCalendarEventFromSlot = async slot => {
+  var _createPersonalCalendarEventFromSlot = async (slot, opts = null) => {
     if (!gOk || !window.gCal) {
       toast('Connect Google Calendar first', 'err');
-      return;
+      return false;
     }
+    var hasOpts = !!opts;
     var start = null;
     if (slot?.date && slot?.time) {
       var dp = String(slot.date).split('-').map(Number);
@@ -10322,15 +10356,17 @@ function App() {
       start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15, 0, 0);
     }
     var duration = _slotMinutes(slot?.duration, apptCoreMin || 60, 1, 480);
-    var title = await promptAsync('Event title', '', { title: 'Add calendar event', placeholder: 'Personal appointment' });
-    if (!title) return;
-    var date = slot?.date || await promptAsync('Date (YYYY-MM-DD)', localDateKey(start), { title: 'Event date', placeholder: '2026-05-11' });
-    if (!date) return;
-    var time = slot?.time || await promptAsync('Start time (HH:MM)', String(start.getHours()).padStart(2, '0') + ':' + String(start.getMinutes()).padStart(2, '0'), { title: 'Start time', placeholder: '14:30' });
-    if (!time) return;
-    if (!slot?.duration) {
+    var title = hasOpts ? String(opts.title || '').trim() : await promptAsync('Event title', '', { title: 'Add calendar event', placeholder: 'Personal appointment' });
+    if (!title) return false;
+    var date = hasOpts ? opts.date : (slot?.date || await promptAsync('Date (YYYY-MM-DD)', localDateKey(start), { title: 'Event date', placeholder: '2026-05-11' }));
+    if (!date) return false;
+    var time = hasOpts ? opts.time : (slot?.time || await promptAsync('Start time (HH:MM)', String(start.getHours()).padStart(2, '0') + ':' + String(start.getMinutes()).padStart(2, '0'), { title: 'Start time', placeholder: '14:30' }));
+    if (!time) return false;
+    if (hasOpts) {
+      duration = _slotMinutes(opts.duration, duration, 1, 480);
+    } else if (!slot?.duration) {
       var durText = await promptAsync('Duration in minutes', String(duration), { title: 'Duration', placeholder: '60' });
-      if (!durText) return;
+      if (!durText) return false;
       duration = _slotMinutes(durText, duration, 1, 480);
     }
     var d2 = String(date).split('-').map(Number);
@@ -10338,14 +10374,20 @@ function App() {
     var s = new Date(d2[0], d2[1] - 1, d2[2], t2[0], t2[1], 0, 0);
     if (isNaN(s.getTime())) {
       toast('Invalid date or time', 'err');
-      return;
+      return false;
     }
     var e = new Date(s.getTime() + duration * 60000);
-    var targetCal = cfg.targetCalendarId || 'primary';
+    var targetCal = (hasOpts && opts.calendarId) || cfg.targetCalendarId || 'primary';
+    var calName = (calList || []).find(c => c.id === targetCal)?.summary || (targetCal === 'primary' ? 'Primary' : targetCal);
+    var locationText = hasOpts ? String(opts.location || '').trim() : '';
+    var desc = ['Created from AutoDial calendar', locationText ? 'Location: ' + locationText : ''].filter(Boolean).join('\n');
     try {
       toast('Creating event...', 'info');
-      var evt = await withTimeout(gCal.create(title, 'Created from AutoDial calendar', s.toISOString(), e.toISOString(), [], targetCal), 8000, 'Calendar create');
+      var evt = await withTimeout(gCal.create(title, desc, s.toISOString(), e.toISOString(), [], targetCal), 8000, 'Calendar create');
       if (!evt?.id) throw new Error('No event id returned');
+      if (locationText && window.gCal?.update) {
+        try { evt = await withTimeout(gCal.update(evt.id, { location: locationText }, targetCal), 8000, 'Calendar update') || evt; } catch (_locErr) {}
+      }
       pickerEventsCacheRef.current = { key: '', ts: 0, data: null };
       setWeekEvents(prev => [...(prev || []).filter(x => x.id !== evt.id), {
         ...evt,
@@ -10354,13 +10396,15 @@ function App() {
         start: { ...(evt.start || {}), dateTime: s.toISOString() },
         end: { ...(evt.end || {}), dateTime: e.toISOString() },
         _calId: targetCal,
-        _calName: targetCal === 'primary' ? 'Primary' : targetCal
+        _calName: calName
       }].sort((a, b) => new Date(a.start?.dateTime || a.start?.date || 0) - new Date(b.start?.dateTime || b.start?.date || 0)));
       setWeekEventsWeekKey(localDateKey(startOfWeek(s)));
       setCalRefreshTrigger(p => p + 1);
       toast('Event created');
+      return true;
     } catch (err) {
       toast('Create failed: ' + (err?.message || err), 'err');
+      return false;
     }
   };
   var fileRef = useRef(null);
@@ -21164,8 +21208,7 @@ function App() {
                     }
                   } catch (_e) {}
                 } else {
-                  if (role === 'admin') _openCalAddApptPicker(payload);
-                  else _createPersonalCalendarEventFromSlot(payload);
+                  _openCalAddApptPicker(payload);
                 } } },
                   h('strong', null, label),
                   h('small', null, time, ' - ', endTime, ' · ', _formatSlotMinutes(item.win.mins)),
@@ -21207,15 +21250,16 @@ function App() {
                     }
                   }, h('strong', null, shTime, ' - ', shEnd), h('small', null, '⚠ ', r.name || 'Shaky'));
                 }
+                var canOpenBusy = !!r.ev && (role !== 'admin' || !!_calEditRowFor(r.ev));
                 return h('div', {
-                  className: 'cad-time-block cad-time-busy' + (apptMatch ? ' cad-time-shaky' : ''),
+                  className: 'cad-time-block cad-time-busy' + (apptMatch ? ' cad-time-shaky' : '') + (canOpenBusy ? ' is-clickable' : ''),
                   style: st,
                   key: day.key + '-busy-' + (r.ev?.id || bi),
-                  role: r.ev ? 'button' : undefined,
-                  tabIndex: r.ev ? 0 : undefined,
-                  title: r.ev ? 'Open calendar event' : undefined,
-                  onClick: r.ev ? e => _openCalEditSafe(r.ev, e) : undefined,
-                  onKeyDown: r.ev ? e => { if (e.key === 'Enter' || e.key === ' ') _openCalEditSafe(r.ev, e); } : undefined
+                  role: canOpenBusy ? 'button' : undefined,
+                  tabIndex: canOpenBusy ? 0 : undefined,
+                  title: canOpenBusy ? 'Open calendar event' : undefined,
+                  onClick: canOpenBusy ? e => _openCalEditSafe(r.ev, e) : undefined,
+                  onKeyDown: canOpenBusy ? e => { if (e.key === 'Enter' || e.key === ' ') _openCalEditSafe(r.ev, e); } : undefined
                 }, h('strong', null, cadSlotClock(r.start), ' - ', cadSlotClock(r.end)), h('small', null, apptMatch ? '⚠ ' + (r.name || 'Shaky') : (r.name || 'Busy')));
               }),
               callbacks.map((l, ci) => {
@@ -21246,7 +21290,7 @@ function App() {
           h('button', { type: 'button', className: 'cad-btn', onClick: () => cadGoCalendarWeek(-1), title: 'Previous week' }, '<'),
           h('button', { type: 'button', className: 'cad-btn', onClick: () => cadGoCalendarWeek(0), title: 'Current week' }, 'Today'),
           h('button', { type: 'button', className: 'cad-btn', onClick: () => cadGoCalendarWeek(1), title: 'Next week' }, '>'),
-          role !== 'admin' && h('button', { type: 'button', className: 'cad-btn', onClick: () => _createPersonalCalendarEventFromSlot(null) }, icon('Plus', 13), 'Add event'),
+          role !== 'admin' && h('button', { type: 'button', className: 'cad-btn', onClick: () => { _openCalAddApptPicker(null); setCalAddKind('personal'); } }, icon('Plus', 13), 'Add event'),
           h('button', { type: 'button', className: 'cad-btn ' + (calFilterOpen ? 'primary' : ''), onClick: () => setCalFilterOpen(p => !p) }, icon('Sparkles', 13), calFilterOpen ? 'Hide slots' : 'Smart slots'),
           h('button', { type: 'button', className: 'cad-btn primary', onClick: cadRefreshCalendarWeek }, calRefreshing ? 'Refreshing...' : 'Refresh')
         )
@@ -21259,7 +21303,8 @@ function App() {
         start: r.start,
         end: r.end,
         title: r.name || 'Busy',
-        ev: r.ev
+        ev: r.ev,
+        canOpen: !!r.ev && (role !== 'admin' || !!_calEditRowFor(r.ev))
       }));
       var callbackItems = cadCallbacksForDay(day).map((r, i) => ({
         key: 'cb-' + i,
@@ -21295,15 +21340,14 @@ function App() {
               onClick: e => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (role === 'admin') _openCalAddApptPicker(item.payload);
-                else _createPersonalCalendarEventFromSlot(item.payload);
+                _openCalAddApptPicker(item.payload);
               }
             }, h('span', null, h('strong', null, cadSlotClock(item.start), ' - ', cadSlotClock(item.end)), h('small', null, item.title, ' - ', item.sub)), h('span', { className: 'cad-mono' }, 'Free'))
-            : h(item.ev ? 'button' : 'div', {
-              type: item.ev ? 'button' : undefined,
+            : h(item.canOpen ? 'button' : 'div', {
+              type: item.canOpen ? 'button' : undefined,
               className: 'cad-mobile-agenda-item',
               key: day.key + '-' + item.key,
-              onClick: item.ev ? e => _openCalEditSafe(item.ev, e) : undefined
+              onClick: item.canOpen ? e => _openCalEditSafe(item.ev, e) : undefined
             }, h('span', null, h('strong', null, cadSlotClock(item.start), ' - ', cadSlotClock(item.end)), h('small', null, item.title)), h('span', { className: 'cad-muted' }, 'Busy'))
           ) : h('p', { className: 'cad-muted', style: { margin: 0, fontSize: 12 } }, cadCalendarWeekReady ? 'No blockers or smart slots.' : 'Loading this week...')
         )
@@ -22196,19 +22240,61 @@ function App() {
         setShowCb(false); setCbDate(''); setCbTime('');
       } }, 'Set callback'))
     ));
-    var calAddPickerModal = cadModal(showCalAddApptPicker, '', () => { setShowCalAddApptPicker(false); setCalAddSlot(null); setCalAddSearch(''); }, showCalAddApptPicker && (() => {
+    var closeCalAddPicker = () => {
+      setShowCalAddApptPicker(false);
+      setCalAddSlot(null);
+      setCalAddSearch('');
+      setCalAddKind('lead');
+    };
+    var calAddPickerModal = cadModal(showCalAddApptPicker, '', closeCalAddPicker, showCalAddApptPicker && (() => {
       var allCandidates = getTodayCalledLeadCandidates(true);
       var q = calAddSearch.trim().toLowerCase();
       var candidates = q ? allCandidates.filter(l => [l.name, l.phone, l.email, l.age, l._source, l._action].some(v => String(v || '').toLowerCase().includes(q))) : allCandidates;
       var shown = candidates.slice(0, 80);
       var slotText = calAddSlot?.date && calAddSlot?.time ? calAddSlot.date + ' ' + calAddSlot.time : '';
-      return h(React.Fragment, null,
-        h('div', { className: 'cad-modal-head' }, h('div', null, h('span', { className: 'cad-pill green' }, 'Free slot'), h('h3', { className: 'cad-modal-title', style: { marginTop: 10 } }, 'Choose lead to book'), h('p', { className: 'cad-modal-sub' }, slotText ? 'Selected ' + slotText : 'Pick a lead from the active sheet.')), h('button', { className: 'cad-btn ghost', onClick: () => { setShowCalAddApptPicker(false); setCalAddSlot(null); setCalAddSearch(''); } }, 'x')),
-        h('div', { className: 'cad-cal-picker' },
-          h('input', { value: calAddSearch, onChange: e => setCalAddSearch(e.target.value), placeholder: 'Search lead by name, phone, email, age...' }),
-          h('div', { className: 'cad-cal-picker-list' }, shown.length ? shown.map((l, idx) => h('button', { className: 'cad-cal-picker-row ' + (l._source === 'Missing appointment details' ? 'warn' : ''), key: (l.phone || l.id || l.name || idx) + '-' + idx, onClick: () => _openCalAddApptForLead(l) }, h('span', null, h('b', null, l.name || 'Unnamed lead'), h('span', { className: 'cad-muted', style: { display: 'block', fontSize: 12, marginTop: 3 } }, [l.phone, l.age ? 'Age ' + l.age : '', l.email, l._source || 'Lead'].filter(Boolean).join(' - '))), h('span', { className: 'cad-pill ' + (l._action === 'set' ? 'green' : '') }, l._action || 'Pick'))) : h('p', { className: 'cad-subtle', style: { padding: 10 } }, 'No matching lead found.')),
-          candidates.length > shown.length && h('p', { className: 'cad-subtle', style: { fontSize: 11, textAlign: 'center' } }, 'Showing first ', shown.length, ' of ', candidates.length, ' matches.')
+      var isMainCalendarOwner = role !== 'admin';
+      var calendarOptions = cadCalendarChoices();
+      var selectedCalId = calPersonalForm.calendarId || cfg.targetCalendarId || 'primary';
+      if (!calendarOptions.some(c => c.id === selectedCalId)) {
+        calendarOptions = [{ id: selectedCalId, summary: selectedCalId === 'primary' ? 'Primary calendar' : selectedCalId }].concat(calendarOptions);
+      }
+      var updatePersonalForm = patch => setCalPersonalForm(p => ({ ...p, ...patch }));
+      var leadPane = h('div', { className: 'cad-cal-picker' },
+        h('input', { value: calAddSearch, onChange: e => setCalAddSearch(e.target.value), placeholder: 'Search lead by name, phone, email, age...' }),
+        h('div', { className: 'cad-cal-picker-list' }, shown.length ? shown.map((l, idx) => h('button', { className: 'cad-cal-picker-row ' + (l._source === 'Missing appointment details' ? 'warn' : ''), key: (l.phone || l.id || l.name || idx) + '-' + idx, onClick: () => _openCalAddApptForLead(l) }, h('span', null, h('b', null, l.name || 'Unnamed lead'), h('span', { className: 'cad-muted', style: { display: 'block', fontSize: 12, marginTop: 3 } }, [l.phone, l.age ? 'Age ' + l.age : '', l.email, l._source || 'Lead'].filter(Boolean).join(' - '))), h('span', { className: 'cad-pill ' + (l._action === 'set' ? 'green' : '') }, l._action || 'Pick'))) : h('p', { className: 'cad-subtle', style: { padding: 10 } }, isMainCalendarOwner ? 'No matching lead found. You can switch to Personal appointment.' : 'No matching lead found.')),
+        candidates.length > shown.length && h('p', { className: 'cad-subtle', style: { fontSize: 11, textAlign: 'center' } }, 'Showing first ', shown.length, ' of ', candidates.length, ' matches.')
+      );
+      var personalPane = isMainCalendarOwner && h('div', { className: 'cad-form-grid' },
+        cadField('Title', h('input', { value: calPersonalForm.title, placeholder: 'Personal appointment', onChange: e => updatePersonalForm({ title: e.target.value }) })),
+        cadField('Calendar', h('select', { value: selectedCalId, onChange: e => updatePersonalForm({ calendarId: e.target.value }) },
+          calendarOptions.map(c => h('option', { key: c.id, value: c.id }, c.summary || c.id))
+        )),
+        cadField('Date', h('input', { type: 'date', value: calPersonalForm.date, onChange: e => updatePersonalForm({ date: e.target.value }) })),
+        cadField('Start time', h('input', { type: 'time', value: calPersonalForm.time, onChange: e => updatePersonalForm({ time: e.target.value }) })),
+        cadField('Duration (min)', h('input', { type: 'number', min: 15, max: 480, step: 15, value: calPersonalForm.duration, onChange: e => updatePersonalForm({ duration: e.target.value }) })),
+        cadField('Location / notes', h('input', { value: calPersonalForm.location, placeholder: 'Optional', onChange: e => updatePersonalForm({ location: e.target.value }) })),
+        h('div', { className: 'cad-modal-actions', style: { gridColumn: '1 / -1' } },
+          h('button', { className: 'cad-btn ghost', onClick: closeCalAddPicker }, 'Cancel'),
+          h('button', { className: 'cad-btn primary', disabled: calPersonalSaving, onClick: async () => {
+            if (calPersonalSaving) return;
+            if (!String(calPersonalForm.title || '').trim()) return toast('Event title required', 'err');
+            setCalPersonalSaving(true);
+            try {
+              var ok = await _createPersonalCalendarEventFromSlot(calAddSlot, calPersonalForm);
+              if (ok) closeCalAddPicker();
+            } finally {
+              setCalPersonalSaving(false);
+            }
+          } }, calPersonalSaving ? 'Creating...' : 'Create event')
         )
+      );
+      return h(React.Fragment, null,
+        h('div', { className: 'cad-modal-head' }, h('div', null, h('span', { className: 'cad-pill green' }, 'Free slot'), h('h3', { className: 'cad-modal-title', style: { marginTop: 10 } }, isMainCalendarOwner ? 'Book this free slot' : 'Choose lead to book'), h('p', { className: 'cad-modal-sub' }, slotText ? 'Selected ' + slotText : 'Pick what should go into this calendar slot.')), h('button', { className: 'cad-btn ghost', onClick: closeCalAddPicker }, 'x')),
+        isMainCalendarOwner && h('div', { className: 'cad-inline', style: { gap: 8, margin: '0 0 12px', flexWrap: 'wrap' } },
+          h('button', { className: 'cad-btn ' + (calAddKind === 'lead' ? 'primary' : ''), onClick: () => setCalAddKind('lead') }, icon('PhoneCall', 13), 'AutoDial lead'),
+          h('button', { className: 'cad-btn ' + (calAddKind === 'personal' ? 'primary' : ''), onClick: () => setCalAddKind('personal') }, icon('CalendarPlus', 13), 'Personal appointment')
+        ),
+        calAddKind === 'personal' && isMainCalendarOwner ? personalPane : leadPane
       );
     })());
     var apptModal = cadModal(showAppt, 'wide', () => { setShowAppt(false); setApptLead(null); setRescheduleTargetAppt(null); setApptShaky(false); }, h(React.Fragment, null,
@@ -26913,8 +26999,7 @@ function App() {
             e?.preventDefault?.();
             e?.stopPropagation?.();
             if (!(gOk || role === 'admin')) return;
-            if (role === 'admin') _openCalAddApptPicker(slotPayload);
-            else _createPersonalCalendarEventFromSlot(slotPayload);
+            _openCalAddApptPicker(slotPayload);
           };
           return React.createElement("button", {
             key: 'fs-' + si,
