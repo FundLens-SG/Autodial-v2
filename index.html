@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0151'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0152'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1668,7 +1668,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.11.0151';
+window.APP_VERSION='2026.05.11.0152';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -2239,8 +2239,24 @@ window._autoRefreshGoogle=async function(){
 window.gF=async function(url,opts){
   opts=opts||{};
   var timeoutMs=opts.timeoutMs||12000;
+  var maxRetries=opts.maxRetries==null?((String(opts.method||'GET').toUpperCase()==='GET')?2:3):Math.max(0,Number(opts.maxRetries)||0);
   var cleanOpts={...opts};
   delete cleanOpts.timeoutMs;
+  delete cleanOpts.maxRetries;
+  function _retryDelayMs(res,attempt){
+    try{
+      var ra=res&&res.headers&&res.headers.get&&res.headers.get('Retry-After');
+      if(ra){
+        var n=Number(ra);
+        if(Number.isFinite(n))return Math.min(60000,Math.max(1000,n*1000));
+        var d=Date.parse(ra);
+        if(!Number.isNaN(d))return Math.min(60000,Math.max(1000,d-Date.now()));
+      }
+    }catch(_e){}
+    return Math.min(45000,1000*Math.pow(2,attempt)+Math.floor(Math.random()*500));
+  }
+  function _retryable(res){return !!res&&(res.status===408||res.status===429||res.status>=500)}
+  function _sleep(ms){return new Promise(resolve=>setTimeout(resolve,ms))}
   async function _refreshWithTimeout(){
     return await Promise.race([window._workerRefresh(),new Promise(resolve=>setTimeout(()=>resolve(false),5000))]);
   }
@@ -2257,6 +2273,7 @@ window.gF=async function(url,opts){
     if(Date.now()-ts>2400000)await _refreshWithTimeout()}
   var t=_gToken||localStorage.getItem('ad_gt');
   if(!t)throw new Error('Connect Google first');
+  var attempt=0;
   var r=await _fetchWithAuth(t);
   if(r.status===401){
     // Try Worker refresh before giving up
@@ -2267,6 +2284,22 @@ window.gF=async function(url,opts){
         if(r2.ok||r2.status!==401)return r2}}
     _gToken=null;localStorage.removeItem('ad_gt');window._gOkCb&&window._gOkCb(false);
     toast('Google session expired — tap Reconnect','err');throw new Error('Google expired')}
+  while(_retryable(r)&&attempt<maxRetries){
+    await _sleep(_retryDelayMs(r,attempt));
+    attempt++;
+    r=await _fetchWithAuth(_gToken||localStorage.getItem('ad_gt'));
+    if(r.status===401){
+      if(WORKER_URL){
+        var ok2=await _refreshWithTimeout();
+        if(ok2){
+          r=await _fetchWithAuth(_gToken||localStorage.getItem('ad_gt'));
+          if(r.ok||r.status!==401)continue;
+        }
+      }
+      _gToken=null;localStorage.removeItem('ad_gt');window._gOkCb&&window._gOkCb(false);
+      toast('Google session expired - tap Reconnect','err');throw new Error('Google expired')
+    }
+  }
   return r};
 window.gSheets={
   _canonicalTab(tab){
@@ -2622,6 +2655,10 @@ window.gSheets={
     var tabs=await this.ensureTabs(id,[requested]);
     return this._pickExistingTab(tabs,requested)||this._canonicalTab(requested)
   },
+  async ensureSystemTabs(id){
+    if(!id)return[];
+    return await this.ensureTabs(id,['Timesheet','Appointments Set','Pay','Logs','Monthly Summary'])
+  },
   async writeBack(id,tab,row,col,val){
     // Write a value back to a specific cell
     try{var colLetter=a1Col(col);
@@ -2638,7 +2675,8 @@ window.gSheets={
   async ensureApptSheet(id){
     if(!id)return'';
     try{
-      var tab=await this.resolveTab(id,'Appointments Set');
+      var tabs=await this.ensureSystemTabs(id);
+      var tab=this._pickExistingTab(tabs,'Appointments Set')||'Appointments Set';
       await this.repairTabHeaders(id,tab,'Appointments Set');
       return tab
     }catch(e){console.warn('[ensureApptSheet]',e?.message||e);return''}
@@ -3703,7 +3741,8 @@ window.gTimesheet={_id:null,
   async ensureSheet(id,tabName){
     if(!id)return '';
     var tab=tabName||'Timesheet';
-    await gSheets.ensureTabs(id,[tab]);
+    if(gSheets.ensureSystemTabs)await gSheets.ensureSystemTabs(id);
+    if(tab!=='Timesheet')await gSheets.ensureTabs(id,[tab]);
     try{
       var vals=await(await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(tab+'!A1:T1'))).json();
       var h=vals.values&&vals.values[0]?vals.values[0]:[];
@@ -9003,6 +9042,10 @@ function App() {
   });
   var [leadFocusMode, setLeadFocusMode] = useState(load('leadFocusMode') || 'auto');
   var [gOk, setGOk] = useState(!!localStorage.getItem('ad_gt'));
+  var [googleHealth, setGoogleHealth] = useState(() => ({ state: localStorage.getItem('ad_gt') ? 'checking' : 'none', sheets: false, calendar: false, detail: '' }));
+  var googleApiOk = !!(gOk && googleHealth.state === 'ok');
+  var googleApiChecking = !!(gOk && googleHealth.state === 'checking');
+  var googleHealthLabel = !gOk ? 'Connect Google' : googleApiOk ? 'Google ✓' : googleApiChecking ? 'Checking...' : 'Reconnect Google';
   useEffect(() => {
     window._gOkCb = setGOk;
     var _stopped = false;
@@ -10750,6 +10793,35 @@ function App() {
     ...cfg,
     npMax: cfg.mainNpMax && +cfg.mainNpMax > 0 ? +cfg.mainNpMax : cfg.npMax || 5
   };
+  useEffect(() => {
+    if (!gOk || !localStorage.getItem('ad_gt')) {
+      setGoogleHealth({ state: 'none', sheets: false, calendar: false, detail: '' });
+      return;
+    }
+    var cancelled = false;
+    var sheetId = role === 'admin' ? (myCfg?.timesheetId || myCfg?.sheetId || cfg.sheetId || '') : (cfg.sheetId || myCfg?.timesheetId || '');
+    setGoogleHealth(prev => prev.state === 'ok' ? { ...prev, state: 'checking' } : { state: 'checking', sheets: false, calendar: false, detail: '' });
+    var t = setTimeout(async () => {
+      var sheetOk = !sheetId;
+      var calOk = false;
+      var detail = '';
+      try {
+        if (sheetId) {
+          var sr = await gF('https://sheets.googleapis.com/v4/spreadsheets/' + sheetId + '?fields=spreadsheetId,properties.title', { timeoutMs: 6500, maxRetries: 1 });
+          sheetOk = !!(sr && sr.ok);
+          if (!sheetOk) detail = 'Sheets returned ' + (sr && sr.status);
+        }
+        var cr = await gF('https://www.googleapis.com/calendar/v3/users/me/calendarList?maxResults=1', { timeoutMs: 6500, maxRetries: 1 });
+        calOk = !!(cr && cr.ok);
+        if (!calOk) detail = detail || ('Calendar returned ' + (cr && cr.status));
+      } catch (e) {
+        detail = e?.message || String(e);
+      }
+      if (cancelled) return;
+      setGoogleHealth({ state: sheetOk && calOk ? 'ok' : 'bad', sheets: sheetOk, calendar: calOk, detail });
+    }, 350);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [gOk, role, cfg.sheetId, myCfg?.timesheetId, myCfg?.sheetId]);
   var selectedLeadSourceKey = role === 'admin' ? (adminLeadLinked ? (myCfg.timesheetId || myCfg.sheetId || '') + '::' + (myCfg.sheetTab || '') : '') : (cfg.sheetId || '') + '::' + (cfg.sheetTab || '');
   useEffect(() => {
     var clearLoadedLeadState = msg => {
@@ -12799,6 +12871,8 @@ function App() {
       var weekKey = localDateKey(start);
       var weekCacheKey = calFetchList.map(c => c.id).sort().join('|');
       setCalRefreshing(true);
+      setWeekEventsWeekKey('');
+      if (tab === 'cal') setWeekEvents([]);
       try {
         var cache = pickerEventsCacheRef.current;
         var cacheCovers = tab !== 'cal' && cache && cache.key === weekCacheKey && cache.data && cache.minD && cache.maxD && cache.minD <= start && cache.maxD >= end && Date.now() - cache.ts < 60000;
@@ -12859,7 +12933,6 @@ function App() {
               if (fbEvents.length) {
                 var fbFiltered = applyCalFilters(fbEvents);
                 setWeekEvents(fbFiltered);
-                setWeekEventsWeekKey(weekKey);
                 DBG('[Cal]', fbFiltered.length, 'busy windows from freeBusy');
               }
             }
@@ -16320,8 +16393,8 @@ function App() {
     var sessionDurH = n(matchedSlot.hours, 5);
     var mThresh = n(matchedSlot.apptsBar, 2);
     var nThresh = n(matchedSlot.bonusBar, 4);
-    var full = s.sets >= mThresh;
-    var bonus = s.sets >= nThresh;
+    var bonus = nThresh > 0 && s.sets >= nThresh;
+    var full = bonus || (mThresh > 0 && s.sets >= mThresh);
     var creditH;
     var tsNote = '';
     if (full) {
@@ -16389,8 +16462,8 @@ function App() {
           var priorSets = sameDayOpen.reduce((a, x) => a + (Number(x.sets) || 0), 0);
           var groupActualH = priorActualH + actualH;
           var groupSets = priorSets + (Number(s.sets) || 0);
-          var groupFull = mThresh > 0 && groupSets >= mThresh;
           var groupBonus = nThresh > 0 && groupSets >= nThresh;
+          var groupFull = groupBonus || (mThresh > 0 && groupSets >= mThresh);
           var groupCreditH = groupFull
             ? sessionDurH
             : Math.max(0.5, Math.round(Math.min(groupActualH, sessionDurH) * 2) / 2);
@@ -16561,7 +16634,7 @@ function App() {
     if (isAdminCallingSession && localStorage.getItem('ad_gt')) {
       var tsId = myCfg.timesheetId || cfg.sheetId || '';
       if (tsId) {
-        gSheets.ensureTabs(tsId, ['Timesheet', 'Appointments Set', 'Pay', 'Logs', 'Monthly Summary']);
+        gSheets.ensureSystemTabs ? gSheets.ensureSystemTabs(tsId) : gSheets.ensureTabs(tsId, ['Timesheet', 'Appointments Set', 'Pay', 'Logs', 'Monthly Summary']);
       }
       // ═══ End-session: try to UPDATE the row created at start, fall back to
       // ═══ append if no start row exists (legacy sessions, manual cleanup).
@@ -18110,6 +18183,17 @@ function App() {
     }
     if (meta.colMap) setDetectedColMap(meta.colMap);
     setLeads(tagged || []);
+    if (meta.sourceSheetId && localStorage.getItem('ad_gt') && window.gSheets && typeof window.gSheets.ensureSystemTabs === 'function') {
+      var ensured = appStateRef.current._systemTabsEnsured || {};
+      var last = ensured[meta.sourceSheetId] || 0;
+      if (Date.now() - last > 10 * 60 * 1000) {
+        appStateRef.current._systemTabsEnsured = { ...ensured, [meta.sourceSheetId]: Date.now() };
+        window.gSheets.ensureSystemTabs(meta.sourceSheetId).catch(e => {
+          appStateRef.current._systemTabsEnsured[meta.sourceSheetId] = 0;
+          console.warn('[System tabs]', e?.message || e);
+        });
+      }
+    }
     setImportReview(null);
     return true;
   };
@@ -18464,6 +18548,10 @@ function App() {
     }
   };
   var fetchLeads = async () => {
+    if (sLoad) {
+      toast('Lead fetch already running', 'info');
+      return;
+    }
     if (role === 'admin' && !adminCfgVerified) {
       toast('Checking manager leads link...', 'info');
       return;
@@ -18754,7 +18842,7 @@ function App() {
     // solo Mains shouldn't be nagged to share anything.
     var realAdminCount = Object.keys(adminConfigs || {}).filter(em => em && em.includes('@')).length;
     var mainLeadReady = !!((cfg.sheetId || myCfg.timesheetId) && (cfg.sheetTab || myCfg.sheetTab));
-    var mainCalendarReady = !!(gOk && (calList.length || myCfg.targetCalendarId || weekEvents.length || Object.values(adminConfigs || {}).some(ac => (ac?.sharedCals || []).length || ac?.targetCalendarId)));
+    var mainCalendarReady = !!(googleApiOk && (calList.length || myCfg.targetCalendarId || weekEvents.length || Object.values(adminConfigs || {}).some(ac => (ac?.sharedCals || []).length || ac?.targetCalendarId)));
     if (role === 'admin') return [{
       key: 'sheet',
       label: 'Google connected',
@@ -18796,8 +18884,8 @@ function App() {
     var mainItems = [{
       key: 'google',
       label: 'Google connected',
-      detail: 'Sheets, Drive, and Calendar access',
-      done: gOk,
+      detail: googleApiOk ? 'Sheets, Drive, and Calendar verified' : gOk ? (googleHealth.detail || 'Verifying Google API access') : 'Connect Sheets, Drive, and Calendar',
+      done: googleApiOk,
       action: () => connectG()
     }, {
       key: 'sheet',
@@ -19410,15 +19498,15 @@ function App() {
         // disconnected). Admins are read-only — Main controls Google
         // access for the team — so the pill is informational for them.
         role !== 'admin' && h('button', {
-          className: 'cad-pill cad-google-pill ' + (gOk ? 'green' : 'amber'),
-          title: gOk ? 'Google connected · click to reconnect (refresh token + re-pull tabs/calendars)' : 'Google not connected · click to authorise',
+          className: 'cad-pill cad-google-pill ' + (googleApiOk ? 'green' : 'amber'),
+          title: googleApiOk ? 'Google API verified - click to reconnect (refresh token + re-pull tabs/calendars)' : gOk ? ('Google token present but verification is pending/failed' + (googleHealth.detail ? ': ' + googleHealth.detail : '')) : 'Google not connected - click to authorise',
           onClick: gOk ? () => connectG() : connectG,
           type: 'button'
-        }, h('span', { className: 'cad-dot' }), gOk ? 'Google ✓' : 'Connect Google'),
+        }, h('span', { className: 'cad-dot' }), googleHealthLabel),
         role === 'admin' && h('span', {
-          className: 'cad-pill cad-google-pill ' + (gOk ? 'green' : 'amber'),
-          title: gOk ? 'Google access propagated from Main' : 'Waiting for Main to share Google access'
-        }, h('span', { className: 'cad-dot' }), gOk ? 'Google ✓' : 'Google · pending'),
+          className: 'cad-pill cad-google-pill ' + (googleApiOk ? 'green' : 'amber'),
+          title: googleApiOk ? 'Google API verified from this device' : gOk ? ('Google token present but verification is pending/failed' + (googleHealth.detail ? ': ' + googleHealth.detail : '')) : 'Waiting for Main to share Google access'
+        }, h('span', { className: 'cad-dot' }), googleHealthLabel),
         h('div', { className: 'cad-avatar', title: (syncStatus || 'sync') + ' · ' + (window.APP_VERSION || 'local') }, initials)
       )
     );
@@ -21836,6 +21924,9 @@ function App() {
               if (!_assertTetheredOrSelf(em)) return;
               var oneCfg = Object.assign({}, adminConfigs?.[em] || ac || {});
               toast('Pushing config for ' + (oneCfg.bizName || em) + '...', 'info');
+              if (oneCfg.timesheetId && gOk && window.gSheets && typeof window.gSheets.ensureSystemTabs === 'function') {
+                await window.gSheets.ensureSystemTabs(oneCfg.timesheetId);
+              }
               var res = await publishAdminConfigs({ [em]: oneCfg }, { throwOnError: true });
               toast(res.written ? 'Config pushed to ' + em : 'No config written for ' + em, res.written ? undefined : 'err');
             } catch (e) {
@@ -21960,7 +22051,7 @@ function App() {
           (async () => {
             try {
               var res = await withTimeout(gSheets.appendAppt(apptSheetId, sheetPayload, userName), 10000, 'Appointment sheet append');
-              appStateRef.current._pendingSetCalEventId = { ...(appStateRef.current._pendingSetCalEventId || {}), apptSheetId, apptSheetRange: res?.updates?.updatedRange || '' };
+              appStateRef.current._pendingSetCalEventId = { ...(appStateRef.current._pendingSetCalEventId || {}), calEventId: evt?.id || '', calendarId: eventCalId, apptId: localId, apptSheetId, apptSheetRange: res?.updates?.updatedRange || '' };
             } catch (err) {
               console.warn('[Claude appointment sheet append]', err?.message || err);
               toast('Appointment created; sheet append needs a sync check.', 'err');
@@ -31876,12 +31967,12 @@ function App() {
     var qCount = (sheetQueueRef.current || []).length + (Array.isArray(qSaved) ? qSaved.length : 0);
     var diagRows = [{
       label: 'Calendar',
-      ok: role === 'admin' ? !!(calShares.length || myCfg.targetCalendarId || weekEvents.length) : gOk && (calList.length > 0 || weekEvents.length > 0 || calShares.length > 0),
-      detail: role === 'admin' ? weekEvents.length ? weekEvents.length + ' events loaded' : calShares.length ? 'Calendar shared by Main' : 'Waiting for Main link' : weekEvents.length ? weekEvents.length + ' events loaded' : gOk ? 'Connected, no events loaded' : 'Google not connected'
+      ok: role === 'admin' ? !!(calShares.length || myCfg.targetCalendarId || weekEvents.length || googleApiOk) : googleApiOk && (calList.length > 0 || weekEvents.length > 0 || calShares.length > 0),
+      detail: role === 'admin' ? weekEvents.length ? weekEvents.length + ' events loaded' : calShares.length ? 'Calendar shared by Main' : googleApiOk ? 'Calendar API verified' : 'Waiting for Main link' : weekEvents.length ? weekEvents.length + ' events loaded' : googleApiOk ? 'Connected, no events loaded' : gOk ? (googleHealth.detail || 'Verifying Google Calendar') : 'Google not connected'
     }, {
       label: role === 'admin' ? 'Main Google' : 'Drive',
-      ok: role === 'admin' ? !!(myCfg.timesheetId || cfg.sheetId || gOk) : gOk,
-      detail: role === 'admin' ? (myCfg.timesheetId || cfg.sheetId ? 'Workspace synced by Main' : 'No admin Drive access required') : gOk ? 'Drive search available' : 'Connect Google first'
+      ok: role === 'admin' ? !!(myCfg.timesheetId || cfg.sheetId || googleApiOk) : googleApiOk,
+      detail: role === 'admin' ? (myCfg.timesheetId || cfg.sheetId ? 'Workspace synced by Main' : googleApiOk ? 'Google API verified' : 'No admin Drive access required') : googleApiOk ? 'Drive search available' : gOk ? (googleHealth.detail || 'Verifying Drive/Sheets') : 'Connect Google first'
     }, {
       label: 'Leads Sheet',
       ok: !!((cfg.sheetId || myCfg.timesheetId) && (cfg.sheetTab || myCfg.sheetTab)),
@@ -33459,7 +33550,7 @@ function App() {
       if (!ok) return;
       try {
         toast('Setting up tabs…', 'info');
-        var _tabs2 = await gSheets.ensureTabs(ac.timesheetId, ['Timesheet', 'Appointments Set', 'Pay', 'Logs', 'Monthly Summary']);
+        var _tabs2 = await (gSheets.ensureSystemTabs ? gSheets.ensureSystemTabs(ac.timesheetId) : gSheets.ensureTabs(ac.timesheetId, ['Timesheet', 'Appointments Set', 'Pay', 'Logs', 'Monthly Summary']));
         var tsTab = _tabs2.find(t => /time.?sheet|pay.?sheet|hours|payroll|salary|wage|pay.?slip|earning|compensation|cha.?ching|hourly/i.test(t)) || 'Timesheet';
         var apptTab = _tabs2.find(t => gSheets._canonicalTab(t) === 'Appointments Set') || 'Appointments Set';
         setAdminConfigs(p => ({
@@ -34064,7 +34155,7 @@ function App() {
           var adminSheetIds = [...new Set(Object.values(adminConfigs || {}).map(ac => ac?.timesheetId).filter(Boolean))];
           for (var i = 0; i < adminSheetIds.length; i++) {
             try {
-              await gSheets.ensureTabs(adminSheetIds[i], ['Timesheet', 'Appointments Set', 'Pay', 'Logs', 'Monthly Summary']);
+              await (gSheets.ensureSystemTabs ? gSheets.ensureSystemTabs(adminSheetIds[i]) : gSheets.ensureTabs(adminSheetIds[i], ['Timesheet', 'Appointments Set', 'Pay', 'Logs', 'Monthly Summary']));
               repairedTabs++;
             } catch (_e) {}
           }
