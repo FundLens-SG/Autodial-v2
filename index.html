@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0143'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0144'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -284,7 +284,7 @@ button.free-slot{appearance:none;text-align:left}
    convention (Slack, Linear, GitHub) and stays well clear of every
    actionable surface. Mobile keeps a bottom-anchored variant since
    thumb reach matters more than nav real estate on phones. */
-.tw{position:fixed;top:14px;right:14px;z-index:99999;pointer-events:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:min(360px,calc(100vw - 28px))}
+.tw{position:fixed;top:calc(var(--ckg-strip-h,0px) + 12px);right:max(16px,env(safe-area-inset-right));z-index:1000001;pointer-events:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:min(380px,calc(100vw - 32px));box-sizing:border-box}
 @media(max-width:900px){
   .tw{top:auto;right:auto;bottom:80px;left:50%;transform:translateX(-50%);align-items:center;max-width:calc(100vw - 32px)}
   body[data-undo-bar="1"] .tw{bottom:140px}
@@ -294,7 +294,7 @@ button.free-slot{appearance:none;text-align:left}
    reads as a status pill rather than a heavy notification card.
    max-width keeps long messages wrapping cleanly inside the
    toast container. */
-.toast{padding:9px 14px;border-radius:10px;font-size:12px;font-weight:600;line-height:1.45;box-shadow:0 6px 18px rgba(0,0,0,.45);animation:fadeIn .2s;margin-top:0;backdrop-filter:blur(16px);max-width:100%;text-align:left}
+.toast{padding:9px 14px;border-radius:10px;font-size:12px;font-weight:600;line-height:1.45;box-shadow:0 6px 18px rgba(0,0,0,.45);animation:fadeIn .2s;margin-top:0;backdrop-filter:blur(16px);max-width:100%;text-align:left;box-sizing:border-box;overflow-wrap:anywhere;word-break:break-word}
 .t-ok{background:rgba(63,185,80,.15);border:1px solid rgba(63,185,80,.3);color:var(--green)}
 .t-err{background:rgba(248,81,73,.15);border:1px solid rgba(248,81,73,.3);color:var(--red)}
 .t-info{background:var(--adim);border:1px solid rgba(214,168,122,.3);color:var(--accent2)}
@@ -1554,7 +1554,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.11.0143';
+window.APP_VERSION='2026.05.11.0144';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -3374,8 +3374,13 @@ window.claudePostProcess=async function(leads,headers,rawRows,colMap){
     var updated=[...leads];var fixes=0;
     // Apply remark classifications (#2)
     if(result.remark_statuses){result.remark_statuses.forEach(function(rs){
-      if(rs.idx>=0&&rs.idx<updated.length&&rs.status&&rs.status!=='pending'){
-        updated[rs.idx]={...updated[rs.idx],status:rs.status,needsReview:false,_claudeReason:rs.reason};fixes++}})};
+      if(rs.idx>=0&&rs.idx<updated.length&&rs.status){
+        var cleanStatus=canonicalLeadStatus(rs.status);
+        if(cleanStatus&&cleanStatus!=='pending'){
+          updated[rs.idx]={...updated[rs.idx],status:cleanStatus,needsReview:false,_claudeReason:rs.reason};fixes++}
+        else if(String(rs.status||'').trim().toLowerCase()!=='pending'){
+          updated[rs.idx]={...updated[rs.idx],status:'pending',needsReview:true,_claudeReason:rs.reason};fixes++}
+      }})};
     // Apply name extractions (#3)
     if(result.names){result.names.forEach(function(nm){
       if(nm.idx>=0&&nm.idx<updated.length&&nm.name&&nm.name.length>1){
@@ -4300,6 +4305,7 @@ var openTelHref = (phone, delay = 0) => {
     try {
       var a = document.createElement('a');
       a.href = 'tel:' + clean;
+      a.target = '_blank';
       a.style.display = 'none';
       a.rel = 'noopener';
       document.body.appendChild(a);
@@ -4412,26 +4418,47 @@ var SYNC_MAP = {
   slogClear: 'userState',
   totalStars: 'userState'
 };
-function publishAdminConfigs(configs) {
-  if (!_SB) return;
-  Object.entries(configs).forEach(async function (entry) {
+async function publishAdminConfigs(configs, opts) {
+  opts = opts || {};
+  var summary = { ok: false, attempted: 0, written: 0, skipped: 0, failures: [] };
+  if (!_SB) {
+    summary.reason = 'Supabase is not ready';
+    if (opts.throwOnError) throw new Error(summary.reason);
+    return summary;
+  }
+  var entries = Object.entries(configs || {});
+  for (var i = 0; i < entries.length; i++) {
+    var entry = entries[i];
     var email = entry[0],
       cfg = entry[1];
-    if (!email || email.indexOf('@') < 0) return;
+    if (!email || email.indexOf('@') < 0 || !cfg || typeof cfg !== 'object') {
+      summary.skipped++;
+      continue;
+    }
+    summary.attempted++;
     var clean = Object.assign({}, cfg);
     delete clean._tsResults;
     try {
       var aid = await window._uidByEmail(email);
-      if (!aid) return;
-      _SB.schema('autodial').from('shared_admin_configs').upsert({
+      if (!aid) throw new Error('No hub user found for ' + email);
+      var res = await _SB.schema('autodial').from('shared_admin_configs').upsert({
         admin_id: aid,
         data: clean,
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'admin_id'
-      }).then(function () {}, function () {});
-    } catch (e) {}
-  });
+      });
+      if (res && res.error) throw res.error;
+      summary.written++;
+    } catch (e) {
+      summary.failures.push({ email: email, message: e?.message || String(e) });
+    }
+  }
+  summary.ok = summary.failures.length === 0 && summary.written > 0;
+  if (opts.throwOnError && summary.failures.length) {
+    throw new Error(summary.failures.map(f => f.email + ': ' + f.message).join('; '));
+  }
+  return summary;
 }
 function _normalizeSharedAdminCfg(raw) {
   var clean = raw && typeof raw === 'object' && !Array.isArray(raw) ? Object.assign({}, raw) : {};
@@ -5955,6 +5982,64 @@ function normalizePhone(v) {
   if ((digits.length === 10 || digits.length === 11) && digits.startsWith('65') && /^65[89]/.test(digits)) return digits.slice(0, 2) + digits.slice(-8);
   return clean.replace(/^\+/, '');
 }
+function parseDateValue(raw) {
+  if (raw == null || raw === '') return null;
+  if (raw instanceof Date && !isNaN(raw.getTime())) return raw;
+  if (typeof raw === 'number' && isFinite(raw) && raw > 20000 && raw < 60000) {
+    var excel = new Date(Date.UTC(1899, 11, 30));
+    excel.setUTCDate(excel.getUTCDate() + Math.floor(raw));
+    return isNaN(excel.getTime()) ? null : excel;
+  }
+  var s = String(raw || '').trim();
+  if (!s) return null;
+  var m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})$/);
+  var y, mo, d;
+  if (m) {
+    y = Number(m[1]); mo = Number(m[2]); d = Number(m[3]);
+  } else {
+    m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})$/);
+    if (!m) return null;
+    d = Number(m[1]); mo = Number(m[2]); y = Number(m[3]);
+    if (y < 100) y += y > 30 ? 1900 : 2000;
+  }
+  if (!y || !mo || !d || y < 1900 || y > 2100 || mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  var out = new Date(Date.UTC(y, mo - 1, d));
+  if (out.getUTCFullYear() !== y || out.getUTCMonth() !== mo - 1 || out.getUTCDate() !== d) return null;
+  return out;
+}
+function ageFromDateValue(raw) {
+  var bd = parseDateValue(raw);
+  if (!bd) return '';
+  var now = new Date();
+  var age = now.getFullYear() - bd.getUTCFullYear();
+  var m = now.getMonth() - bd.getUTCMonth();
+  if (m < 0 || (m === 0 && now.getDate() < bd.getUTCDate())) age--;
+  return age >= 0 && age <= 120 ? String(age) : '';
+}
+function isCanonicalLeadStatus(value) {
+  return /^(pending|np|cb|ni|set)$/.test(String(value || '').trim().toLowerCase());
+}
+function canonicalLeadStatus(value) {
+  var t = String(value || '').trim().toLowerCase();
+  if (!t || t === 'review' || t === 'unknown' || t === 'unsure' || t === 'unclear') return 'pending';
+  if (isCanonicalLeadStatus(t)) return t;
+  if (/^n\.?i\.?$|not interested|wrong number|^wn$|dnc|deceased/.test(t)) return 'ni';
+  if (/^np\b|no pick|no answer/.test(t)) return 'np';
+  if (/^cb$|callback|call back/.test(t)) return 'cb';
+  if (/^set$|appt|appointment/.test(t)) return 'set';
+  var fz = fuzzyStatusMatch(t);
+  return isCanonicalLeadStatus(fz) ? fz : 'pending';
+}
+function sanitizeImportedLead(l) {
+  var raw = String(l && l.status || '').trim().toLowerCase();
+  var status = canonicalLeadStatus(raw);
+  var needsReview = !!(l && l.needsReview) || (!!raw && !isCanonicalLeadStatus(raw) && status === 'pending');
+  return Object.assign({}, l, {
+    status: status,
+    needsReview: needsReview,
+    npCount: status === 'np' ? (Number(l && l.npCount) || 1) : (Number(l && l.npCount) || 0)
+  });
+}
 function isEmailLike(v) {
   return v && /@/.test(String(v));
 }
@@ -6018,7 +6103,7 @@ function isRemarksLike(v) {
   if (s.length > 15 && /[a-z]/i.test(s) && !/^\d+$/.test(s) && !isEmailLike(v) && !isPhoneLike(v) && !/singapore/i.test(s)) return true;
   return false;
 }
-function detectPhoneCol(rows, startRow, scanCount) {
+function detectPhoneCol(rows, startRow, scanCount, headers) {
   var scores = [];
   var endRow = Math.min(startRow + scanCount, rows.length);
   var maxCols = 0;
@@ -6026,7 +6111,7 @@ function detectPhoneCol(rows, startRow, scanCount) {
   for (var col = 0; col < maxCols; col++) {
     var hits = 0;
     for (var r = startRow; r < endRow; r++) {
-      if (rows[r] && isPhoneLike(rows[r][col])) hits++;
+      if (rows[r] && isPhoneLike(rows[r][col], headers && headers[col])) hits++;
     }
     scores.push({
       col: col,
@@ -6039,7 +6124,7 @@ function detectPhoneCol(rows, startRow, scanCount) {
   });
   return scores[0] && scores[0].hits >= 2 ? scores[0].col : -1;
 }
-function detectBatchColumns(rows, startRow, endRow) {
+function detectBatchColumns(rows, startRow, endRow, headers) {
   var scanRows = rows.slice(startRow, Math.min(endRow, startRow + 15));
   if (!scanRows.length) return null;
   var maxCols = 0;
@@ -6064,7 +6149,10 @@ function detectBatchColumns(rows, startRow, endRow) {
     var vals = scanRows.map(function (r) {
       return r ? String(r[col] || '').trim() : '';
     }).filter(Boolean);
-    var phoneHits = vals.filter(isPhoneLike).length;
+    var header = headers && headers[col];
+    var phoneHits = vals.filter(function (v) {
+      return isPhoneLike(v, header);
+    }).length;
     var emailHits = vals.filter(isEmailLike).length;
     var ageHits = vals.filter(isAgeLike).length;
     var nameHits = vals.filter(isNameLike).length;
@@ -6084,13 +6172,8 @@ function detectBatchColumns(rows, startRow, endRow) {
       return /jobsite|voucher|gift.?card|ipad|groceries|ez.?link|food.?panda|shopping|referral|website|facebook|instagram|linkedin|tiktok|event/i.test(v);
     }).length;
     var dobHits = vals.filter(function (v) {
-      if (!v) return false;
-      try {
-        var d = new Date(v);
-        return !isNaN(d) && d.getFullYear() < 2010 && d.getFullYear() > 1920;
-      } catch (e) {
-        return false;
-      }
+      var d = parseDateValue(v);
+      return !!(d && d.getUTCFullYear() < 2010 && d.getUTCFullYear() > 1920);
     }).length;
     colScores.push({
       col: col,
@@ -6239,7 +6322,7 @@ function detectBatches(headers, rows) {
       break;
     }
   }
-  if (primaryPhoneCol === -1) primaryPhoneCol = detectPhoneCol(rows, 0, 15);
+  if (primaryPhoneCol === -1) primaryPhoneCol = detectPhoneCol(rows, 0, 15, headers);
   if (primaryPhoneCol === -1) return [{
     startRow: 0,
     endRow: rows.length,
@@ -6257,7 +6340,7 @@ function detectBatches(headers, rows) {
   for (var ri = 0; ri < rows.length; ri++) {
     var row = rows[ri];
     if (!row) continue;
-    var hasPhoneInExpected = isPhoneLike(row[currentPhoneCol]);
+    var hasPhoneInExpected = isPhoneLike(row[currentPhoneCol], headers && headers[currentPhoneCol]);
     var nonEmpty = row.filter(function (v) {
       return String(v || '').trim().length > 0;
     }).length;
@@ -6273,7 +6356,7 @@ function detectBatches(headers, rows) {
           startRow: batchStart,
           endRow: prevEnd,
           headers: headers,
-          colMap: detectBatchColumns(rows, batchStart, prevEnd),
+          colMap: detectBatchColumns(rows, batchStart, prevEnd, headers),
           isShifted: currentPhoneCol !== primaryPhoneCol,
           phoneCol: currentPhoneCol,
           source: currentSource,
@@ -6283,14 +6366,14 @@ function detectBatches(headers, rows) {
       headers = row.map(String);
       batchStart = ri + 1;
       currentSource = vendor?.label || '';
-      var newPhoneCol = detectPhoneCol(rows, ri + 1, SCAN_WINDOW);
+      var newPhoneCol = detectPhoneCol(rows, ri + 1, SCAN_WINDOW, headers);
       if (newPhoneCol !== -1) currentPhoneCol = newPhoneCol;
       continue;
     }
     if (!hasPhoneInExpected) {
       var altPhoneCol = -1;
       for (var ci = 0; ci < (row.length || 0); ci++) {
-        if (isPhoneLike(row[ci])) {
+        if (isPhoneLike(row[ci], headers && headers[ci])) {
           altPhoneCol = ci;
           break;
         }
@@ -6300,8 +6383,8 @@ function detectBatches(headers, rows) {
         for (var ahead = 1; ahead <= SCAN_WINDOW && ri + ahead < rows.length; ahead++) {
           var futureRow = rows[ri + ahead];
           if (!futureRow) continue;
-          if (isPhoneLike(futureRow[altPhoneCol])) shiftConfirmed++;
-          if (isPhoneLike(futureRow[currentPhoneCol])) {
+          if (isPhoneLike(futureRow[altPhoneCol], headers && headers[altPhoneCol])) shiftConfirmed++;
+          if (isPhoneLike(futureRow[currentPhoneCol], headers && headers[currentPhoneCol])) {
             shiftConfirmed = -99;
             break;
           }
@@ -6312,7 +6395,7 @@ function detectBatches(headers, rows) {
               startRow: batchStart,
               endRow: ri,
               headers: headers,
-              colMap: detectBatchColumns(rows, batchStart, ri),
+              colMap: detectBatchColumns(rows, batchStart, ri, headers),
               isShifted: currentPhoneCol !== primaryPhoneCol,
               phoneCol: currentPhoneCol,
               source: currentSource,
@@ -6331,7 +6414,7 @@ function detectBatches(headers, rows) {
       startRow: batchStart,
       endRow: rows.length,
       headers: headers,
-      colMap: detectBatchColumns(rows, batchStart, rows.length),
+      colMap: detectBatchColumns(rows, batchStart, rows.length, headers),
       isShifted: currentPhoneCol !== primaryPhoneCol,
       phoneCol: currentPhoneCol,
       source: currentSource,
@@ -6363,7 +6446,7 @@ function parseBatch(rows, batchInfo) {
     var r = rows[ri];
     if (!r) continue;
     var ph = String(r[map.phone] || '').trim();
-    if (!ph || !isPhoneLike(ph)) continue;
+    if (!ph || !isPhoneLike(ph, batchInfo.headers && batchInfo.headers[map.phone])) continue;
     ph = normalizePhone(ph);
     var fn = '',
       ln = '',
@@ -6590,7 +6673,7 @@ function parseSheet(rows, h) {
   for (var [k, r] of Object.entries(RE)) {
     _loop(r);
   }
-  var inferred = detectBatchColumns(rows, 0, Math.min(rows.length, 25)) || {};
+  var inferred = detectBatchColumns(rows, 0, Math.min(rows.length, 25), h) || {};
   ['phone', 'first', 'last', 'name', 'email', 'age', 'gender', 'race', 'remarks', 'status', 'source'].forEach(function (k) {
     if ((c[k] == null || c[k] === -1) && inferred[k] != null && inferred[k] !== -1) c[k] = inferred[k];
   });
@@ -6651,12 +6734,7 @@ function parseSheet(rows, h) {
     if (!fn && c.name !== -1) fn = String(_r2[c.name] || '').trim();
     var age = c.age !== -1 ? String(_r2[c.age] || '').trim() : '';
     if (!age && c.birthday !== -1) {
-      try {
-        var bd = new Date(String(_r2[c.birthday] || ''));
-        if (!isNaN(bd.getTime())) {
-          age = String(Math.floor((Date.now() - bd.getTime()) / 31557600000));
-        }
-      } catch (e) {}
+      age = ageFromDateValue(_r2[c.birthday]);
     }
     if (!age && c.nric !== -1) {
       var nricVal = String(_r2[c.nric] || '').trim();
@@ -6793,13 +6871,7 @@ async function aiParse(rows, h) {
     var age = a.computed_age || '';
     if (!age && c.age !== -1) age = String(r[c.age] || '').trim();
     if (!age && c.birthday !== -1) {
-      try {
-        var bd = new Date(String(r[c.birthday] || ''));
-        if (!isNaN(bd)) {
-          var diff = Date.now() - bd.getTime();
-          age = String(Math.floor(diff / 31557600000));
-        }
-      } catch (e) {}
+      age = ageFromDateValue(r[c.birthday]);
     }
     if (!age && c.nric != null && c.nric !== -1) {
       var nricVal = String(r[c.nric] || '').trim();
@@ -6809,6 +6881,9 @@ async function aiParse(rows, h) {
     var remarks = '';
     if (c.remarks !== -1) remarks = String(r[c.remarks] || '').trim();
     var notes = a.notes || remarks;
+    var rawAiStatus = String(a.status || 'pending').trim().toLowerCase();
+    var cleanAiStatus = canonicalLeadStatus(rawAiStatus);
+    var aiNeedsReview = !!(a.needsReview || a.needs_review) || (!!rawAiStatus && !isCanonicalLeadStatus(rawAiStatus) && cleanAiStatus === 'pending');
     leads.push({
       id: Date.now() + Math.random(),
       name: (fn + ' ' + ln).trim() || ph,
@@ -6819,13 +6894,14 @@ async function aiParse(rows, h) {
       income: c.income !== -1 ? String(r[c.income] || '').trim() : '',
       gender: c.gender !== -1 ? String(r[c.gender] || '').trim() : '',
       source: c.source != null && c.source !== -1 ? String(r[c.source] || '').trim() : '',
-      status: a.status || 'pending',
-      npCount: a.np_count || 0,
+      status: cleanAiStatus,
+      npCount: cleanAiStatus === 'np' ? (a.np_count || 1) : (a.np_count || 0),
       cbDate: a.cb_date || '',
       cbTime: a.cb_time || '',
       cbHistory: [],
       calledAt: null,
       notes,
+      needsReview: aiNeedsReview,
       sheetRow: ri + 2,
       statusCol: c.status != null && c.status !== -1 ? c.status : c.remarks != null ? c.remarks : -1,
       sheetValue: c.status != null && c.status !== -1 ? String(r[c.status] || '').trim() : remarks
@@ -6840,6 +6916,7 @@ async function aiParse(rows, h) {
 function validateStatuses(leads, rawRows, remarksIdx) {
   var lp = window._learnedPatterns || {};
   return leads.map(function (l) {
+    l = sanitizeImportedLead(l);
     var rmk = (l.notes || '').trim();
     if (!rmk && rawRows && remarksIdx >= 0) {
       var ri = (l.sheetRow || 0) - 2;
@@ -7220,6 +7297,14 @@ function App() {
     if (savedPhase === 'calling' || savedPhase === 'waiting') return 'calling';
     return 'idle';
   });
+  var runningRef = useRef(running);
+  useEffect(() => {
+    runningRef.current = running;
+  }, [running]);
+  var phaseRef = useRef(phase);
+  useEffect(() => {
+    phaseRef.current = phase;
+  }, [phase]);
   useEffect(() => {
     save('curIdx', curIdx);
     save('_dialPhase', phase);
@@ -8771,6 +8856,7 @@ function App() {
     ts: 0,
     data: null
   });
+  var adminConfigPublishTimerRef = useRef(null);
   var blockedCalendarIdsRef = useRef(new Set());
   var shouldSkipCalendarFetch = c => !!(c && c.id && blockedCalendarIdsRef.current.has(c.id));
   var rememberBlockedCalendar = (c, err) => {
@@ -9057,6 +9143,7 @@ function App() {
           var remoteAge = Date.now() - remoteSess.ts;
           if (remoteAge < 20 * 60000) {
             if (remoteSess.ended) {
+              appStateRef.current._lastLiveSessionAppliedTs = remoteSess.ts || Date.now();
               var endedGuard = _rememberSessionEndGuard(remoteSess, remoteSess.endTime || remoteSess.ts || Date.now());
               var localEnded = sessionRef.current;
               if (localEnded && !localEnded.ended && _sessionMatchesEndGuard(localEnded, endedGuard)) {
@@ -9105,9 +9192,16 @@ function App() {
               // triggers a merge.
               var remoteSum = (remoteSess.dialed || 0) + (remoteSess.np || 0) + (remoteSess.cb || 0) + (remoteSess.ni || 0) + (remoteSess.sets || 0);
               var localSum = (local.dialed || 0) + (local.np || 0) + (local.cb || 0) + (local.ni || 0) + (local.sets || 0);
-              if (remoteSum > localSum) shouldApply = true;
+              var remotePhase = remoteSess.phase || (remoteSess.running === false ? 'idle' : 'calling');
+              var remoteControlChanged = remoteSess.ts > (appStateRef.current._lastLiveSessionAppliedTs || 0) && (
+                (typeof remoteSess.running === 'boolean' && remoteSess.running !== !!runningRef.current)
+                || (remotePhase !== (phaseRef.current || 'idle'))
+                || (typeof remoteSess.curIdx === 'number' && remoteSess.curIdx >= 0 && remoteSess.curIdx !== curIdxRef.current)
+              );
+              if (remoteSum > localSum || remoteControlChanged) shouldApply = true;
             }
             if (shouldApply) {
+              appStateRef.current._lastLiveSessionAppliedTs = remoteSess.ts || Date.now();
               setSession({
                 id: remoteSess.id,
                 startTime: remoteSess.startTime,
@@ -9547,7 +9641,9 @@ function App() {
   var waInitRef = useRef(false);
   var [calShares, setCalShares] = useState([]);
   var [calList, setCalList] = useState([]);
+  var [calListReady, setCalListReady] = useState(false);
   var [weekEvents, setWeekEvents] = useState([]);
+  var [weekEventsWeekKey, setWeekEventsWeekKey] = useState('');
   var [calWeekOffset, setCalWeekOffset] = useState(0);
   var [calRefreshing, setCalRefreshing] = useState(false);
   var [calRefreshTrigger, setCalRefreshTrigger] = useState(0);
@@ -10037,6 +10133,63 @@ function App() {
     cancelLabel: opts.cancelLabel || 'Cancel',
     resolve
   })), []);
+  var _createPersonalCalendarEventFromSlot = async slot => {
+    if (!gOk || !window.gCal) {
+      toast('Connect Google Calendar first', 'err');
+      return;
+    }
+    var start = null;
+    if (slot?.date && slot?.time) {
+      var dp = String(slot.date).split('-').map(Number);
+      var tp = String(slot.time).split(':').map(Number);
+      if (dp.length >= 3 && tp.length >= 2) start = new Date(dp[0], dp[1] - 1, dp[2], tp[0], tp[1], 0, 0);
+    }
+    if (!start || isNaN(start.getTime())) {
+      start = new Date(Date.now() + 30 * 60000);
+      start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15, 0, 0);
+    }
+    var duration = _slotMinutes(slot?.duration, apptCoreMin || 60, 1, 480);
+    var title = await promptAsync('Event title', '', { title: 'Add calendar event', placeholder: 'Personal appointment' });
+    if (!title) return;
+    var date = slot?.date || await promptAsync('Date (YYYY-MM-DD)', localDateKey(start), { title: 'Event date', placeholder: '2026-05-11' });
+    if (!date) return;
+    var time = slot?.time || await promptAsync('Start time (HH:MM)', String(start.getHours()).padStart(2, '0') + ':' + String(start.getMinutes()).padStart(2, '0'), { title: 'Start time', placeholder: '14:30' });
+    if (!time) return;
+    if (!slot?.duration) {
+      var durText = await promptAsync('Duration in minutes', String(duration), { title: 'Duration', placeholder: '60' });
+      if (!durText) return;
+      duration = _slotMinutes(durText, duration, 1, 480);
+    }
+    var d2 = String(date).split('-').map(Number);
+    var t2 = String(time).split(':').map(Number);
+    var s = new Date(d2[0], d2[1] - 1, d2[2], t2[0], t2[1], 0, 0);
+    if (isNaN(s.getTime())) {
+      toast('Invalid date or time', 'err');
+      return;
+    }
+    var e = new Date(s.getTime() + duration * 60000);
+    var targetCal = cfg.targetCalendarId || 'primary';
+    try {
+      toast('Creating event...', 'info');
+      var evt = await withTimeout(gCal.create(title, 'Created from AutoDial calendar', s.toISOString(), e.toISOString(), [], targetCal), 8000, 'Calendar create');
+      if (!evt?.id) throw new Error('No event id returned');
+      pickerEventsCacheRef.current = { key: '', ts: 0, data: null };
+      setWeekEvents(prev => [...(prev || []).filter(x => x.id !== evt.id), {
+        ...evt,
+        id: evt.id,
+        summary: title,
+        start: { ...(evt.start || {}), dateTime: s.toISOString() },
+        end: { ...(evt.end || {}), dateTime: e.toISOString() },
+        _calId: targetCal,
+        _calName: targetCal === 'primary' ? 'Primary' : targetCal
+      }].sort((a, b) => new Date(a.start?.dateTime || a.start?.date || 0) - new Date(b.start?.dateTime || b.start?.date || 0)));
+      setWeekEventsWeekKey(localDateKey(startOfWeek(s)));
+      setCalRefreshTrigger(p => p + 1);
+      toast('Event created');
+    } catch (err) {
+      toast('Create failed: ' + (err?.message || err), 'err');
+    }
+  };
   var fileRef = useRef(null);
   var cdRef = useRef(null);
   var timerRef = useRef(null);
@@ -11539,8 +11692,21 @@ function App() {
   useEffect(() => {
     save('acfg', adminConfigs);
     cloudSave('acfg', adminConfigs);
-    if (role !== 'admin') publishAdminConfigs(adminConfigs);
-  }, [adminConfigs]);
+    if (role === 'admin') return;
+    clearTimeout(adminConfigPublishTimerRef.current);
+    adminConfigPublishTimerRef.current = setTimeout(() => {
+      publishAdminConfigs(adminConfigs).then(res => {
+        if (res && res.failures && res.failures.length) {
+          console.warn('[Admin config autosave]', res.failures);
+          toast('Admin config autosave failed for ' + res.failures.length + ' admin(s)', 'err');
+        }
+      }).catch(e => {
+        console.warn('[Admin config autosave]', e?.message || e);
+        toast('Admin config autosave failed: ' + (e?.message || e), 'err');
+      });
+    }, 900);
+    return () => clearTimeout(adminConfigPublishTimerRef.current);
+  }, [adminConfigs, role]);
   useEffect(() => {
     if (role === 'admin' || !_SB || !_user || !window._cloudReady) return;
     if (!leads.length || !cfg.sheetId || !cfg.sheetTab) return;
@@ -11825,7 +11991,7 @@ function App() {
       if (role === 'admin') {
         var hideMap = {};
         (adminConfigs[myEmail]?.sharedCals || []).forEach(c => {
-          if (c.hideDetails) hideMap[c.id] = true;
+          if (c.hideDetails || c.busyOnly !== false) hideMap[c.id] = true;
         });
         if (hideMap[ev._calId]) return {
           ...ev,
@@ -12280,11 +12446,16 @@ function App() {
             var merged = [...prev];
             dbSessions.forEach(s => {
               var st = new Date(s.start_time).getTime();
+              var et = s.end_time ? new Date(s.end_time).getTime() : null;
+              var creditElapsed = Number(s.elapsed || 0);
+              var actualElapsed = et && st ? Math.max(0, Math.round((et - st) / 1000)) : creditElapsed;
               var dbSession = {
                 dbSessionId: s.id,
                 startTime: st,
-                endTime: s.end_time ? new Date(s.end_time).getTime() : null,
-                elapsed: s.elapsed || 0,
+                endTime: et,
+                elapsed: actualElapsed,
+                actualElapsed: actualElapsed,
+                creditHours: creditElapsed ? creditElapsed / 3600 : null,
                 dialed: s.dialed || 0,
                 np: s.np || 0,
                 cb: s.cb || 0,
@@ -12435,7 +12606,7 @@ function App() {
         if (type === 'cb') DB.getCBQueue(role === 'admin' || role === 'main' && mainMode === 'call' ? myEmail : null).then(setCbQueue);
       });
       if (role === 'main') {
-        if (gOk) gCalShare.listCalendars().then(setCalList);
+        if (gOk) gCalShare.listCalendars().then(list => { setCalList(Array.isArray(list) ? list : []); setCalListReady(true); }).catch(() => setCalListReady(true));
         DB.getMyShares(_user?.id).then(setCalShares);
       }
       if (role === 'admin') DB.getSharedCalendars(myEmail).then(setCalShares);
@@ -12449,8 +12620,24 @@ function App() {
     };
   }, []);
   useEffect(() => {
-    if (gOk && role === 'main' && (!calList.length || calRefreshTrigger > 0)) gCalShare.listCalendars().then(setCalList).catch(() => {});
     if (!gOk || !window.gCal) return;
+    if (role === 'main' && !calListReady) {
+      var cancelled = false;
+      setCalRefreshing(true);
+      setWeekEventsWeekKey('');
+      gCalShare.listCalendars().then(list => {
+        if (cancelled) return;
+        setCalList(Array.isArray(list) ? list : []);
+        setCalListReady(true);
+      }).catch(e => {
+        if (cancelled) return;
+        console.warn('[CalendarList]', e?.message || e);
+        setCalListReady(true);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
     var calFetchList = [{
       id: 'primary',
       summary: 'Primary',
@@ -12495,10 +12682,12 @@ function App() {
       var start = startOfWeek(now);
       start.setDate(start.getDate() + calWeekOffset * 7);
       var end = new Date(start.getTime() + 7 * 86400000);
+      var weekKey = localDateKey(start);
+      var weekCacheKey = calFetchList.map(c => c.id).sort().join('|');
       setCalRefreshing(true);
       try {
         var cache = pickerEventsCacheRef.current;
-        var cacheCovers = cache && cache.data && cache.minD && cache.maxD && cache.minD <= start && cache.maxD >= end && Date.now() - cache.ts < 60000;
+        var cacheCovers = tab !== 'cal' && cache && cache.key === weekCacheKey && cache.data && cache.minD && cache.maxD && cache.minD <= start && cache.maxD >= end && Date.now() - cache.ts < 60000;
         if (cacheCovers) {
           var weekSlice = cache.data.filter(ev => {
             var et = new Date(ev.start?.dateTime || ev.start?.date || 0);
@@ -12506,6 +12695,7 @@ function App() {
           });
           var filtered = applyCalFilters(weekSlice);
           setWeekEvents(filtered);
+          setWeekEventsWeekKey(weekKey);
           DBG('[Cal]', filtered.length, 'events from shared cache');
           setCalRefreshing(false);
           return;
@@ -12518,25 +12708,74 @@ function App() {
         // and producing ERR_INSUFFICIENT_RESOURCES on the calendar
         // GETs (visible in the user's network tab as repeated
         // googleapis.com errors). Sequentialise so we never have
-        // more than one calendar fetch in flight from this device.
-        var results = [];
-        for (var _ci = 0; _ci < calFetchList.length; _ci++) {
-          var c = calFetchList[_ci];
+        // a small number of calendar detail fetches in flight from this device.
+        // The freeBusy call below gives the UI blockers quickly; detailed
+        // event names fill in afterward.
+        if (tab === 'cal' && calFetchList.length) {
           try {
-            var evs = c.id === 'primary'
-              ? await gCal.events(start.toISOString(), end.toISOString())
-              : await gCal.eventsFromCal(c.id, start.toISOString(), end.toISOString());
-            results.push(evs.map(e => ({
-              ...e,
-              _calId: c.id,
-              _calName: c.summary,
-              _calColor: c.backgroundColor
-            })));
+            var fbRes = await gF('https://www.googleapis.com/calendar/v3/freeBusy', {
+              method: 'POST',
+              body: JSON.stringify({
+                timeMin: start.toISOString(),
+                timeMax: end.toISOString(),
+                items: calFetchList.map(c => ({ id: c.id }))
+              }),
+              timeoutMs: 6000
+            });
+            if (fbRes.ok) {
+              var fb = await fbRes.json();
+              var fbEvents = [];
+              calFetchList.forEach(c => {
+                var busy = fb?.calendars?.[c.id]?.busy || [];
+                busy.forEach((b, bi) => {
+                  if (!b?.start || !b?.end) return;
+                  fbEvents.push({
+                    id: 'freebusy_' + c.id + '_' + bi + '_' + b.start + '_' + b.end,
+                    summary: 'Busy',
+                    start: { dateTime: b.start },
+                    end: { dateTime: b.end },
+                    transparency: 'opaque',
+                    _calId: c.id,
+                    _calName: c.summary,
+                    _calColor: c.backgroundColor,
+                    _freeBusyOnly: true
+                  });
+                });
+              });
+              if (fbEvents.length) {
+                var fbFiltered = applyCalFilters(fbEvents);
+                setWeekEvents(fbFiltered);
+                setWeekEventsWeekKey(weekKey);
+                DBG('[Cal]', fbFiltered.length, 'busy windows from freeBusy');
+              }
+            }
           } catch (e) {
-            rememberBlockedCalendar(c, e);
-            results.push([]);
+            console.warn('[FreeBusy]', e?.message || e);
           }
         }
+        var results = new Array(calFetchList.length).fill(null);
+        var _nextFetchIdx = 0;
+        var _fetchOneCal = async () => {
+          while (_nextFetchIdx < calFetchList.length) {
+            var idx = _nextFetchIdx++;
+            var c = calFetchList[idx];
+            try {
+              var evs = c.id === 'primary'
+                ? await gCal.events(start.toISOString(), end.toISOString())
+                : await gCal.eventsFromCal(c.id, start.toISOString(), end.toISOString());
+              results[idx] = evs.map(e => ({
+                ...e,
+                _calId: c.id,
+                _calName: c.summary,
+                _calColor: c.backgroundColor
+              }));
+            } catch (e) {
+              rememberBlockedCalendar(c, e);
+              results[idx] = [];
+            }
+          }
+        };
+        await Promise.all(Array.from({ length: Math.min(3, calFetchList.length) }, _fetchOneCal));
         var _seen3 = new Map();
         results.flat().forEach(e => {
           var k = e.id || (e.iCalUID || '') + '_' + (e.start?.dateTime || e.start?.date || '');
@@ -12546,6 +12785,7 @@ function App() {
         all.sort((a, b) => new Date(a.start?.dateTime || a.start?.date || 0) - new Date(b.start?.dateTime || b.start?.date || 0));
         all = applyCalFilters(all);
         setWeekEvents(all);
+        setWeekEventsWeekKey(weekKey);
         DBG('[Cal]', all.length, 'events fetched directly');
       } catch (e) {
         console.warn('[WeekEvents]', e?.message || e);
@@ -12588,7 +12828,7 @@ function App() {
     // user's screenshot. Drop adminConfigs (the calFetchList we
     // actually consume is computed elsewhere); keep the explicit
     // calRefreshTrigger as the manual-refresh handle.
-  }, [gOk, role, calShares, calList, myEmail, showAppt, calWeekOffset, tab, calRefreshTrigger, calVisibility, showInvited, showDeclined]);
+  }, [gOk, role, calListReady, calShares, calList, myEmail, showAppt, calWeekOffset, tab, calRefreshTrigger, calVisibility, showInvited, showDeclined]);
   useEffect(() => {
     if (!_SB || !_user) return;
     var _pullTimer = null,
@@ -15931,7 +16171,8 @@ function App() {
       ...session,
       ended: true,
       endTime: endedAt,
-      elapsed: finalElapsed
+      elapsed: finalElapsed,
+      actualElapsed: finalElapsed
     };
     s.id = s.id || 'sess_' + (s.startTime || Date.now()) + '_' + Math.random().toString(36).slice(2, 8);
     s.timesheetAutoId = s.timesheetAutoId || s.id;
@@ -17710,18 +17951,28 @@ function App() {
     appStateRef.current._sheetSearchTimer = setTimeout(() => searchSheets(q, { silent: true }), 260);
   };
   var buildImportReview = (nextLeads, meta = {}) => {
+    nextLeads = (nextLeads || []).map(sanitizeImportedLead);
     var colMap = meta.colMap || {};
     var confidence = colMap.confidence || {};
     var lowCols = Object.entries(confidence).filter(([k, v]) => v !== '' && v != null && +v < 60).map(([k, v]) => ({
       key: k,
       score: +v
     }));
+    var seenPhones = new Set();
+    var duplicatePhones = new Set();
+    nextLeads.forEach(l => {
+      var ph = String(l.phone || '').replace(/[^\d]/g, '');
+      if (!ph) return;
+      if (seenPhones.has(ph)) duplicatePhones.add(ph);
+      else seenPhones.add(ph);
+    });
     var questionable = (nextLeads || []).filter(l => {
       var conf = l._confidence || confidence || {};
       var lowPhone = conf.phone != null && +conf.phone < 60;
       var lowName = conf.name != null && +conf.name < 60;
       var sameNamePhone = String(l.name || '').replace(/[^\d]/g, '') && String(l.name || '').replace(/[^\d]/g, '') === String(l.phone || '').replace(/[^\d]/g, '');
-      return l.needsReview || !hasCallablePhone(l.phone) || !l.name || sameNamePhone || lowPhone || lowName;
+      var duplicatePhone = duplicatePhones.has(String(l.phone || '').replace(/[^\d]/g, ''));
+      return duplicatePhone || l.needsReview || !hasCallablePhone(l.phone) || !l.name || sameNamePhone || lowPhone || lowName;
     }).slice(0, 50);
     return {
       id: Date.now() + Math.random(),
@@ -17729,11 +17980,13 @@ function App() {
       meta,
       lowCols,
       questionable,
+      duplicatePhones: Array.from(duplicatePhones),
       count: (nextLeads || []).length,
       ts: Date.now()
     };
   };
   var stageLeadImport = (nextLeads, meta = {}) => {
+    nextLeads = (nextLeads || []).map(sanitizeImportedLead);
     var tagged = tagLeadsWithSource(nextLeads, meta);
     var review = buildImportReview(tagged, meta);
     if (review.lowCols.length || review.questionable.length) {
@@ -20468,6 +20721,7 @@ function App() {
     }
     var BIZ_START = 7, BIZ_END = 22, HOUR_PX = 60;
     var calTodayKey = localDateKey(new Date());
+    var cadCalendarWeekReady = weekEventsWeekKey === localDateKey(calStart);
     var cadSlotClock = dt => String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
     var HR_START = BIZ_START, HR_END = BIZ_END;
     var cadHourRows = Array.from({ length: HR_END - HR_START }, (_, i) => HR_START + i);
@@ -20564,6 +20818,7 @@ function App() {
       return { start, end: new Date(start.getTime() + 30 * 60000), name: 'CB ' + (l.name || 'lead'), lead: l };
     }).filter(Boolean);
     var cadFreeSlotsForDay = day => {
+      if (!cadCalendarWeekReady) return [];
       if (!calFilterOpen || day.key < calTodayKey) return [];
       var busy = day.events.map(_calendarEventBusyRange).filter(Boolean).concat(cadCallbacksForDay(day)).map(r => ({ start: r.start, end: r.end }));
       var rawSlots = apptHardOverride ? makeHardOverrideSlots(day.date, BIZ_START, BIZ_END, apptCoreMin, 30) : findFreeSlots(day.date, busy, BIZ_START, BIZ_END);
@@ -20617,7 +20872,10 @@ function App() {
                       });
                     }
                   } catch (_e) {}
-                } else { _openCalAddApptPicker(payload); } } },
+                } else {
+                  if (role === 'admin') _openCalAddApptPicker(payload);
+                  else _createPersonalCalendarEventFromSlot(payload);
+                } } },
                   h('strong', null, label),
                   h('small', null, time, ' - ', endTime, ' · ', _formatSlotMinutes(item.win.mins)),
                   item.displayMins !== item.win.mins && h('small', null, 'Books ', _formatSlotMinutes(item.displayMins))
@@ -20661,7 +20919,12 @@ function App() {
                 return h('div', {
                   className: 'cad-time-block cad-time-busy' + (apptMatch ? ' cad-time-shaky' : ''),
                   style: st,
-                  key: day.key + '-busy-' + (r.ev?.id || bi)
+                  key: day.key + '-busy-' + (r.ev?.id || bi),
+                  role: r.ev ? 'button' : undefined,
+                  tabIndex: r.ev ? 0 : undefined,
+                  title: r.ev ? 'Open calendar event' : undefined,
+                  onClick: r.ev ? e => _openCalEditSafe(r.ev, e) : undefined,
+                  onKeyDown: r.ev ? e => { if (e.key === 'Enter' || e.key === ' ') _openCalEditSafe(r.ev, e); } : undefined
                 }, h('strong', null, cadSlotClock(r.start), ' - ', cadSlotClock(r.end)), h('small', null, apptMatch ? '⚠ ' + (r.name || 'Shaky') : (r.name || 'Busy')));
               }),
               callbacks.map((l, ci) => {
@@ -20673,21 +20936,42 @@ function App() {
         )
       );
     };
+    var cadGoCalendarWeek = delta => {
+      setWeekEventsWeekKey('');
+      setCalRefreshing(true);
+      setCalWeekOffset(p => delta === 0 ? 0 : p + delta);
+    };
+    var cadRefreshCalendarWeek = () => {
+      if (calRefreshing) return;
+      setWeekEventsWeekKey('');
+      setCalRefreshing(true);
+      if (role === 'main') setCalListReady(false);
+      setCalRefreshTrigger(p => p + 1);
+    };
+    var cadCalendarControls = h('div', { className: 'cad-card', style: { padding: 12, marginBottom: 10 } },
+      h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', gap: 10 } },
+        h('span', { className: 'cad-muted', style: { fontSize: 13 } }, fmtDayMonth(calStart), ' - ', fmtDayMonth(new Date(calStart.getTime() + 6 * 86400000)), ' - ', (weekEvents || []).length, ' events', calRefreshing ? ' - loading' : ''),
+        h('div', { className: 'cad-inline' },
+          h('button', { type: 'button', className: 'cad-btn', onClick: () => cadGoCalendarWeek(-1), title: 'Previous week' }, '<'),
+          h('button', { type: 'button', className: 'cad-btn', onClick: () => cadGoCalendarWeek(0), title: 'Current week' }, 'Today'),
+          h('button', { type: 'button', className: 'cad-btn', onClick: () => cadGoCalendarWeek(1), title: 'Next week' }, '>'),
+          role !== 'admin' && h('button', { type: 'button', className: 'cad-btn', onClick: () => _createPersonalCalendarEventFromSlot(null) }, icon('Plus', 13), 'Add event'),
+          h('button', { type: 'button', className: 'cad-btn ' + (calFilterOpen ? 'primary' : ''), onClick: () => setCalFilterOpen(p => !p) }, icon('Sparkles', 13), calFilterOpen ? 'Hide slots' : 'Smart slots'),
+          h('button', { type: 'button', className: 'cad-btn primary', onClick: cadRefreshCalendarWeek }, calRefreshing ? 'Refreshing...' : 'Refresh')
+        )
+      )
+    );
     var calView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
       h('div', { className: 'cad-dashboard-head' },
-        h('div', null, h('h2', { style: { fontSize: 24 } }, 'Calendar'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, fmtDayMonth(calStart), ' - ', fmtDayMonth(new Date(calStart.getTime() + 6 * 86400000)), ' - ', (weekEvents || []).length, ' events')),
-        h('div', { className: 'cad-inline' },
-          h('button', { className: 'cad-btn', onClick: () => setCalWeekOffset(p => p - 1) }, '<'),
-          h('button', { className: 'cad-btn', onClick: () => setCalWeekOffset(0) }, 'Today'),
-          h('button', { className: 'cad-btn', onClick: () => setCalWeekOffset(p => p + 1) }, '>'),
-          h('button', { className: 'cad-btn ' + (calFilterOpen ? 'primary' : ''), onClick: () => setCalFilterOpen(p => !p) }, icon('Sparkles', 13), calFilterOpen ? 'Hide slots' : 'Smart slots'),
-          h('button', { className: 'cad-btn primary', onClick: () => { setCalRefreshing(true); setCalRefreshTrigger(p => p + 1); } }, calRefreshing ? 'Refreshing...' : 'Refresh')
-        )
+        h('div', null, h('h2', { style: { fontSize: 24 } }, 'Calendar'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, 'Week view with blocker-aware smart slots'))
       ),
       !gOk ? h('div', { className: 'cad-card cad-empty' }, h('div', null, h('div', { className: 'cad-logo', style: { margin: '0 auto 14px', width: 46, height: 46, borderRadius: 14 } }, icon('Calendar', 22)), h('h3', null, role === 'admin' ? 'Calendar not linked yet' : 'Connect Google Calendar'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 6 } }, role === 'admin' ? 'Main controls calendar access.' : 'Connect Google in Settings to view and create calendar events.'))) :
       h(React.Fragment, null,
         cadCalendarVisibilityBar(),
         cadSlotSettings,
+        renderCalEditPanel(),
+        cadCalendarControls,
+        !cadCalendarWeekReady && h('div', { className: 'cad-card', style: { padding: 12 } }, h('span', { className: 'cad-muted' }, calRefreshing ? 'Loading calendar blockers...' : 'Calendar blockers not loaded yet.')),
         cadTimeCalendar({ selectMode: false })
       )
     ));
@@ -21041,7 +21325,7 @@ function App() {
       var shareCalIds = new Set((ac.sharedCals || []).map(c => c.id));
       var updateShare = (cal, enabled, busyOnly) => {
         var shares = [...(ac.sharedCals || [])].filter(c => c.id !== cal.id);
-        if (enabled) shares.push({ id: cal.id, name: cal.summary || cal.name || cal.id, calendar_name: cal.summary || cal.name || cal.id, busyOnly: busyOnly !== false });
+        if (enabled) shares.push({ id: cal.id, name: cal.summary || cal.name || cal.id, calendar_name: cal.summary || cal.name || cal.id, busyOnly: busyOnly !== false, hideDetails: busyOnly !== false });
         cadUpdateAdminConfig(em, { sharedCals: shares });
       };
       // 0080: admin-config modal restructured into colour-stripe sections
@@ -21347,7 +21631,18 @@ function App() {
         ),
         h('div', { className: 'cad-modal-actions' },
           h('button', { className: 'cad-btn', onClick: () => setAdminDetailEmail(null) }, 'Done'),
-          h('button', { className: 'cad-btn primary', onClick: async () => { try { await publishAdminConfigs(adminConfigs); toast('Admin configs pushed'); } catch (e) { toast('Config push failed: ' + (e?.message || e), 'err'); } } }, 'Push configs')
+          h('button', { className: 'cad-btn primary', onClick: async () => {
+            try {
+              if (!_assertTetheredOrSelf(em)) return;
+              var oneCfg = Object.assign({}, adminConfigs?.[em] || ac || {});
+              toast('Pushing config for ' + (oneCfg.bizName || em) + '...', 'info');
+              var res = await publishAdminConfigs({ [em]: oneCfg }, { throwOnError: true });
+              toast(res.written ? 'Config pushed to ' + em : 'No config written for ' + em, res.written ? undefined : 'err');
+            } catch (e) {
+              console.warn('[Push config]', e);
+              toast('Config push failed: ' + (e?.message || e), 'err');
+            }
+          } }, 'Push configs')
         )
       );
     })());
@@ -26246,7 +26541,8 @@ function App() {
             e?.preventDefault?.();
             e?.stopPropagation?.();
             if (!(gOk || role === 'admin')) return;
-            _openCalAddApptPicker(slotPayload);
+            if (role === 'admin') _openCalAddApptPicker(slotPayload);
+            else _createPersonalCalendarEventFromSlot(slotPayload);
           };
           return React.createElement("button", {
             key: 'fs-' + si,
@@ -27710,11 +28006,16 @@ function App() {
             var em = (row.email || '').toLowerCase();
             if (!em || em === myEmail) return;
             var st = row.start_time ? new Date(row.start_time).getTime() : 0;
+            var et = row.end_time ? new Date(row.end_time).getTime() : null;
+            var creditElapsed = Number(row.elapsed || 0);
+            var actualElapsed = et && st ? Math.max(0, Math.round((et - st) / 1000)) : creditElapsed;
             var dbSession = {
               dbSessionId: row.id,
               startTime: st,
-              endTime: row.end_time ? new Date(row.end_time).getTime() : null,
-              elapsed: row.elapsed || 0,
+              endTime: et,
+              elapsed: actualElapsed,
+              actualElapsed: actualElapsed,
+              creditHours: creditElapsed ? creditElapsed / 3600 : null,
               dialed: row.dialed || 0,
               np: row.np || 0,
               cb: row.cb || 0,

@@ -76,6 +76,32 @@ test('production shell avoids native blocking dialogs', () => {
   assert.equal(/\b(confirm|prompt)\(/.test(html), false);
 });
 
+test('inline sheet parser clamps ambiguous AI statuses and dates', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /function parseDateValue\(raw\)/);
+  assert.match(html, /function canonicalLeadStatus\(value\)/);
+  assert.match(html, /var cleanAiStatus = canonicalLeadStatus\(rawAiStatus\)/);
+  assert.equal(html.includes("status: a.status || 'pending'"), false);
+  assert.match(html, /l = sanitizeImportedLead\(l\)/);
+});
+
+test('inline sheet parser keeps phone detection header-aware', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /function detectBatchColumns\(rows, startRow, endRow, headers\)/);
+  assert.match(html, /return isPhoneLike\(v, header\)/);
+  assert.equal(html.includes('vals.filter(isPhoneLike).length'), false);
+  assert.match(html, /detectPhoneCol\(rows, 0, 15, headers\)/);
+});
+
+test('session sync applies remote control-state changes, not only counters', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /var runningRef = useRef\(running\)/);
+  assert.match(html, /var phaseRef = useRef\(phase\)/);
+  assert.match(html, /remoteControlChanged/);
+  assert.match(html, /actualElapsed: actualElapsed/);
+  assert.match(html, /creditHours: creditElapsed \? creditElapsed \/ 3600 : null/);
+});
+
 test('README is stored as clean UTF-8 text', () => {
   const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   assert.equal(/â†|â€|ðŸ/.test(readme), false);
