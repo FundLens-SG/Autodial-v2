@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0147'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0148'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1404,15 +1404,15 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-topbar{height:auto!important;min-height:50px;padding:6px 8px!important;gap:6px;justify-content:space-between;overflow:hidden!important}
   .cad-topbar::-webkit-scrollbar{display:none}
   .cad-left,.cad-right{gap:5px;min-width:0}
-  .cad-left{flex:1 1 auto;max-width:calc(100% - 162px)}
-  .cad-right{flex:0 0 auto;max-width:158px;margin-left:0!important;justify-content:flex-end;overflow:visible}
+  .cad-left{flex:1 1 auto;max-width:calc(100% - 92px)}
+  .cad-right{flex:0 0 auto;max-width:88px;margin-left:0!important;justify-content:flex-end;overflow:visible}
   .cad-logo{width:32px;height:32px;border-radius:10px}
-  .cad-brand{font-size:17px;max-width:98px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cad-brand{font-size:17px;max-width:104px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .cad-pill{min-height:28px;padding:4px 8px;font-size:11px}
   .cad-google-pill{width:34px!important;min-width:34px!important;max-width:34px!important;height:34px!important;padding:0!important;font-size:0!important;justify-content:center;overflow:hidden;text-overflow:clip}
   .cad-google-pill .cad-dot{margin:0}
   .cad-google-pill:after{content:"G";font-size:12px;font-weight:850;color:currentColor}
-  .cad-switch{display:flex!important;height:34px;min-width:74px;padding:3px;gap:2px;border-color:var(--ad-line-2);box-shadow:0 8px 18px -16px var(--ad-brass)}
+  .cad-switch{display:none!important;height:34px;min-width:74px;padding:3px;gap:2px;border-color:var(--ad-line-2);box-shadow:0 8px 18px -16px var(--ad-brass)}
   .cad-switch button{width:33px;height:28px;min-height:0!important;padding:0}
   .cad-switch button.on{box-shadow:0 6px 16px -12px var(--ad-brass)}
   .cad-tab{height:32px;padding:0 9px;font-size:12px}
@@ -1422,8 +1422,8 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-main,.cad-call-main{padding:12px 12px calc(112px + env(safe-area-inset-bottom))!important;gap:12px}
   .cad-call-body{padding-bottom:calc(112px + env(safe-area-inset-bottom))}
   .cad-dashboard-head,.cad-session-strip{gap:12px}
-  .cad-title{font-size:30px!important;line-height:1.05;letter-spacing:-.02em;margin-top:6px}
-  .cad-dashboard-head .cad-muted{font-size:14px!important;line-height:1.35}
+  .cad-title{font-size:22px!important;line-height:1.12;letter-spacing:0;margin-top:4px}
+  .cad-dashboard-head .cad-muted{font-size:13px!important;line-height:1.35}
   .cad-dashboard-head>.cad-inline{width:100%;gap:8px;flex-wrap:wrap}
   .cad-dashboard-head .cad-btn{min-height:38px;padding:0 12px;font-size:13px}
   .cad-card{border-radius:16px}
@@ -1436,7 +1436,7 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-hero-cta--live .cad-hero-cta__metrics,
   .cad-hero-cta--live .cad-hero-cta__hint{display:none!important}
   .cad-hero-cta__head{margin-bottom:10px}
-  .cad-hero-cta__title{font-size:24px!important;line-height:1.06}
+  .cad-hero-cta__title{font-size:20px!important;line-height:1.1}
   .cad-hero-cta__sub{font-size:13px;margin-bottom:12px}
   .cad-hero-cta__timer{font-size:22px}
   .cad-hero-cta__tracker{padding:12px!important;margin-bottom:12px}
@@ -1448,8 +1448,8 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-hero-quickref{grid-template-columns:1fr!important;gap:10px;margin-bottom:12px}
   .cad-hero-quickref__card{min-height:auto;padding:12px!important;border-radius:16px;gap:10px}
   .cad-hero-quickref__card .cad-pill{width:38px!important;height:38px!important;font-size:17px!important}
-  .cad-hero-quickref__card b{font-size:16px!important}
-  .cad-hero-quickref__card .cad-subtle{font-size:13px!important;white-space:normal}
+  .cad-hero-quickref__card b{font-size:15px!important}
+  .cad-hero-quickref__card .cad-subtle{font-size:12px!important;white-space:normal}
   .cad-session-info{min-width:0}
   .cad-session-stats{display:flex!important;flex-wrap:nowrap!important;gap:8px;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:2px;scrollbar-width:none}
   .cad-session-stats::-webkit-scrollbar{display:none}
@@ -1478,7 +1478,7 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-hero-cta__target-row{gap:8px!important}
   .cad-hero-cta__target-row input[type=range]{flex:1 1 100%;margin-bottom:6px}
   .cad-outcomes,.cad-outcomes--five,.cad-outcomes--six{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px}
-  .cad-call-actions-sticky{position:sticky!important;bottom:calc(72px + env(safe-area-inset-bottom))!important;z-index:80;margin-top:8px;padding:10px 0 6px!important;background:linear-gradient(180deg,transparent,var(--ad-bg-0) 16%,var(--ad-bg-0))}
+  .cad-call-actions-sticky{position:relative!important;bottom:auto!important;z-index:auto;margin-top:10px;padding:8px 0 6px!important;background:linear-gradient(180deg,transparent,var(--ad-bg-0) 18%,var(--ad-bg-0))}
   .cad-kb-hint{display:none!important}
   .cad-outcome{min-height:54px!important;padding:8px 10px!important;border-radius:13px}
   .cad-outcome.set{grid-column:1/-1}
@@ -1526,6 +1526,18 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-modal.narrow{max-height:82vh}
   .cad-more-grid{gap:8px}
   .cad-more-grid .cad-option{min-height:58px;padding:11px 12px}
+  .cad-admin-config-modal{height:calc(100dvh - var(--ckg-strip-h,0px));max-height:calc(100dvh - var(--ckg-strip-h,0px));border-radius:0!important;padding:12px!important;padding-bottom:82px!important}
+  .cad-admin-config-modal .cad-modal-head{position:sticky;top:-12px;z-index:8;margin:-12px -12px 12px;padding:12px;background:linear-gradient(180deg,var(--ad-bg-1) 78%,rgba(13,16,21,.86));border-bottom:1px solid var(--ad-line-1);backdrop-filter:blur(14px)}
+  .cad-admin-config-modal .cad-modal-head .cad-btn{min-width:42px;min-height:36px}
+  .cad-admin-config-modal .cad-modal-actions{position:sticky;bottom:-12px;z-index:8;margin:14px -12px -82px;padding:10px 12px calc(12px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(13,16,21,.72),var(--ad-bg-1) 30%);border-top:1px solid var(--ad-line-1)}
+  .cad-admin-config-modal .cad-modal-actions .cad-btn{flex:1;min-height:42px}
+  .cad-config-section{padding:0!important;overflow:hidden}
+  .cad-config-summary{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 14px;cursor:pointer;list-style:none}
+  .cad-config-summary::-webkit-details-marker{display:none}
+  .cad-config-summary:after{content:"+";color:var(--ad-t-2);font-weight:900}
+  .cad-config-section[open]>.cad-config-summary:after{content:"-"}
+  .cad-config-section>*:not(summary){margin-left:14px!important;margin-right:14px!important}
+  .cad-config-section>.cad-rank-grid,.cad-config-section>.cad-cal-admin-list{margin-bottom:14px!important}
   .cad-settings{overflow:hidden}
   .cad-settings-main{padding:14px 12px calc(112px + env(safe-area-inset-bottom))!important;gap:12px}
   .cad-settings-head{gap:8px!important}
@@ -1550,19 +1562,21 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-mobile-nav{position:fixed;left:10px;right:10px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:450;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px;padding:6px;border-radius:18px;background:rgba(13,16,21,.96);border:1px solid var(--ad-line-2);box-shadow:var(--ad-shadow-2);backdrop-filter:blur(18px)}
   .cad-mobile-nav button{min-width:0;height:44px;border:0;border-radius:13px;background:transparent;color:var(--ad-t-2);font:800 10px 'Inter',system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
   .cad-mobile-nav button.on{background:var(--ad-brass);color:#120f0a;box-shadow:0 10px 26px -18px var(--ad-brass)}
+  .cad-mobile-nav button:nth-child(1),.cad-mobile-nav button:nth-child(2){background:rgba(21,26,35,.72);box-shadow:inset 0 0 0 1px var(--ad-line-1)}
+  .cad-mobile-nav button:nth-child(1){border-radius:13px 8px 8px 13px}
+  .cad-mobile-nav button:nth-child(2){border-radius:8px 13px 13px 8px}
+  .cad-mobile-nav button:nth-child(1).on,.cad-mobile-nav button:nth-child(2).on{background:var(--ad-brass);box-shadow:0 10px 24px -18px var(--ad-brass)}
   .cad-mobile-nav svg{width:16px;height:16px}
 }
 @media(max-width:390px){
-  .cad-left{max-width:calc(100% - 150px)}
-  .cad-right{max-width:146px;gap:4px}
-  .cad-brand{font-size:16px;max-width:88px}
+  .cad-left{max-width:calc(100% - 86px)}
+  .cad-right{max-width:82px;gap:4px}
+  .cad-brand{font-size:16px;max-width:138px}
   .cad-logo{width:31px;height:31px}
-  .cad-switch{min-width:70px;height:32px;padding:3px}
-  .cad-switch button{width:31px;height:26px;min-height:0!important}
   .cad-right>.cad-icon-tab{width:32px;min-width:32px}
   .cad-google-pill{width:32px!important;min-width:32px!important;max-width:32px!important;height:32px!important}
-  .cad-title{font-size:28px!important}
-  .cad-hero-quickref__card b{font-size:16px!important}
+  .cad-title{font-size:21px!important}
+  .cad-hero-quickref__card b{font-size:14px!important}
   .cad-session-stat--card{min-height:70px}
   .cad-session-stat--card b{font-size:22px!important}
   .cad-mobile-nav{left:8px;right:8px;gap:3px}
@@ -1652,7 +1666,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.11.0147';
+window.APP_VERSION='2026.05.11.0148';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -21497,7 +21511,7 @@ function App() {
         onClick: e => e.stopPropagation()
       }, body));
     };
-    var adminConfigModal = cadModal(!!adminDetailEmail, 'wide', () => setAdminDetailEmail(null), adminDetailEmail && (() => {
+    var adminConfigModal = cadModal(!!adminDetailEmail, 'wide cad-admin-config-modal', () => setAdminDetailEmail(null), adminDetailEmail && (() => {
       var em = adminDetailEmail;
       var ac = (adminConfigs || {})[em] || {};
       var rates = Array.isArray(ac.payRates) ? ac.payRates : (cfg.payRates || [8, 10, 12, 16, 18, 20]);
@@ -21515,7 +21529,7 @@ function App() {
       return h(React.Fragment, null,
         h('div', { className: 'cad-modal-head' },
           h('div', null, h('h3', { className: 'cad-modal-title' }, '👤 ', ac.bizName || em), h('p', { className: 'cad-modal-sub' }, em, ' · pay · 📒 leads · 📞 script · 📅 calendar · 🏆 rank')),
-          h('button', { className: 'cad-btn ghost', onClick: () => setAdminDetailEmail(null) }, 'x')
+          h('button', { className: 'cad-btn ghost', onClick: () => setAdminDetailEmail(null) }, 'Close')
         ),
         // ─── Identity (no colour stripe — neutral) ──────────────────────
         // 0141: merged the redundant Display + Invoice name pair into a
@@ -21716,8 +21730,8 @@ function App() {
           )
         ),
         // ─── Gamification: rank tiers (purple stripe) ───────────────────
-        h('div', { className: 'cad-card cad-section-gamify', style: { padding: 14, marginTop: 12 } },
-          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label', style: { color: 'oklch(0.78 0.18 320)' } }, '🏆 Rank tiers (per-admin gamification)'), h('span', { className: 'cad-pill' }, '6 tiers')),
+        h('details', { className: 'cad-card cad-section-gamify cad-config-section', style: { padding: 14, marginTop: 12 } },
+          h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'oklch(0.78 0.18 320)' } }, '🏆 Rank tiers (per-admin gamification)'), h('span', { className: 'cad-pill' }, '6 tiers')),
           h('p', { className: 'cad-page-note', style: { marginBottom: 10 } }, 'Each tier has its own $/hr and the minimum appointments needed to reach it. Used for the rank-up celebrations on the admin\'s call view.'),
           // 0095: admin tier cards upgraded to match the Main rank-card
           // visual language — gradient head, big emoji, glow on achieved
@@ -21798,8 +21812,8 @@ function App() {
           }))
         ),
         // ─── Calendars (blue stripe) ────────────────────────────────────
-        calList.length > 0 && h('div', { className: 'cad-card cad-section-cal', style: { padding: 14, marginTop: 12 } },
-          h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 10 } }, h('span', { className: 'cad-label', style: { color: 'var(--ad-blue)' } }, '📅 Shared calendars'), h('span', { className: 'cad-pill blue' }, (ac.sharedCals || []).length, ' visible')),
+        calList.length > 0 && h('details', { className: 'cad-card cad-section-cal cad-config-section', style: { padding: 14, marginTop: 12 } },
+          h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'var(--ad-blue)' } }, '📅 Shared calendars'), h('span', { className: 'cad-pill blue' }, (ac.sharedCals || []).length, ' visible')),
           h('p', { className: 'cad-page-note', style: { marginBottom: 10 } }, 'Tick a calendar to share its busy windows with this admin (so their slot picker avoids your appointments). "Busy only" hides event titles — admin sees the slot is taken without the meeting details.'),
           h('div', { className: 'cad-cal-admin-list' }, calList.map(c => {
             var current = (ac.sharedCals || []).find(x => x.id === c.id);
