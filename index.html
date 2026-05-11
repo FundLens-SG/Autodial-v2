@@ -1404,22 +1404,23 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-topbar{height:auto!important;min-height:50px;padding:6px 8px!important;gap:6px;justify-content:space-between;overflow:hidden!important}
   .cad-topbar::-webkit-scrollbar{display:none}
   .cad-left,.cad-right{gap:5px;min-width:0}
-  .cad-left{flex:1 1 auto;max-width:calc(100% - 172px)}
-  .cad-right{flex:0 0 auto;max-width:168px;margin-left:0!important;justify-content:flex-end;overflow:visible}
+  .cad-left{flex:1 1 auto;max-width:calc(100% - 92px)}
+  .cad-right{flex:0 0 auto;max-width:88px;margin-left:0!important;justify-content:flex-end;overflow:visible}
   .cad-logo{width:32px;height:32px;border-radius:10px}
   .cad-brand{font-size:17px;max-width:104px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .cad-pill{min-height:28px;padding:4px 8px;font-size:11px}
   .cad-google-pill{width:34px!important;min-width:34px!important;max-width:34px!important;height:34px!important;padding:0!important;font-size:0!important;justify-content:center;overflow:hidden;text-overflow:clip}
   .cad-google-pill .cad-dot{margin:0}
   .cad-google-pill:after{content:"G";font-size:12px;font-weight:850;color:currentColor}
+  .cad-switch{display:none!important}
   .cad-switch{height:36px;min-width:78px;padding:3px}
   .cad-switch button{width:36px;height:30px}
   .cad-tab{height:32px;padding:0 9px;font-size:12px}
   .cad-right>.cad-tab:not(.cad-icon-tab){display:none!important}
   .cad-right>.cad-icon-tab{width:34px;min-width:34px;padding:0}
   .cad-avatar{display:none!important}
-  .cad-main,.cad-call-main{padding:12px 12px calc(92px + env(safe-area-inset-bottom))!important;gap:12px}
-  .cad-call-body{padding-bottom:calc(82px + env(safe-area-inset-bottom))}
+  .cad-main,.cad-call-main{padding:12px 12px calc(112px + env(safe-area-inset-bottom))!important;gap:12px}
+  .cad-call-body{padding-bottom:calc(112px + env(safe-area-inset-bottom))}
   .cad-dashboard-head,.cad-session-strip{gap:12px}
   .cad-title{font-size:30px!important;line-height:1.05;letter-spacing:-.02em;margin-top:6px}
   .cad-dashboard-head .cad-muted{font-size:14px!important;line-height:1.35}
@@ -1450,29 +1451,41 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-hero-quickref__card b{font-size:16px!important}
   .cad-hero-quickref__card .cad-subtle{font-size:13px!important;white-space:normal}
   .cad-session-info{min-width:0}
-  .cad-session-stats{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-  .cad-session-stats>:nth-child(5){grid-column:1/-1}
-  .cad-session-stat--card{min-height:82px;padding:11px 12px!important;border-radius:15px}
-  .cad-session-stat--card b{font-size:24px!important;line-height:1}
+  .cad-session-stats{display:flex!important;flex-wrap:nowrap!important;gap:8px;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:2px;scrollbar-width:none}
+  .cad-session-stats::-webkit-scrollbar{display:none}
+  .cad-session-stats>:nth-child(5){grid-column:auto}
+  .cad-session-stat--card{flex:0 0 116px;scroll-snap-align:start;min-height:72px;padding:10px 11px!important;border-radius:15px}
+  .cad-session-stat--card b{font-size:22px!important;line-height:1}
   .cad-session-stat--card .cad-session-stat__glyph{font-size:13px!important;letter-spacing:.03em}
   .cad-session-stat--card small{font-size:10px!important}
   .cad-session-cta{min-height:52px!important;border-radius:16px;font-size:16px!important;width:100%;justify-content:center}
-  .cad-session-target--rich{padding:13px 12px 12px!important}
-  .cad-session-target__head{margin-bottom:8px;gap:8px;flex-wrap:wrap}
-  .cad-session-target__title{font-size:10px;gap:6px}
-  .cad-session-target__title-emoji{font-size:15px}
-  .cad-session-target__big{font-size:26px!important;min-width:44px!important}
-  .cad-session-target__pill{font-size:10px;padding:4px 8px}
+  .cad-session-target--rich{padding:10px 11px 11px!important;box-shadow:0 14px 30px -24px var(--ad-brass-dim),0 0 0 1px var(--ad-brass-dim) inset}
+  .cad-session-target--rich:before{height:2px}
+  .cad-session-target__head{margin-bottom:6px;gap:8px;flex-wrap:nowrap}
+  .cad-session-target__title{font-size:9.5px;gap:5px}
+  .cad-session-target__title-emoji{display:none}
+  .cad-session-target__big{font-size:24px!important;min-width:42px!important;text-shadow:none!important}
+  .cad-session-target__pill{font-size:9.5px;padding:3px 7px;min-height:24px}
   .cad-session-target--rich .cad-hero-cta__target-instruction{display:none}
-  .cad-goal-pill{padding:6px 8px;font-size:11px;gap:5px;flex:1 1 calc(33.333% - 6px);justify-content:center}
+  .cad-session-target--rich .cad-hero-cta__target-tabs{gap:6px!important;margin-bottom:8px!important}
+  .cad-goal-pill{min-height:36px;padding:5px 7px;font-size:10px;gap:4px;flex:1 1 calc(33.333% - 5px);justify-content:center;border-radius:13px}
+  .cad-goal-pill:nth-child(3){flex-basis:calc(33.333% - 5px)}
+  .cad-goal-pill__check{width:14px!important;height:14px!important;border-radius:4px}
+  .cad-goal-pill__emoji{display:none}
   .cad-goal-pill__label{white-space:nowrap}
+  .cad-session-target--rich>.cad-inline{display:grid!important;grid-template-columns:minmax(0,1fr) 44px 54px 44px;gap:7px!important;align-items:center}
+  .cad-session-target--rich>.cad-inline .cad-btn{min-height:40px!important;padding:0 8px!important;border-radius:12px}
   .cad-hero-cta__target-row{gap:8px!important}
   .cad-hero-cta__target-row input[type=range]{flex:1 1 100%;margin-bottom:6px}
   .cad-outcomes,.cad-outcomes--five,.cad-outcomes--six{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px}
-  .cad-outcome{min-height:66px!important;padding:10px 12px!important;border-radius:14px}
+  .cad-call-actions-sticky{position:sticky!important;bottom:calc(72px + env(safe-area-inset-bottom))!important;z-index:80;margin-top:8px;padding:10px 0 6px!important;background:linear-gradient(180deg,transparent,var(--ad-bg-0) 16%,var(--ad-bg-0))}
+  .cad-kb-hint{display:none!important}
+  .cad-outcome{min-height:54px!important;padding:8px 10px!important;border-radius:13px}
   .cad-outcome.set{grid-column:1/-1}
-  .cad-outcome .glyph{font-size:20px!important}
-  .cad-outcome .caption{font-size:11px!important}
+  .cad-outcome .glyph{font-size:17px!important}
+  .cad-outcome .caption{font-size:10px!important;letter-spacing:.035em}
+  .cad-outcome .key{font-size:9px!important;top:6px!important;right:7px!important}
+  .cad-outcomes--idle .cad-outcome{opacity:.34;filter:grayscale(.35);box-shadow:none}
   .cad-lead-card{padding:16px!important}
   .cad-lead-name{font-size:28px!important;line-height:1.08}
   .cad-empty{min-height:220px;padding:24px 18px}
@@ -1513,6 +1526,24 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-modal.narrow{max-height:82vh}
   .cad-more-grid{gap:8px}
   .cad-more-grid .cad-option{min-height:58px;padding:11px 12px}
+  .cad-settings{overflow:hidden}
+  .cad-settings-main{padding:14px 12px calc(112px + env(safe-area-inset-bottom))!important;gap:12px}
+  .cad-settings-head{gap:8px!important}
+  .cad-settings-head h2{font-size:28px!important;line-height:1.05}
+  .cad-settings-head p{font-size:12.5px!important;line-height:1.35;max-width:100%;overflow-wrap:anywhere}
+  .cad-settings-head .cad-pill{min-height:26px;font-size:10px;padding:4px 8px}
+  .cad-settings-main>.cad-input-like{display:none!important}
+  .cad-rail{padding:8px 10px!important;gap:5px;scrollbar-width:none}
+  .cad-rail::-webkit-scrollbar{display:none}
+  .cad-rail .cad-tab{height:34px!important;min-height:34px;padding:0 10px!important;font-size:11px}
+  .cad-settings-stack{gap:11px}
+  .cad-page-grid,.cad-page-grid.three,.cad-settings-grid,.cad-settings-cards{gap:10px!important}
+  .cad-admin-row2{grid-template-columns:40px minmax(0,1fr)!important;gap:10px!important;padding:11px!important;overflow:hidden}
+  .cad-admin-row2>*{min-width:0}
+  .cad-admin-row2 .cad-mini-avatar{width:40px;height:40px}
+  .cad-admin-row2 b,.cad-admin-row2 small{display:block;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .cad-admin-row2>.cad-inline{grid-column:1/-1;justify-content:flex-start!important;flex-wrap:wrap;gap:6px!important}
+  .cad-list-row,.cad-list-row.slim{overflow:hidden}
   .cad-modal-head{gap:10px}
   .cad-modal-title{font-size:22px}
   .cad-floating-bar{left:10px;right:10px;bottom:calc(88px + env(safe-area-inset-bottom));width:auto;transform:none}
@@ -1522,16 +1553,14 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-mobile-nav svg{width:16px;height:16px}
 }
 @media(max-width:390px){
-  .cad-left{max-width:calc(100% - 162px)}
-  .cad-right{max-width:158px}
-  .cad-brand{font-size:16px;max-width:92px}
+  .cad-left{max-width:calc(100% - 86px)}
+  .cad-right{max-width:82px}
+  .cad-brand{font-size:16px;max-width:138px}
   .cad-logo{width:31px;height:31px}
-  .cad-switch{min-width:74px}
-  .cad-switch button{width:34px}
   .cad-google-pill{width:32px!important;min-width:32px!important;max-width:32px!important;height:32px!important}
   .cad-title{font-size:28px!important}
   .cad-hero-quickref__card b{font-size:16px!important}
-  .cad-session-stat--card{min-height:78px}
+  .cad-session-stat--card{min-height:70px}
   .cad-session-stat--card b{font-size:22px!important}
   .cad-mobile-nav{left:8px;right:8px;gap:3px}
   .cad-mobile-nav button{font-size:9.5px}
@@ -1620,7 +1649,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.11.0145';
+window.APP_VERSION='2026.05.11.0146';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
