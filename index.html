@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0003'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0004'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1684,7 +1684,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0003';
+window.APP_VERSION='2026.05.12.0004';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -10705,6 +10705,154 @@ function App() {
       })));
     }
     step('Lead status reverted locally', true);
+    if (u.status === 'set') {
+      setSession(p => p ? {
+        ...p,
+        dialed: Math.max(0, (p.dialed || 1) - 1),
+        sets: Math.max(0, (p.sets || 1) - 1)
+      } : p);
+      setTotalSets(p => Math.max(0, p - 1));
+      setSetDone(false);
+      var _dsFast = JSON.parse(localStorage.getItem('autodial_daily_sets') || '{}');
+      if (_dsFast.date === getTodaySGT() && _dsFast.count > 0) {
+        _dsFast.count--;
+        localStorage.setItem('autodial_daily_sets', JSON.stringify(_dsFast));
+        setDailySetsStateR(_dsFast.count);
+      }
+      if (u.calEventId) setWeekEvents(prev => prev.filter(ev => ev.id !== u.calEventId));
+      setShowPostCall(null);
+      setShowNextPreview(false);
+      setNextPreviewIdx(-1);
+      var fastRestoreIdx = u.callbackReturnIdx >= 0 ? u.callbackReturnIdx : restoredIdx;
+      var fastRestorePhone = normalizePhone(u.callbackReturnPhone || undoPhone || '');
+      if ((fastRestoreIdx < 0 || !leadsRef.current[fastRestoreIdx] || fastRestorePhone && normalizePhone(leadsRef.current[fastRestoreIdx].phone || '') !== fastRestorePhone) && fastRestorePhone) {
+        fastRestoreIdx = leadsRef.current.findIndex(l => normalizePhone(l.phone || '') === fastRestorePhone);
+      }
+      if (fastRestoreIdx >= 0) {
+        setCurIdx(fastRestoreIdx);
+        setPhase('calling');
+        setRunning(true);
+      }
+      setUndoInfo(p => p && p.ts === info.ts ? null : p);
+      setUndoHistory(p => p.filter(x => x.ts !== info.ts));
+      if (!overrideUndo) appStateRef.current._lastUndo = null;
+      toast('↩ Undo Set — restored lead, syncing cleanup...', 'info');
+      setTimeout(() => {
+        (async () => {
+          var bgSteps = steps.slice();
+          var bgStep = (label, ok, detail) => bgSteps.push({ label, ok: !!ok, detail: detail || '' });
+          if (restoredLead) {
+            try {
+              var directSheetId = u.sheetId || cfg.sheetId;
+              var directSheetTab = u.sheetTab || cfg.sheetTab || 'Sheet1';
+              if (directSheetId && directSheetTab && restoredLead.sheetRow && restoredLead.statusCol >= 0 && localStorage.getItem('ad_gt')) {
+                await gSheets.put(directSheetId, directSheetTab + '!' + a1Col(restoredLead.statusCol) + restoredLead.sheetRow, u.prevSheetValue ?? '');
+                bgStep('Lead sheet revert synced', true);
+              } else if (u.prevSheetValue !== undefined && u.prevSheetValue !== null && restoredLead.statusCol >= 0) {
+                await queueSheetValue(restoredLead, u.prevSheetValue);
+                bgStep('Lead sheet revert queued', true);
+              } else {
+                await syncSheet(restoredLead, u.prevStatus || 'pending');
+                bgStep('Lead sheet revert queued', true);
+              }
+            } catch (e) {
+              bgStep('Lead sheet revert queued', false, e?.message || 'failed');
+            }
+          }
+          if (u.calEventId && window.gCal) {
+            try {
+              var calOk = await gCal.del(u.calEventId, u.calendarId || 'primary');
+              bgStep('Calendar event deleted', calOk, calOk ? '' : 'check Google Calendar');
+            } catch (e) {
+              bgStep('Calendar event deleted', false, e?.message || 'failed');
+            }
+          } else bgStep('Calendar event deleted', false, 'no event id saved');
+          var _matchedAppt = null;
+          if (undoPhone) {
+            try {
+              var _d2 = _readDeletedApptIds();
+              if (u.calEventId) _d2.push(String(u.calEventId));
+              _matchedAppt = (appointments || []).find(a => _apptHardMatch(a, {
+                id: u.apptId,
+                dbApptId: u.dbApptId,
+                calEventId: u.calEventId,
+                phone: undoPhone,
+                apptDate: u.apptDate,
+                apptTime: u.apptTime
+              }));
+              if (_matchedAppt?.id) _d2.push(String(_matchedAppt.id));
+              if (_matchedAppt?.calEventId) _d2.push(String(_matchedAppt.calEventId));
+              if (_matchedAppt?.phone && _matchedAppt?.createdAt) _d2.push(_matchedAppt.phone + '_' + _matchedAppt.createdAt);
+              var _savedDelIds = _writeDeletedApptIds(_d2);
+              _syncDeletedApptIdsCloud(_savedDelIds);
+            } catch (_e) {}
+            bgStep('Local appointment removed', true);
+            if (_SB && undoPhone) {
+              try {
+                var db = await DB.deleteApptUndo({
+                  rowId: u.dbApptId,
+                  calEventId: u.calEventId,
+                  phone: undoPhone,
+                  admin: myEmail
+                });
+                bgStep('Supabase appointment removed', db.ok, db.errors?.join('; ') || '');
+              } catch (e) {
+                bgStep('Supabase appointment removed', false, e?.message || 'failed');
+              }
+            } else bgStep('Supabase appointment removed', false, 'not connected');
+            try {
+              var cloudGone = await _purgeCloudAppointment({
+                ...(_matchedAppt || {}),
+                id: u.apptId || _matchedAppt?.id,
+                dbApptId: u.dbApptId || _matchedAppt?.dbApptId,
+                calEventId: u.calEventId || _matchedAppt?.calEventId,
+                phone: undoPhone,
+                admin: _matchedAppt?.admin || myEmail
+              });
+              bgStep('Cloud appointment cache removed', cloudGone || !_SB, cloudGone ? '' : 'no matching cloud row');
+            } catch (e) {
+              bgStep('Cloud appointment cache removed', false, e?.message || 'failed');
+            }
+          }
+          var _sheetTarget = {
+            ...(_matchedAppt || {}),
+            id: u.apptId || _matchedAppt?.id,
+            dbApptId: u.dbApptId || _matchedAppt?.dbApptId,
+            apptSheetAutoId: u.apptSheetAutoId || _matchedAppt?.apptSheetAutoId || u.apptId,
+            calEventId: u.calEventId || _matchedAppt?.calEventId,
+            phone: undoPhone,
+            name: u.leadName || _matchedAppt?.name,
+            apptDate: u.apptDate || _matchedAppt?.apptDate,
+            apptTime: u.apptTime || _matchedAppt?.apptTime
+          };
+          var _sheetId = u.apptSheetId || _matchedAppt?.apptSheetId || myCfg.timesheetId || cfg.sheetId;
+          if (_sheetId && localStorage.getItem('ad_gt')) {
+            try {
+              var sheetGone = await gSheets.deleteApptRow(_sheetId, _sheetTarget, u.apptSheetRange || _matchedAppt?.apptSheetRange || '');
+              bgStep('Appointment sheet row removed', sheetGone, sheetGone ? '' : 'row not found');
+              try {
+                gSheets.appendLog(_sheetId, {
+                  admin: userName || myEmail,
+                  action: 'Undo Set',
+                  entity: 'Appointment',
+                  entityId: _sheetTarget.autoId || _sheetTarget.apptId || u.apptId || '',
+                  lead: u.leadName || _matchedAppt?.name || '',
+                  phone: undoPhone || u.leadPhone || '',
+                  date: (u.apptDate || _matchedAppt?.apptDate || '') + (u.apptTime ? ' ' + u.apptTime : ''),
+                  notes: 'Set undone via app'
+                });
+              } catch (_logErr) {}
+            } catch (e) {
+              bgStep('Appointment sheet row removed', false, e?.message || 'failed');
+            }
+          } else bgStep('Appointment sheet row removed', false, 'no sheet access');
+          addSyncTrail('Set undo cleanup for ' + (info.name || lead?.name || u.leadName || 'lead'), bgSteps);
+        })().catch(e => {
+          addSyncTrail('Set undo cleanup needs attention', [{ label: 'Background cleanup', ok: false, detail: e?.message || String(e) }]);
+        });
+      }, 0);
+      return;
+    }
     if (restoredLead) {
       try {
         var directSheetId = u.sheetId || cfg.sheetId;
