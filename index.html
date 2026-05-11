@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0152'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.11.0153'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1668,7 +1668,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.11.0152';
+window.APP_VERSION='2026.05.11.0153';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -21638,8 +21638,7 @@ function App() {
         h('details', { className: 'cad-card cad-section-pay cad-config-section', style: { padding: 14, marginTop: 12 } },
           h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'var(--ad-green)' } }, '💰 Pay & PayNow'), h('span', { className: 'cad-pill ' + (ac.payNow ? 'green' : '') }, ac.payNow ? 'PayNow Set' : 'Add PayNow')),
           h('div', { className: 'cad-form-grid' },
-            cadField('💵 PayNow number', h('input', { value: ac.payNow || '', onChange: e => cadUpdateAdminConfig(em, { payNow: e.target.value }), placeholder: 'Admin handphone / UEN' })),
-            cadField('💎 Met incentive ($)', h('input', { type: 'number', min: 0, step: 1, value: ac.metIncentive ?? cfg.metIncentive ?? 10, onChange: e => cadUpdateAdminConfig(em, { metIncentive: Number(e.target.value) || 0 }) }))
+            cadField('💵 PayNow number', h('input', { value: ac.payNow || '', onChange: e => cadUpdateAdminConfig(em, { payNow: e.target.value }), placeholder: 'Admin handphone / UEN' }))
           )
         ),
         // ─── Leads (amber stripe) ───────────────────────────────────────
@@ -21739,6 +21738,7 @@ function App() {
           h('summary', { className: 'cad-config-summary' }, h('span', { className: 'cad-label', style: { color: 'var(--ad-brass-2)' } }, '📞 Calling rules + parameters'), h('span', { className: 'cad-pill brass' }, 'Tunable')),
           h('div', { className: 'cad-form-grid' },
             cadField('⏱ Default Session Hours', h('input', { type: 'number', min: 0.5, step: 0.5, value: ac.sessionDur || cfg.sessionDur || 5, onChange: e => cadUpdateAdminConfig(em, { sessionDur: Number(e.target.value) || 0 }) })),
+            cadField('💎 Met incentive ($)', h('input', { type: 'number', min: 0, step: 1, value: ac.metIncentive ?? cfg.metIncentive ?? 10, onChange: e => cadUpdateAdminConfig(em, { metIncentive: Number(e.target.value) || 0 }) })),
             cadField('🚫 NP → NI threshold', h('input', { type: 'number', min: 1, max: 20, step: 1, value: ac.npMax || cfg.npMax || 5, onChange: e => cadUpdateAdminConfig(em, { npMax: Math.max(1, parseInt(e.target.value || '5', 10) || 5) }) })),
             cadField('🎯 Default appts bar (full credit)', h('input', { type: 'number', min: 0, max: 10, step: 1, value: ac.mThresh ?? cfg.mThresh ?? 2, onChange: e => cadUpdateAdminConfig(em, { mThresh: Number(e.target.value) || 0 }) })),
             cadField('🚀 Default bonus bar', h('input', { type: 'number', min: 0, max: 10, step: 1, value: ac.nThresh ?? cfg.nThresh ?? 3, onChange: e => cadUpdateAdminConfig(em, { nThresh: Number(e.target.value) || 0 }) })),
