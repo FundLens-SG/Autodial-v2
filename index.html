@@ -1686,7 +1686,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0007';
+window.APP_VERSION='2026.05.12.0008';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -8163,6 +8163,12 @@ function App() {
   };
   var resolvePastApptStatus = useCallback((a, status) => {
     if (!a || !status) return;
+    if (status === 'closed') {
+      setTipModal({ appt: a, fromMet: false });
+      setTipAmountInput('');
+      setAdminTipAmountInput('');
+      return;
+    }
     var ts = new Date().toISOString();
     var localStatus = status; // keep canonical: 'met' | 'fly_kite' | 'postponed' | 'closed'
     var sheetStatus = status === 'met' ? 'Met'
@@ -8215,14 +8221,6 @@ function App() {
     syncApptSheet(updated, { followUp: sheetStatus }).catch(() => {});
     if (a.admin && a.admin.toLowerCase() !== (myEmail || '').toLowerCase()) {
       _mainWritebackAdminAppt(updated);
-    }
-    if (status === 'closed') {
-      // Tip/EFYC flow — open the tip modal so the user types the amount.
-      // The tipModal save handler at line ~36428 also adds the incentive
-      // and writes status:'closed' + tip back to the sheet, so we let
-      // it own the sheet write for the closed case (`fromMet:false`).
-      setTipModal({ appt: updated, fromMet: false });
-      setTipAmountInput('');
     }
     // 0125: deps intentionally omit myCfg.* — myCfg is a derived var
     // declared further down; reading myCfg.metIncentive at hook-init
@@ -10228,6 +10226,7 @@ function App() {
   var [apptSearch, setApptSearch] = useState('');
   var [tipModal, setTipModal] = useState(null);
   var [tipAmountInput, setTipAmountInput] = useState('');
+  var [adminTipAmountInput, setAdminTipAmountInput] = useState('');
   var [celebration, setCelebration] = useState(null);
   var [updateAvailable, setUpdateAvailable] = useState(null);
   var [tsSearch, setTsSearch] = useState('');
@@ -20811,6 +20810,8 @@ function App() {
           if (a.duration) apptDetailBits.push(a.duration + ' min');
           if (a.remarks || a.notes) apptDetailBits.push(a.remarks || a.notes);
           if (a.leadNotes || a.sheetRemarks) apptDetailBits.push('Lead: ' + (a.leadNotes || a.sheetRemarks));
+          if (role === 'main' && Number(a.efyc || 0) > 0) apptDetailBits.push('EFYC: $' + Number(a.efyc || 0).toFixed(0));
+          if (Number(a.tip || 0) > 0) apptDetailBits.push('Tip: $' + Number(a.tip || 0).toFixed(0));
           var apptDetails = apptDetailBits.filter(Boolean).join(' | ');
           return h('div', { className: 'cad-tr', key: a.id || a.calEventId || i },
             h('span', { className: 'cad-mono cad-muted' }, apptDateText),
@@ -22786,88 +22787,114 @@ function App() {
     // same submit logic (set followUp:'closed' + tip/efyc + add the
     // matching incentive + sheet writeback) in a cad-styled modal that
     // the Claude modalStack actually mounts.
-    var _confirmTipClaude = async () => {
+    var _confirmTipClaude = () => {
       if (!tipModal) return;
-      var amt = parseFloat(tipAmountInput) || 0;
-      if (amt <= 0) { toast('Enter an amount', 'err'); return; }
-      var a = tipModal.appt;
+      var a = tipModal.appt || {};
       var isMain = role === 'main';
+      var ownerEmail = String(a.admin || a.adminEmail || a.adminName || myEmail || '').toLowerCase();
+      var meEmail = String(myEmail || '').toLowerCase();
+      var isAdminAppt = isMain && ownerEmail && ownerEmail !== meEmail;
+      var efycAmt = isMain ? (parseFloat(tipAmountInput) || 0) : 0;
+      var tipAmt = isMain ? (isAdminAppt ? (parseFloat(adminTipAmountInput) || 0) : 0) : (parseFloat(tipAmountInput) || 0);
+      if (isMain ? !(efycAmt > 0 || tipAmt > 0) : !(tipAmt > 0)) { toast('Enter an amount', 'err'); return; }
       var now = new Date().toISOString();
-      var update = isMain
-        ? { efyc: amt, followUp: 'closed', followUpDate: now }
-        : { tip: amt, followUp: 'closed', followUpDate: now };
-      if (a.calEventId && window.gCal) {
-        try {
-          var _baseTitle = 'Appt: ' + (a.name || '') + (a.location ? ' @ ' + a.location : '');
-          var _newTitle = (typeof _withStatusPrefix === 'function') ? _withStatusPrefix(_baseTitle, 'closed', false) : _baseTitle;
-          await gCal.update(a.calEventId, { summary: _newTitle, status: 'confirmed' }, myCfg.targetCalendarId || 'primary');
-          setWeekEvents(prev => prev.map(ev => ev.id === a.calEventId ? { ...ev, summary: _newTitle } : ev));
-        } catch (_ge) { console.warn('[Closed gCal.update]', _ge); }
-      }
-      setAppointments(p => (p || []).map(x => _matchAppt(x, a) ? { ...x, ...update } : x));
-      if (a.admin && a.admin.toLowerCase() !== (myEmail || '').toLowerCase()) {
-        _mainWritebackAdminAppt({ ...a, ...update });
-      }
-      try {
-        await syncApptSheet({ ...a, ...update }, {
-          status: 'Set', followUp: 'Closed', tip: amt,
-          notes: (a.remarks || '') + ' [' + (isMain ? 'EFYC' : 'Tip') + ' $' + amt + ' ' + new Date().toLocaleString('en-SG') + ']'
-        });
-      } catch (_e) {}
-      if (tipModal.fromMet) {
-        // Upgrading Met → Closed: remove the prior met-incentive row so
-        // the closed tip/efyc replaces it (otherwise both pay out).
-        setIncentives(p => (p || []).filter(inc => !(inc.type === 'met' && inc.leadName === a.name && (inc.admin || '').toLowerCase() === (a.admin || myEmail).toLowerCase())));
-      }
-      setIncentives(p => [...(p || []), {
-        id: Date.now() + Math.random(),
-        admin: a.admin || myEmail,
-        leadName: a.name || '',
-        type: isMain ? 'efyc' : 'tip',
-        amount: amt,
-        date: now,
-        apptOriginalDate: a.createdAt || now,
-        paid: false
-      }]);
-      toast('🏁 ' + (a.name || 'appointment') + ' → Closed · +$' + amt + (isMain ? ' EFYC' : ' tip'), 'info');
+      var update = { efyc: isMain ? efycAmt : (a.efyc || 0), tip: tipAmt, followUp: 'closed', followUpDate: now };
+      var updated = { ...a, ...update };
+      var closeNote = (a.remarks || a.notes || '') + ' [Closed ' + new Date().toLocaleString('en-SG') + (efycAmt > 0 ? ' - EFYC $' + efycAmt : '') + (tipAmt > 0 ? ' - Tip $' + tipAmt : '') + ']';
       setTipModal(null);
       setTipAmountInput('');
+      setAdminTipAmountInput('');
+      setAppointments(p => (p || []).map(x => _matchAppt(x, a) ? { ...x, ...update } : x));
+      try { _liveSyncRef.current.localApptsGuardUntil = Date.now() + 6000; } catch (_e) {}
+      if (tipModal.fromMet) {
+        setIncentives(p => (p || []).filter(inc => !(inc.type === 'met' && inc.leadName === a.name && (inc.admin || '').toLowerCase() === (ownerEmail || meEmail))));
+      }
+      if (tipAmt > 0) {
+        setIncentives(p => [...(p || []), {
+          id: Date.now() + Math.random(),
+          admin: a.admin || a.adminEmail || a.adminName || myEmail,
+          leadName: a.name || '',
+          type: 'tip',
+          amount: tipAmt,
+          date: now,
+          apptOriginalDate: a.createdAt || now,
+          paid: false
+        }]);
+      }
+      toast('Closed ' + (a.name || 'appointment') + (efycAmt > 0 ? ' - EFYC $' + efycAmt : '') + (tipAmt > 0 ? ' - Tip $' + tipAmt : ''), 'info');
+      var celebrateAmt = tipAmt > 0 ? tipAmt : efycAmt;
+      var tier = Math.min(10, Math.floor(celebrateAmt / 100));
+      if (tier > 0) {
+        setCelebration({ amount: celebrateAmt, tier, name: a.name });
+        window.playTipSound && window.playTipSound(tier);
+        setTimeout(() => setCelebration(null), Math.min(6000, 2500 + tier * 350));
+      }
+      (async () => {
+        if (a.calEventId && window.gCal) {
+          try {
+            var _baseTitle = 'Appt: ' + (a.name || '') + (a.location ? ' @ ' + a.location : '');
+            var _newTitle = (typeof _withStatusPrefix === 'function') ? _withStatusPrefix(_baseTitle, 'closed', false) : _baseTitle;
+            await gCal.update(a.calEventId, { summary: _newTitle, status: 'confirmed' }, myCfg.targetCalendarId || 'primary');
+            setWeekEvents(prev => prev.map(ev => ev.id === a.calEventId ? { ...ev, summary: _newTitle } : ev));
+          } catch (_ge) { console.warn('[Closed gCal.update]', _ge); }
+        }
+        if (a.admin && String(a.admin).toLowerCase() !== meEmail) {
+          _mainWritebackAdminAppt(updated);
+        }
+        try {
+          await syncApptSheet(updated, {
+            status: 'Set',
+            followUp: 'Closed',
+            tip: tipAmt,
+            notes: closeNote
+          });
+        } catch (_e) {}
+      })();
     };
     var _tipPresets = [50, 100, 200, 500, 1000];
-    var tipModalClaude = cadModal(!!tipModal, 'narrow', () => { setTipModal(null); setTipAmountInput(''); }, tipModal && h(React.Fragment, null,
-      h('div', { className: 'cad-modal-head' },
-        h('div', null,
-          h('span', { className: 'cad-pill brass' }, role === 'main' ? '💰 EFYC' : '💰 Tip'),
-          h('h3', { className: 'cad-modal-title', style: { marginTop: 8 } }, tipModal.fromMet ? 'Upgrade Met → Closed' : 'Mark as closed'),
-          h('p', { className: 'cad-modal-sub' }, 'Lead: ', h('b', null, tipModal.appt?.name || 'Appointment'))
+    var _closeTipModalClaude = () => { setTipModal(null); setTipAmountInput(''); setAdminTipAmountInput(''); };
+    var tipModalClaude = cadModal(!!tipModal, 'narrow', _closeTipModalClaude, tipModal && (() => {
+      var _tipAppt = tipModal.appt || {};
+      var _tipOwner = String(_tipAppt.admin || _tipAppt.adminEmail || _tipAppt.adminName || myEmail || '').toLowerCase();
+      var _isMainClose = role === 'main';
+      var _isAdminClose = _isMainClose && _tipOwner && _tipOwner !== String(myEmail || '').toLowerCase();
+      var _efycReady = (parseFloat(tipAmountInput) || 0) > 0;
+      var _tipReady = (parseFloat(adminTipAmountInput) || 0) > 0;
+      var _canClose = _isMainClose ? (_efycReady || _tipReady) : ((parseFloat(tipAmountInput) || 0) > 0);
+      return h(React.Fragment, null,
+        h('div', { className: 'cad-modal-head' },
+          h('div', null,
+            h('span', { className: 'cad-pill brass' }, _isMainClose ? (_isAdminClose ? 'EFYC + admin tip' : 'EFYC') : 'Tip'),
+            h('h3', { className: 'cad-modal-title', style: { marginTop: 8 } }, tipModal.fromMet ? 'Upgrade Met to Closed' : 'Mark as closed'),
+            h('p', { className: 'cad-modal-sub' }, 'Lead: ', h('b', null, _tipAppt.name || 'Appointment'))
+          ),
+          h('button', { className: 'cad-btn ghost', onClick: _closeTipModalClaude }, 'x')
         ),
-        h('button', { className: 'cad-btn ghost', onClick: () => { setTipModal(null); setTipAmountInput(''); } }, 'x')
-      ),
-      cadField('Amount (SGD)',
-        h('div', { className: 'cad-inline', style: { gap: 8, alignItems: 'center' } },
-          h('span', { style: { fontSize: 22, fontWeight: 800, color: 'var(--ad-brass-2)' } }, '$'),
-          h('input', {
-            type: 'number', min: 0, step: 1,
-            value: tipAmountInput,
-            placeholder: '0',
-            autoFocus: true,
-            onChange: e => setTipAmountInput(e.target.value),
-            style: { flex: 1, fontSize: 20, fontWeight: 700 }
-          })
+        cadField(_isMainClose ? 'EFYC (Main only)' : 'Tip (SGD)',
+          h('div', { className: 'cad-inline', style: { gap: 8, alignItems: 'center' } },
+            h('span', { style: { fontSize: 22, fontWeight: 800, color: 'var(--ad-brass-2)' } }, '$'),
+            h('input', { type: 'number', min: 0, step: 1, value: tipAmountInput, placeholder: '0', autoFocus: true, onChange: e => setTipAmountInput(e.target.value), style: { flex: 1, fontSize: 20, fontWeight: 700 } })
+          )
+        ),
+        h('div', { className: 'cad-inline', style: { flexWrap: 'wrap', gap: 6, marginBottom: _isAdminClose ? 12 : 14 } },
+          _tipPresets.map(v => h('button', { className: 'cad-btn ghost', key: v, onClick: () => setTipAmountInput(String(v)) }, '$', v))
+        ),
+        _isAdminClose && cadField('Admin tip (payroll)',
+          h('div', { className: 'cad-inline', style: { gap: 8, alignItems: 'center' } },
+            h('span', { style: { fontSize: 22, fontWeight: 800, color: 'var(--ad-green)' } }, '$'),
+            h('input', { type: 'number', min: 0, step: 1, value: adminTipAmountInput, placeholder: '0', onChange: e => setAdminTipAmountInput(e.target.value), style: { flex: 1, fontSize: 20, fontWeight: 700 } })
+          )
+        ),
+        _isAdminClose && h('div', { className: 'cad-inline', style: { flexWrap: 'wrap', gap: 6, marginBottom: 14 } },
+          _tipPresets.map(v => h('button', { className: 'cad-btn ghost', key: 'tip-' + v, onClick: () => setAdminTipAmountInput(String(v)) }, '$', v))
+        ),
+        h('p', { className: 'cad-page-note' }, _isMainClose ? (_isAdminClose ? 'EFYC is private to Main reporting. Tip is visible to the admin and flows into payroll.' : 'EFYC counts toward Main revenue tracking.') : 'Tip is added as an incentive to your unpaid pay total. Main settles it in the next billing cycle.'),
+        h('div', { className: 'cad-modal-actions' },
+          h('button', { className: 'cad-btn', onClick: _closeTipModalClaude }, 'Cancel'),
+          h('button', { className: 'cad-btn primary', disabled: !_canClose, onClick: _confirmTipClaude }, 'Mark closed')
         )
-      ),
-      h('div', { className: 'cad-inline', style: { flexWrap: 'wrap', gap: 6, marginBottom: 14 } },
-        _tipPresets.map(v => h('button', { className: 'cad-btn ghost', key: v, onClick: () => setTipAmountInput(String(v)) }, '$', v))
-      ),
-      h('p', { className: 'cad-page-note' }, role === 'main'
-        ? 'EFYC counts toward Main revenue tracking; the admin who set this appt does not earn from EFYC.'
-        : 'Tip is added as an incentive to your unpaid pay total. Main settles it in the next billing cycle.'
-      ),
-      h('div', { className: 'cad-modal-actions' },
-        h('button', { className: 'cad-btn', onClick: () => { setTipModal(null); setTipAmountInput(''); } }, 'Cancel'),
-        h('button', { className: 'cad-btn primary', disabled: !(parseFloat(tipAmountInput) > 0), onClick: _confirmTipClaude }, '🏁 Mark closed')
-      )
-    ));
+      );
+    })());
     var importModal = cadModal(!!importReview, '', () => setImportReview(null), importReview && h(React.Fragment, null,
       h('div', { className: 'cad-modal-head' }, h('div', null, h('h3', { className: 'cad-modal-title' }, 'Lead Import Review'), h('p', { className: 'cad-modal-sub' }, importReview.meta?.source || 'Import', ' - ', importReview.count, ' leads staged')), h('button', { className: 'cad-btn ghost', onClick: () => setImportReview(null) }, 'x')),
       importReview.lowCols.length > 0 && h('div', { className: 'cad-inline', style: { flexWrap: 'wrap', marginBottom: 12 } }, importReview.lowCols.map(c => h('span', { className: 'cad-pill amber', key: c.key }, c.key, ' ', c.score, '%'))),
