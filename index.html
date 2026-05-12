@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0006'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0007'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -793,7 +793,7 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-objcat.open .cad-objcat-count{background:var(--ad-brass-line);color:var(--ad-bg-0)}
 .cad-objcat-body{display:flex;flex-direction:column;gap:5px;margin:2px 0 6px 10px;padding-left:10px;border-left:2px solid var(--ad-line-1)}
 .cad-objcat.open .cad-objcat-body{border-left-color:var(--ad-brass-line)}
-.cad-table{border:1px solid var(--ad-line-1);border-radius:12px;overflow:hidden}.cad-tr{display:grid;grid-template-columns:120px 1.4fr 1fr 1fr .8fr 60px;gap:16px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--ad-line-1);font-size:12px}.cad-tr.head{background:var(--ad-bg-2);color:var(--ad-t-3);text-transform:uppercase;letter-spacing:.08em;font-size:10px;font-weight:800}
+.cad-table{border:1px solid var(--ad-line-1);border-radius:12px;overflow:hidden}.cad-tr{display:grid;grid-template-columns:135px minmax(150px,1.05fr) minmax(150px,.9fr) minmax(160px,1fr) minmax(220px,1.35fr) 115px minmax(300px,1.2fr);gap:16px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--ad-line-1);font-size:12px}.cad-tr.head{background:var(--ad-bg-2);color:var(--ad-t-3);text-transform:uppercase;letter-spacing:.08em;font-size:10px;font-weight:800}.cad-appt-detail{display:block;max-width:420px;color:var(--ad-t-2);line-height:1.45}.cad-appt-detail b{color:var(--ad-t-0)}
 .cad-settings{display:flex;flex:1;min-height:0}.cad-rail{width:240px;border-right:1px solid var(--ad-line-1);padding:22px 16px;display:flex;flex-direction:column;gap:4px}.cad-settings-main{flex:1;padding:26px 32px;display:flex;flex-direction:column;gap:22px;overflow:auto}
 .cad-settings-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}.cad-settings-card{padding:18px;display:flex;align-items:center;justify-content:space-between;color:var(--ad-t-0)}.cad-settings-card b{color:var(--ad-t-0)}.cad-settings-card .cad-subtle{color:var(--ad-t-2)}.cad-input-like{min-height:42px;padding:0 12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-1);color:var(--ad-t-3);display:flex;align-items:center;gap:10px}
 .cad-editor-card{padding:18px;display:flex;flex-direction:column;gap:12px}.cad-editor-card textarea{width:100%;min-height:150px;resize:vertical;padding:12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font:13px/1.55 'Inter',system-ui,sans-serif}.cad-editor-card textarea.small{min-height:92px}.cad-settings-grid{display:grid;grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:14px}.cad-kv-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0;border-top:1px solid var(--ad-line-1);font-size:13px}.cad-kv-row:first-of-type{border-top:0}.cad-appt-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
@@ -1513,9 +1513,10 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-tr:not(.head)>:nth-child(2):before{content:"Lead"}
   .cad-tr:not(.head)>:nth-child(3):before{content:"Caller"}
   .cad-tr:not(.head)>:nth-child(4):before{content:"Location"}
-  .cad-tr:not(.head)>:nth-child(5):before{content:"Status"}
-  .cad-tr:not(.head)>:nth-child(6):before{content:"Actions"}
-  .cad-tr:not(.head)>:nth-child(5){display:block}
+  .cad-tr:not(.head)>:nth-child(5):before{content:"Details"}
+  .cad-tr:not(.head)>:nth-child(6):before{content:"Status"}
+  .cad-tr:not(.head)>:nth-child(7):before{content:"Actions"}
+  .cad-tr:not(.head)>:nth-child(6){display:block}
   .cad-appt-actions{justify-content:flex-start;gap:6px}
   .cad-appt-actions .cad-btn{min-height:32px;padding:0 9px;font-size:11px}
   .cad-mobile-agenda{display:flex;flex-direction:column;gap:10px}
@@ -1685,7 +1686,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0006';
+window.APP_VERSION='2026.05.12.0007';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -2347,7 +2348,7 @@ window.gSheets={
     // ═══ "review" columns (Date Set, Admin, Duration, Status, Follow-Up)
     // ═══ live to the right of the user-facing block; tracking IDs are at
     // ═══ the rightmost positions (S-U) and auto-hidden by formatTabVisuals.
-    if(c==='Appointments Set')return['Name','Hp Number','Gender','Age','Time','Appt Date','Location','Industry','Any other remarks','Met','Fly Kite','Paid','Tip','Date Set','Admin','Duration','Status','Follow-Up','AutoDial ID','Calendar Event ID','Last Synced'];
+    if(c==='Appointments Set')return['Name','Hp Number','Gender','Age','Appointment Time','Appointment Date','Location','Industry','Notes / Details','Met','Fly Kite','Paid','Tip','Date Set','Admin','Duration','Status','Follow-Up','AutoDial ID','Calendar Event ID','Last Synced'];
     if(c==='Pay')return['Date','Admin','Amount','Sessions','Hours','Incentives','Invoice #','Screenshot','Status'];
     // ═══ Hidden audit log. Every undo/delete/status-change writes one row here so the
     // ═══ visible Appointments Set / Timesheet tabs only show CURRENT state, not history.
@@ -2416,6 +2417,14 @@ window.gSheets={
       }
       var next=[...h];
       for(var i=0;i<headers.length;i++)if(!next[i])next[i]=headers[i];
+      if((canonical||tab)==='Appointments Set'){
+        var renameMap={4:['time'],5:['appt date','appointment date'],8:['any other remarks','remarks','notes']};
+        Object.keys(renameMap).forEach(function(k){
+          var idx=+k;
+          var cur=String(next[idx]||'').trim().toLowerCase();
+          if(renameMap[idx].indexOf(cur)>=0)next[idx]=headers[idx];
+        });
+      }
       if(next.join('|')!==h.join('|'))await gF('https://sheets.googleapis.com/v4/spreadsheets/'+id+'/values/'+encodeURIComponent(range)+'?valueInputOption=USER_ENTERED',{method:'PUT',body:JSON.stringify({values:[next]})});
       return true
     }catch(e){console.warn('[repairTabHeaders]',tab,e?.message||e);return false}
@@ -2698,6 +2707,21 @@ window.gSheets={
       return tab
     }catch(e){console.warn('[ensureApptSheet]',e?.message||e);return''}
   },
+  _apptNotesForSheet(appt){
+    appt=appt||{};
+    var detail=[];
+    if(appt.apptDate)detail.push('Date: '+appt.apptDate);
+    if(appt.apptTime)detail.push('Time: '+String(appt.apptTime).slice(0,5));
+    if(appt.duration)detail.push('Duration: '+appt.duration+' min');
+    if(appt.location)detail.push('Location: '+appt.location);
+    var notes=String(appt.notes||appt.remarks||appt.specialistNotes||'').trim();
+    var leadNotes=String(appt.leadNotes||appt.sheetRemarks||appt.sourceNotes||'').trim();
+    var lines=[];
+    if(detail.length)lines.push(detail.join(' | '));
+    if(notes)lines.push('Specialist notes: '+notes);
+    if(leadNotes)lines.push('Lead notes: '+leadNotes);
+    return lines.join('\n');
+  },
   async appendAppt(id,appt,adminName){
     var apptTab=await this.ensureApptSheet(id);
     if(!apptTab)return false;
@@ -2714,7 +2738,7 @@ window.gSheets={
       appt.apptDate||'',                                // F Appt Date
       appt.location||'',                                // G Location
       appt.industry||'',                                // H Industry
-      appt.remarks||appt.notes||'',                     // I Remarks
+      this._apptNotesForSheet(appt),                    // I Notes / Details
       false,                                            // J Met (checkbox)
       false,                                            // K Fly Kite (checkbox)
       false,                                            // L Paid (checkbox)
@@ -2820,7 +2844,7 @@ window.gSheets={
       if('apptDate'in fields)set('F',fields.apptDate);
       if('location'in fields)set('G',fields.location);
       if('industry'in fields)set('H',fields.industry);
-      if('notes'in fields)set('I',fields.notes);
+      if('notes'in fields||'details'in fields)set('I',this._apptNotesForSheet({...appt,...fields,notes:fields.notes!=null?fields.notes:appt.notes,remarks:fields.notes!=null?fields.notes:appt.remarks}));
       if('followUp'in fields){
         var fu=String(fields.followUp||'').toLowerCase();
         // Update the checkbox columns based on follow-up status
@@ -2901,7 +2925,7 @@ window.gSheets={
         var raw={
           name:r[0]||'',phone:r[1]||'',gender:r[2]||'',age:r[3]||'',
           apptTime:r[4]||'',apptDate:r[5]||'',location:r[6]||'',industry:r[7]||'',
-          notes:r[8]||'',met:met,flyKite:flyKite,paid:paid,tip:+r[12]||0,
+          notes:r[8]||'',remarks:r[8]||'',met:met,flyKite:flyKite,paid:paid,tip:+r[12]||0,
           dateSet:r[13]||'',admin:r[14]||'',duration:+r[15]||60,
           status:r[16]||'',followUp:followUp,
           autoId:r[18]||'',calEventId:r[19]||'',lastSynced:r[20]||''
@@ -20778,16 +20802,22 @@ function App() {
         h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => setTab('cal') }, icon('Calendar', 13), 'Week'), h('button', { className: 'cad-btn', onClick: () => setTab('leads') }, icon('Sheet', 13), 'Open in Sheets'))
       ),
       h('div', { className: 'cad-table' },
-        h('div', { className: 'cad-tr head' }, ['Date', 'Lead', 'Caller', 'Location', 'Status', ''].map(x => h('span', { key: x }, x))),
+        h('div', { className: 'cad-tr head' }, ['Date', 'Lead', 'Caller', 'Location', 'Details / Notes', 'Status', ''].map(x => h('span', { key: x }, x))),
         apptRows.map((a, i) => {
           var status = a.followUp || a.status || 'pending';
           var tone = /fly|cancel|no/i.test(status) ? 'red' : /today|soon/i.test(status) ? 'blue' : /tomorrow|pending/i.test(status) ? 'amber' : 'green';
           var apptDateText = a.date || (a.dateTime ? new Date(a.dateTime).toLocaleString() : [a.apptDate, a.apptTime].filter(Boolean).join(' ') || 'TBD');
+          var apptDetailBits = [];
+          if (a.duration) apptDetailBits.push(a.duration + ' min');
+          if (a.remarks || a.notes) apptDetailBits.push(a.remarks || a.notes);
+          if (a.leadNotes || a.sheetRemarks) apptDetailBits.push('Lead: ' + (a.leadNotes || a.sheetRemarks));
+          var apptDetails = apptDetailBits.filter(Boolean).join(' | ');
           return h('div', { className: 'cad-tr', key: a.id || a.calEventId || i },
             h('span', { className: 'cad-mono cad-muted' }, apptDateText),
             h('b', null, a.name || a.leadName || a.lead_name || 'Lead'),
             h('span', null, a.caller || a.adminName || a.admin || 'AutoDial'),
             h('span', { className: 'cad-muted' }, a.location || a.apptLocation || 'Phone follow-up'),
+            h('span', { className: 'cad-appt-detail' }, apptDetails || h('span', { className: 'cad-subtle' }, 'No notes')),
             h('span', null, h('span', { className: 'cad-pill ' + tone }, status)),
             // 0081: appointment row actions are now role-gated. Mains see
             // Edit + Delete on every appt; Admins see them only on appts
@@ -22302,7 +22332,7 @@ function App() {
             }
           }
           _rememberApptCalendarId(eventCalId === 'primary' ? '' : eventCalId);
-          var updated = { ...target, apptDate, apptTime, duration: dur, location: apptLocation, remarks: apptObs || target.remarks, calEventId: evtId, calendarId: eventCalId, _calId: eventCalId, followUp: 'pending', followUpDate: new Date().toISOString(), shaky: apptShaky };
+          var updated = { ...target, apptDate, apptTime, duration: dur, location: apptLocation, remarks: apptObs || target.remarks, calEventId: evtId, calendarId: eventCalId, _calId: eventCalId, followUp: 'pending', followUpDate: new Date().toISOString(), shaky: apptShaky, leadNotes: target.leadNotes || lead?.notes || '' };
           setAppointments(prev => prev.map(a => a.id === target.id ? updated : a));
           if (target.admin && target.admin.toLowerCase() !== myEmail.toLowerCase()) _mainWritebackAdminAppt(updated);
           try { syncApptSheet(updated, { apptDate, apptTime, location: apptLocation, duration: dur, status: 'Set', followUp: 'Pending', notes: apptObs || target.remarks || '' }); } catch (_e) {}
@@ -22352,7 +22382,7 @@ function App() {
         setAppointments(prev => {
           var list = Array.isArray(prev) ? prev.slice() : [];
           var idx = list.findIndex(a => (a.leadId === lead.id || a.phone === lead.phone && a.phone) && (!a.followUp || a.followUp === 'pending') && !a.apptDate);
-          var row = { id: localId, dbApptId: savedApptRow?.id || '', apptSheetAutoId: localId, leadId: lead.id, name: lead.name, phone: lead.phone, gender: lead.gender || '', age: lead.age || '', apptDate, apptTime, duration: dur, location: apptLocation, industry: lead.industry || '', remarks: apptObs, followUp: 'pending', tip: 0, tipPaid: false, createdAt: new Date().toISOString(), admin: myEmail, calEventId: evt?.id || '', calendarId: eventCalId, _calId: eventCalId, shaky: apptShaky, needsDetails: false };
+          var row = { id: localId, dbApptId: savedApptRow?.id || '', apptSheetAutoId: localId, leadId: lead.id, name: lead.name, phone: lead.phone, gender: lead.gender || '', age: lead.age || '', apptDate, apptTime, duration: dur, location: apptLocation, industry: lead.industry || '', remarks: apptObs, leadNotes: lead.notes || '', followUp: 'pending', tip: 0, tipPaid: false, createdAt: new Date().toISOString(), admin: myEmail, calEventId: evt?.id || '', calendarId: eventCalId, _calId: eventCalId, shaky: apptShaky, needsDetails: false };
           if (idx >= 0) {
             list[idx] = { ...list[idx], ...row, id: list[idx].id || row.id };
             return list;
@@ -22365,7 +22395,7 @@ function App() {
         if (lead.phone) setShowWA({ name: lead.name, phone: lead.phone, date: apptDate, time: apptTime, location: apptLocation });
         var apptSheetId = myCfg.timesheetId || cfg.sheetId;
         if (apptSheetId && localStorage.getItem('ad_gt')) {
-          var sheetPayload = { id: localId, autoId: localId, calEventId: evt?.id || '', name: lead.name, phone: lead.phone, gender: lead.gender || '', age: lead.age || lead.computed_age || '', industry: lead.industry || lead.company || '', apptDate, apptTime, location: apptLocation, duration: dur, remarks: apptObs };
+          var sheetPayload = { id: localId, autoId: localId, calEventId: evt?.id || '', name: lead.name, phone: lead.phone, gender: lead.gender || '', age: lead.age || lead.computed_age || '', industry: lead.industry || lead.company || '', apptDate, apptTime, location: apptLocation, duration: dur, remarks: apptObs, leadNotes: lead.notes || '' };
           (async () => {
             try {
               var res = await withTimeout(gSheets.appendAppt(apptSheetId, sheetPayload, userName), 10000, 'Appointment sheet append');
@@ -39026,6 +39056,7 @@ function App() {
               calEventId: evt?.id || '',
               location: apptLocation,
               remarks: apptObs,
+              leadNotes: lead?.notes || '',
               shaky: apptShaky,
               needsDetails: false
             };
@@ -39046,6 +39077,7 @@ function App() {
             location: apptLocation,
             industry: '',
             remarks: apptObs,
+            leadNotes: lead?.notes || '',
             followUp: 'pending',
             tip: 0,
             tipPaid: false,
@@ -39092,7 +39124,8 @@ function App() {
             apptTime,
             location: apptLocation,
             duration: dur,
-            remarks: apptObs
+            remarks: apptObs,
+            leadNotes: lead?.notes || ''
           };
           (async () => {
             try {
