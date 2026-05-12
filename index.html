@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0010'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0011'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1686,7 +1686,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0010';
+window.APP_VERSION='2026.05.12.0011';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -7765,48 +7765,17 @@ function App() {
     }), 250);
     return () => clearTimeout(t);
   }, [showAppt, apptLead, apptDate, apptTime, apptLocation, apptObs, apptInvite, apptSlotDuration, apptShaky]);
-  // 0081: hard-delete an appointment. Tombstones it in deletedApptIds so
-  // live-sync doesn't re-add it, removes from local state, deletes the
-  // Calendar event, and removes the Sheets row if the row range is known.
-  // Mirrors the cleanup paths in doUndo() but without the lead status
-  // revert (Edit/Delete from the appts log doesn't undo the original Set
-  // outcome; the lead stays Set).
+  // 0081/0129: delete from the appts log is a misclick undo, not a
+  // cosmetic hide. It must subtract the Set count, revert the lead to
+  // Pending, purge cloud/cache, delete the Calendar event, and remove the
+  // Appointments Set row. Fly Kite is the path that keeps the Set count.
   var _deleteAppt = async a => {
     if (!a) return;
     if (!_canEditAppt(a)) {
       toast(role === 'admin' ? "You can only delete appointments you set" : "You don't have permission to delete this appointment", 'err');
       return;
     }
-    var ok = await confirmAsync('Delete this appointment for ' + (a.name || 'lead') + '? This removes it from the calendar and the appointments sheet.', {
-      title: 'Delete appointment?',
-      confirmLabel: 'Delete',
-      cancelLabel: 'Keep',
-      danger: true
-    });
-    if (!ok) return;
-    try {
-      var _delIds = _readDeletedApptIds();
-      if (a.calEventId) _delIds.push(String(a.calEventId));
-      if (a.id) _delIds.push(String(a.id));
-      if (a.phone && a.createdAt) _delIds.push(a.phone + '_' + a.createdAt);
-      _writeDeletedApptIds(_delIds);
-      _syncDeletedApptIdsCloud(_delIds);
-    } catch (_e) {}
-    setAppointments(p => p.filter(x => !_apptHardMatch(x, a)));
-    // 0097 fix: tombstone is local-only (_syncDeletedApptIdsCloud is a
-    // documented no-op stub), so also purge from the cloud
-    // shared_appointments table so other devices / next reload don't
-    // resurrect the appt.
-    _purgeCloudAppointment(a).catch(() => {});
-    if (a.calEventId && window.gCal) {
-      try { await gCal.del(a.calEventId, a.calendarId || 'primary'); } catch (_e) {}
-      setWeekEvents(prev => prev.filter(ev => ev.id !== a.calEventId));
-    }
-    var sheetId = a.apptSheetId || myCfg.timesheetId || cfg.sheetId;
-    if (sheetId && a.apptSheetRange && localStorage.getItem('ad_gt')) {
-      try { await gSheets.deleteApptRow(a.id, a, a.apptSheetRange); } catch (_e) {}
-    }
-    toast('Appointment deleted', 'info');
+    return resolvePastApptMisclick(a);
   };
   // 0081: appointment edit-permission helper.
   //   Mains  → can edit/reschedule/delete ANY appointment (their own +
@@ -20898,7 +20867,7 @@ function App() {
                   actionBtn('fly_kite', 'Fly Kite', "Prospect didn't show - set count kept, no incentive"),
                   _canEditAppt(a) && (st === 'met' || st === 'closed') && h('button', { className: 'cad-btn ghost', onClick: () => _openFollowUpApptFlow(a), title: 'Book another appointment from this lead' }, 'Follow-up'),
                   _canEditAppt(a) && h('button', { className: 'cad-btn ghost', onClick: () => _openRescheduleFlow(a), title: 'Reschedule this appointment (syncs to Calendar + Sheets)' }, 'Reschedule'),
-                  _canEditAppt(a) && !a.needsDetails && h('button', { className: 'cad-btn ghost danger', onClick: () => _deleteAppt(a), title: 'Remove this appointment from the calendar + sheet' }, 'Delete'),
+                  _canEditAppt(a) && !a.needsDetails && h('button', { className: 'cad-btn ghost danger', onClick: () => _deleteAppt(a), title: 'Delete as misclick: remove appointment and subtract the Set count' }, 'Delete'),
                   a.needsDetails && h('button', { className: 'cad-btn ghost danger', onClick: () => undoIncompleteSetAppt(a) }, 'Undo'),
                   !_canEditAppt(a) && h('span', { className: 'cad-subtle', style: { fontSize: 11 } }, 'set by ', a.admin || a.adminName || 'admin')
                 );
