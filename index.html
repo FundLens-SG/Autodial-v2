@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0012'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0013'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1693,7 +1693,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0012';
+window.APP_VERSION='2026.05.12.0013';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -4031,7 +4031,13 @@ window.DB={
   async deleteApptUndo(a){if(!_SB)return{ok:false,skipped:true,errors:['Supabase not connected']};var ok=false;var errors=[];try{
     if(a.rowId){var r1=await _SB.schema('autodial').from('appointments').delete().eq('id',a.rowId);if(r1.error)errors.push(r1.error.message);else ok=true}
     if(a.calEventId){var r2=await _SB.schema('autodial').from('appointments').delete().eq('calendar_event_id',a.calEventId);if(r2.error)errors.push(r2.error.message);else ok=true}
-    if(a.phone){var q=_SB.schema('autodial').from('appointments').delete().eq('lead_phone',a.phone);if(a.admin)q=q.eq('admin_email',a.admin);var r3=await q.eq('follow_up','pending');if(r3.error)errors.push(r3.error.message);else ok=true}
+    if(a.phone){
+      var q=_SB.schema('autodial').from('appointments').delete().eq('lead_phone',a.phone);
+      if(a.admin&&String(a.admin).includes('@'))q=q.eq('admin_email',String(a.admin).toLowerCase());
+      if(a.apptDate)q=q.eq('appt_date',a.apptDate);
+      if(a.apptTime)q=q.eq('appt_time',String(a.apptTime).slice(0,5));
+      var r3=await q;if(r3.error)errors.push(r3.error.message);else ok=true
+    }
   }catch(e){errors.push(e?.message||String(e))}return{ok,errors}},
   // Update shaky flag on existing appointment — matched by admin+phone+date (no id required)
   async updateApptShaky(adminEmail,phone,apptDate,shaky){if(!_SB)return false;try{
@@ -6842,6 +6848,32 @@ function _writeDeletedApptIds(ids, max) {
   localStorage.setItem(_deletedApptIdsKey(), JSON.stringify(clean));
   return clean;
 }
+function _apptDeleteKeys(a) {
+  if (!a) return [];
+  var keys = [];
+  var add = v => {
+    v = String(v || '').trim();
+    if (v && !keys.includes(v)) keys.push(v);
+  };
+  var idFields = [a.id, a.dbApptId, a.rowId, a.autoId, a.apptSheetAutoId, a.calEventId, a.calendar_event_id];
+  idFields.forEach(add);
+  idFields.forEach(v => {
+    v = String(v || '').trim();
+    if (v) add('id:' + v);
+  });
+  var phone = normalizePhone(a.phone || a.leadPhone || a.lead_phone || '');
+  var date = String(a.apptDate || a.appt_date || '').slice(0, 10);
+  var time = String(a.apptTime || a.appt_time || '').slice(0, 5);
+  var created = String(a.createdAt || a.created_at || '').trim();
+  var name = String(a.name || a.leadName || a.lead_name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (phone && created) add(phone + '_' + created);
+  if (phone && date) {
+    add(phone + '_' + date);
+    add('pdt:' + phone + '|' + date + '|' + time);
+  }
+  if (name && date) add('ndt:' + name + '|' + date + '|' + time);
+  return keys;
+}
 function _clearDeletedApptIds() {
   localStorage.removeItem(_deletedApptIdsKey());
   localStorage.removeItem('_deletedApptIds');
@@ -6852,16 +6884,11 @@ function _getDelIds() {
 function isApptDeleted(a, delSet) {
   if (!delSet) delSet = _getDelIds();
   if (!delSet.size) return false;
-  if (a.id && delSet.has(String(a.id))) return true;
-  if (a.calEventId && delSet.has(String(a.calEventId))) return true;
-  if (a.phone) {
-    if (delSet.has(a.phone + '_' + (a.createdAt || ''))) return true;
-    if (delSet.has(a.phone + '_' + (a.apptDate || ''))) return true;
-    if (delSet.has(a.phone)) return true;
-  }
+  if (_apptDeleteKeys(a).some(k => delSet.has(k))) return true;
   return false;
 }
 window.isApptDeleted = isApptDeleted;
+window._apptDeleteKeys = _apptDeleteKeys;
 try {
   var _d = _readDeletedApptIds();
   if (Array.isArray(_d) && _d.length) {
@@ -8064,12 +8091,9 @@ function App() {
     }
     // 5: tombstone appointment
     try {
-      var _delIds = _readDeletedApptIds();
-      if (a.calEventId) _delIds.push(String(a.calEventId));
-      if (a.id) _delIds.push(String(a.id));
-      if (a.phone && a.createdAt) _delIds.push(a.phone + '_' + a.createdAt);
-      var _saved = _writeDeletedApptIds(_delIds);
-      _syncDeletedApptIdsCloud(_saved);
+      var _delIds = [..._readDeletedApptIds(), ..._apptDeleteKeys(a)];
+      var _saved = _writeDeletedApptIds(_delIds, 1000);
+      await _syncDeletedApptIdsForOwners(a, _saved);
     } catch (_e) {}
     setAppointments(p => (p || []).filter(x => !_apptHardMatch(x, a)));
     // 0097 fix: also purge from the cloud shared_appointments row
@@ -8315,23 +8339,21 @@ function App() {
     }
     // Tombstone appointment so cloud pull can't re-add it
     try {
-      var _delIds = _readDeletedApptIds();
-      if (a.calEventId) _delIds.push(String(a.calEventId));
-      if (a.id) _delIds.push(String(a.id));
-      if (a.phone && a.createdAt) _delIds.push(a.phone + '_' + a.createdAt);
-      var _saved = _writeDeletedApptIds(_delIds);
-      _syncDeletedApptIdsCloud(_saved);
+      var _delIds = [..._readDeletedApptIds(), ..._apptDeleteKeys(a)];
+      var _saved = _writeDeletedApptIds(_delIds, 1000);
+      await _syncDeletedApptIdsForOwners(a, _saved);
     } catch (_e) {}
+    _removeApptPayoutIncentives(a, ['met', 'tip', 'efyc']);
     setAppointments(p => (p || []).filter(x => !_apptHardMatch(x, a)));
     // 0097 fix: also purge from the cloud — the tombstone is local-only
     // (_syncDeletedApptIdsCloud is a no-op stub since Phase 7B2), so
     // without this call the next cloud pull restored the appt.
-    _purgeCloudAppointment(a).catch(() => {});
+    await _purgeCloudAppointment(a).catch(() => false);
     // Sheet row delete + audit log
     var apptSheetId = a.apptSheetId || myCfg.timesheetId || cfg.sheetId;
     if (apptSheetId && localStorage.getItem('ad_gt')) {
       if (a.apptSheetRange) {
-        try { await gSheets.deleteApptRow(a.id, a, a.apptSheetRange); } catch (_e) {}
+        try { await gSheets.deleteApptRow(apptSheetId, a, a.apptSheetRange); } catch (_e) {}
       }
       try {
         gSheets.appendLog(apptSheetId, {
@@ -8568,6 +8590,7 @@ function App() {
     _liveSyncRef.current.clearGuardUntil = Date.now() + 30000;
     var _wipeCount = 0;
     var _allIdsForBlocklist = [];
+    var _apptsForBlocklist = [];
     await Promise.all(_emailsLow.flatMap(em => [(async () => {
       // Phase 7B2: apptlive_ eliminated. shared_appointments(scope='live')
       // is the single source — both 'live' and 'snapshot' scoped rows are
@@ -8580,11 +8603,9 @@ function App() {
           var p = r.data.data || {};
           var list = Array.isArray(p.data) ? p.data : Array.isArray(p.appts) ? p.appts : Array.isArray(p) ? p : [];
           list.forEach(a => {
-            if (a.id) _allIdsForBlocklist.push(String(a.id));
-            if (a.phone && a.createdAt) _allIdsForBlocklist.push(a.phone + '_' + a.createdAt);
-            if (a.phone && a.apptDate) _allIdsForBlocklist.push(a.phone + '_' + a.apptDate);
+            _apptsForBlocklist.push(a);
+            _allIdsForBlocklist.push(..._apptDeleteKeys(a));
             if (a.calEventId) {
-              _allIdsForBlocklist.push(String(a.calEventId));
               try {
                 window.gCal && gCal.del(a.calEventId).catch(() => {});
               } catch (_e) {}
@@ -8597,11 +8618,9 @@ function App() {
           var p2 = r2.data.data || {};
           var list2 = Array.isArray(p2.data) ? p2.data : Array.isArray(p2.appts) ? p2.appts : Array.isArray(p2) ? p2 : [];
           list2.forEach(a => {
-            if (a.id) _allIdsForBlocklist.push(String(a.id));
-            if (a.phone && a.createdAt) _allIdsForBlocklist.push(a.phone + '_' + a.createdAt);
-            if (a.phone && a.apptDate) _allIdsForBlocklist.push(a.phone + '_' + a.apptDate);
+            _apptsForBlocklist.push(a);
+            _allIdsForBlocklist.push(..._apptDeleteKeys(a));
             if (a.calEventId) {
-              _allIdsForBlocklist.push(String(a.calEventId));
               try {
                 window.gCal && gCal.del(a.calEventId).catch(() => {});
               } catch (_e) {}
@@ -8613,11 +8632,9 @@ function App() {
     (appointments || []).forEach(a => {
       var _aem = (a.admin || '').toLowerCase();
       if (_emailSet.has(_aem) || _emailSet.has((_user?.email || '').toLowerCase()) && !_aem) {
-        if (a.id) _allIdsForBlocklist.push(String(a.id));
-        if (a.phone && a.createdAt) _allIdsForBlocklist.push(a.phone + '_' + a.createdAt);
-        if (a.phone && a.apptDate) _allIdsForBlocklist.push(a.phone + '_' + a.apptDate);
+        _apptsForBlocklist.push(a);
+        _allIdsForBlocklist.push(..._apptDeleteKeys(a));
         if (a.calEventId) {
-          _allIdsForBlocklist.push(String(a.calEventId));
           try {
             window.gCal && gCal.del(a.calEventId).catch(() => {});
           } catch (_e) {}
@@ -8625,11 +8642,26 @@ function App() {
       }
     });
     try {
-      // Phase 7B2: dappt_ remote persist eliminated. Deleted-IDs blocklist
-      // is local-only now (regenerable from shared_appointments harvest).
+      // Keep the delete tombstones cloud-visible so another device cannot
+      // rebuild these appointments from stale shared blobs, Sheets, or DB rows.
       var _existing = _readDeletedApptIds();
       var _merged = [...new Set([..._existing, ..._allIdsForBlocklist.filter(Boolean)])].slice(-2000);
-      _writeDeletedApptIds(_merged, 2000);
+      var _savedBlocklist = _writeDeletedApptIds(_merged, 2000);
+      await Promise.all(_emailsLow.map(async em => {
+        try {
+          var uid = await window._uidByEmail(em);
+          if (uid) await _mergeCloudDeletedIdsForUid(uid, _savedBlocklist);
+        } catch (_e) {}
+      }));
+      if (_user?.id) await _mergeCloudDeletedIdsForUid(_user.id, _savedBlocklist);
+      await Promise.all(_apptsForBlocklist.map(a => DB.deleteApptUndo({
+        rowId: a.dbApptId || a.rowId,
+        calEventId: a.calEventId,
+        phone: a.phone,
+        apptDate: a.apptDate || a.appt_date || '',
+        apptTime: a.apptTime || a.appt_time || '',
+        admin: _apptOwnerCandidates(a)[0] || ''
+      }).catch(() => {})));
     } catch (_e) {}
     // Phase 7B2: of the 9 reset writes that used to fire here (apptlive_,
     // sharedappt_, appts_, shared_appts_, ts_, dsets_, slog_, asess_, live_)
@@ -10240,8 +10272,10 @@ function App() {
   var _dedupAppts = arr => {
     var map = new Map();
     var prio = { closed: 4, met: 3, postponed: 2, pending: 1, fly_kite: 0 };
+    var delSet = _getDelIds();
     (arr || []).forEach(a => {
       if (!a) return;
+      if (isApptDeleted(a, delSet)) return;
       var key = a.dbApptId || a.apptSheetAutoId || a.id || a.calEventId || (a.admin || '') + '|' + (a.phone || '') + '|' + (a.apptDate || '') + '|' + (a.apptTime || '') + '|' + (a.createdAt || '');
       var ex = map.get(key);
       if (!ex) { map.set(key, a); return; }
@@ -10600,22 +10634,99 @@ function App() {
   };
   var _apptHardMatch = (row, target) => {
     if (!row || !target) return false;
-    if (target.id && String(row.id || '') === String(target.id)) return true;
-    if (target.dbApptId && String(row.dbApptId || row.rowId || '') === String(target.dbApptId)) return true;
-    if (target.calEventId && String(row.calEventId || '') === String(target.calEventId)) return true;
-    var p1 = normalizePhone(row.phone || row.lead_phone || '');
+    var rowIds = [row.id, row.dbApptId, row.rowId, row.autoId, row.apptSheetAutoId, row.calEventId, row.calendar_event_id].filter(Boolean).map(String);
+    var targetIds = [target.id, target.dbApptId, target.rowId, target.autoId, target.apptSheetAutoId, target.calEventId, target.calendar_event_id].filter(Boolean).map(String);
+    if (targetIds.some(id => rowIds.includes(id))) return true;
+    var p1 = normalizePhone(row.phone || row.leadPhone || row.lead_phone || '');
     var p2 = normalizePhone(target.phone || target.leadPhone || '');
-    if (!p1 || !p2 || p1 !== p2) return false;
-    if (target.apptDate && row.apptDate && String(row.apptDate) !== String(target.apptDate)) return false;
-    if (target.apptTime && row.apptTime && String(row.apptTime).slice(0, 5) !== String(target.apptTime).slice(0, 5)) return false;
-    return !row.followUp || ['pending', 'postponed'].includes(String(row.followUp).toLowerCase());
+    var d1 = String(row.apptDate || row.appt_date || '').slice(0, 10);
+    var d2 = String(target.apptDate || target.appt_date || '').slice(0, 10);
+    var t1 = String(row.apptTime || row.appt_time || '').slice(0, 5);
+    var t2 = String(target.apptTime || target.appt_time || '').slice(0, 5);
+    if (p1 && p2 && p1 === p2) {
+      if (d1 || d2) {
+        if (d1 && d2 && d1 !== d2) return false;
+        if (t1 && t2 && t1 !== t2) return false;
+        return true;
+      }
+      if (row.createdAt && target.createdAt && String(row.createdAt) === String(target.createdAt)) return true;
+    }
+    var n1 = String(row.name || row.leadName || row.lead_name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    var n2 = String(target.name || target.leadName || target.lead_name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (n1 && n2 && n1 === n2 && d1 && d2 && d1 === d2) {
+      if (t1 && t2 && t1 !== t2) return false;
+      return true;
+    }
+    return false;
   };
-  // Phase 7B2: dappt_ remote persist eliminated. Deleted-IDs blocklist
-  // is local-only now.
-  var _syncDeletedApptIdsCloud = async _ids => false;
+  var _apptOwnerCandidates = target => {
+    var raw = [target?.admin, target?.adminEmail, target?._adminEmail, target?.adminName, target?.caller, target?.callerEmail, target?.ownerEmail, myEmail, window._user?.email];
+    var labels = new Set(raw.filter(x => x && !String(x).includes('@')).map(x => String(x).trim().toLowerCase()));
+    try {
+      Object.entries(adminConfigs || {}).forEach(([email, ac]) => {
+        var names = [ac?.bizName, ac?.name, ac?.displayName, ac?.invoiceName, email].filter(Boolean).map(x => String(x).trim().toLowerCase());
+        if (names.some(x => labels.has(x))) raw.push(email);
+      });
+    } catch (_e) {}
+    return [...new Set(raw.filter(x => x && String(x).includes('@')).map(x => String(x).toLowerCase()))];
+  };
+  var _mergeCloudDeletedIdsForUid = async (uid, ids) => {
+    if (!_SB || !uid || !Array.isArray(ids) || !ids.length) return [];
+    try {
+      var r = await _SB.schema('autodial').from('user_settings').select('ui_preferences').eq('user_id', uid).maybeSingle();
+      var prev = r.data && r.data.ui_preferences && typeof r.data.ui_preferences === 'object' ? r.data.ui_preferences : {};
+      var cloud = Array.isArray(prev.deletedApptIds) ? prev.deletedApptIds : [];
+      var merged = [...new Set([...cloud, ...ids].filter(Boolean).map(String))].slice(-1000);
+      await _SB.schema('autodial').from('user_settings').upsert({
+        user_id: uid,
+        ui_preferences: { ...prev, deletedApptIds: merged, deletedApptIdsUpdatedAt: Date.now() },
+        updated_at: new Date().toISOString()
+      }, { onConflict: 'user_id' });
+      return merged;
+    } catch (e) {
+      console.warn('[deletedApptIds sync]', e?.message || e);
+      return [];
+    }
+  };
+  var _pullDeletedApptIdsCloud = async () => {
+    if (!_SB || !_user?.id) return [];
+    try {
+      var r = await _SB.schema('autodial').from('user_settings').select('ui_preferences').eq('user_id', _user.id).maybeSingle();
+      var ui = r.data && r.data.ui_preferences && typeof r.data.ui_preferences === 'object' ? r.data.ui_preferences : {};
+      return Array.isArray(ui.deletedApptIds) ? ui.deletedApptIds : [];
+    } catch (_e) {
+      return [];
+    }
+  };
+  var _syncDeletedApptIdsCloud = async ids => {
+    if (!_SB || !_user?.id) return [];
+    var clean = [...new Set((Array.isArray(ids) ? ids : []).filter(Boolean).map(String))].slice(-1000);
+    return _mergeCloudDeletedIdsForUid(_user.id, clean);
+  };
+  var _syncDeletedApptIdsForOwners = async (target, ids) => {
+    var clean = [...new Set((Array.isArray(ids) ? ids : []).filter(Boolean).map(String))].slice(-1000);
+    if (!clean.length || !_SB) return clean;
+    var ownerEmails = _apptOwnerCandidates(target);
+    var ownerUids = [];
+    if (_user?.id) ownerUids.push(_user.id);
+    for (var oi = 0; oi < ownerEmails.length; oi++) {
+      try {
+        var oid = await window._uidByEmail(ownerEmails[oi]);
+        if (oid) ownerUids.push(oid);
+      } catch (_e) {}
+    }
+    ownerUids = [...new Set(ownerUids)];
+    await Promise.all(ownerUids.map(uid => _mergeCloudDeletedIdsForUid(uid, clean)));
+    return clean;
+  };
   var _purgeCloudAppointment = async target => {
     if (!_SB || !target) return false;
-    var owners = [...new Set([target.admin, myEmail, window._user?.email].filter(x => x && String(x).includes('@')).map(x => String(x).toLowerCase()))];
+    var tombstones = [...new Set([..._readDeletedApptIds(), ..._apptDeleteKeys(target)].filter(Boolean).map(String))].slice(-1000);
+    try {
+      _writeDeletedApptIds(tombstones, 1000);
+      await _syncDeletedApptIdsForOwners(target, tombstones);
+    } catch (_e) {}
+    var owners = _apptOwnerCandidates(target);
     var changed = false;
     // 0098 fix: also purge from the relational autodial.appointments
     // table. There are TWO cloud surfaces:
@@ -10628,7 +10739,9 @@ function App() {
         rowId: target.dbApptId || target.rowId,
         calEventId: target.calEventId,
         phone: target.phone,
-        admin: target.admin || myEmail
+        apptDate: target.apptDate || target.appt_date || '',
+        apptTime: target.apptTime || target.appt_time || '',
+        admin: owners[0] || (String(target.admin || '').includes('@') ? String(target.admin).toLowerCase() : myEmail)
       });
       if (dbRes?.ok) changed = true;
     } catch (_e) {}
@@ -10842,7 +10955,6 @@ function App() {
           if (undoPhone) {
             try {
               var _d2 = _readDeletedApptIds();
-              if (u.calEventId) _d2.push(String(u.calEventId));
               _matchedAppt = (appointments || []).find(a => _apptHardMatch(a, {
                 id: u.apptId,
                 dbApptId: u.dbApptId,
@@ -10851,11 +10963,17 @@ function App() {
                 apptDate: u.apptDate,
                 apptTime: u.apptTime
               }));
-              if (_matchedAppt?.id) _d2.push(String(_matchedAppt.id));
-              if (_matchedAppt?.calEventId) _d2.push(String(_matchedAppt.calEventId));
-              if (_matchedAppt?.phone && _matchedAppt?.createdAt) _d2.push(_matchedAppt.phone + '_' + _matchedAppt.createdAt);
-              var _savedDelIds = _writeDeletedApptIds(_d2);
-              _syncDeletedApptIdsCloud(_savedDelIds);
+              _d2.push(..._apptDeleteKeys(_matchedAppt || {
+                id: u.apptId,
+                dbApptId: u.dbApptId,
+                calEventId: u.calEventId,
+                phone: undoPhone,
+                apptDate: u.apptDate,
+                apptTime: u.apptTime,
+                name: u.leadName
+              }));
+              var _savedDelIds = _writeDeletedApptIds(_d2, 1000);
+              await _syncDeletedApptIdsForOwners(_matchedAppt || { phone: undoPhone, apptDate: u.apptDate, apptTime: u.apptTime, admin: myEmail }, _savedDelIds);
             } catch (_e) {}
             bgStep('Local appointment removed', true);
             if (_SB && undoPhone) {
@@ -10864,6 +10982,8 @@ function App() {
                   rowId: u.dbApptId,
                   calEventId: u.calEventId,
                   phone: undoPhone,
+                  apptDate: u.apptDate,
+                  apptTime: u.apptTime,
                   admin: myEmail
                 });
                 bgStep('Supabase appointment removed', db.ok, db.errors?.join('; ') || '');
@@ -10878,6 +10998,8 @@ function App() {
                 dbApptId: u.dbApptId || _matchedAppt?.dbApptId,
                 calEventId: u.calEventId || _matchedAppt?.calEventId,
                 phone: undoPhone,
+                apptDate: u.apptDate || _matchedAppt?.apptDate,
+                apptTime: u.apptTime || _matchedAppt?.apptTime,
                 admin: _matchedAppt?.admin || myEmail
               });
               bgStep('Cloud appointment cache removed', cloudGone || !_SB, cloudGone ? '' : 'no matching cloud row');
@@ -10978,7 +11100,6 @@ function App() {
       if (undoPhone) {
         try {
           var _d2 = _readDeletedApptIds();
-          if (u.calEventId) _d2.push(String(u.calEventId));
           _matchedAppt = (appointments || []).find(a => _apptHardMatch(a, {
             id: u.apptId,
             dbApptId: u.dbApptId,
@@ -10987,11 +11108,17 @@ function App() {
             apptDate: u.apptDate,
             apptTime: u.apptTime
           }));
-          if (_matchedAppt?.id) _d2.push(String(_matchedAppt.id));
-          if (_matchedAppt?.calEventId) _d2.push(String(_matchedAppt.calEventId));
-          if (_matchedAppt?.phone && _matchedAppt?.createdAt) _d2.push(_matchedAppt.phone + '_' + _matchedAppt.createdAt);
-          var _savedDelIds = _writeDeletedApptIds(_d2);
-          _syncDeletedApptIdsCloud(_savedDelIds);
+          _d2.push(..._apptDeleteKeys(_matchedAppt || {
+            id: u.apptId,
+            dbApptId: u.dbApptId,
+            calEventId: u.calEventId,
+            phone: undoPhone,
+            apptDate: u.apptDate,
+            apptTime: u.apptTime,
+            name: u.leadName
+          }));
+          var _savedDelIds = _writeDeletedApptIds(_d2, 1000);
+          await _syncDeletedApptIdsForOwners(_matchedAppt || { phone: undoPhone, apptDate: u.apptDate, apptTime: u.apptTime, admin: myEmail }, _savedDelIds);
         } catch (_e) {}
         setAppointments(p => p.filter(a => !_apptHardMatch(a, {
           id: u.apptId,
@@ -11007,6 +11134,8 @@ function App() {
             rowId: u.dbApptId,
             calEventId: u.calEventId,
             phone: undoPhone,
+            apptDate: u.apptDate,
+            apptTime: u.apptTime,
             admin: myEmail
           });
           step('Supabase appointment removed', db.ok, db.errors?.join('; ') || '');
@@ -11017,6 +11146,8 @@ function App() {
           dbApptId: u.dbApptId || _matchedAppt?.dbApptId,
           calEventId: u.calEventId || _matchedAppt?.calEventId,
           phone: undoPhone,
+          apptDate: u.apptDate || _matchedAppt?.apptDate,
+          apptTime: u.apptTime || _matchedAppt?.apptTime,
           admin: _matchedAppt?.admin || myEmail
         });
         step('Cloud appointment cache removed', cloudGone || !_SB, cloudGone ? '' : 'no matching cloud row');
@@ -13003,12 +13134,14 @@ function App() {
         var dbAppts = role === 'main' ? await DB.getAllAppts() : await DB.getAppts(myEmail);
         if (dbAppts.length) {
           setAppointments(prev => {
+            var delSet = _getDelIds();
             var existing = new Set(prev.map(a => (a.phone || '') + '_' + (a.createdAt || '')));
             var merged = [...prev];
             dbAppts.forEach(a => {
-              var key = (a.lead_phone || '') + '_' + (a.created_at || '');
-              if (!existing.has(key)) merged.push({
+              var candidate = {
                 id: a.id || Date.now() + Math.random(),
+                dbApptId: a.id || '',
+                rowId: a.id || '',
                 name: a.lead_name || '',
                 phone: a.lead_phone || '',
                 apptDate: a.appt_date || '',
@@ -13025,7 +13158,10 @@ function App() {
                 remarks: '',
                 gender: '',
                 age: ''
-              });
+              };
+              if (isApptDeleted(candidate, delSet)) return;
+              var key = (a.lead_phone || '') + '_' + (a.created_at || '');
+              if (!existing.has(key)) merged.push(candidate);
             });
             return _dedupAppts(merged);
           });
@@ -13107,6 +13243,18 @@ function App() {
         if (type === 'appt_delete') {
           data = data || {};
           if (role === 'main') setLiveFeed(p => p.filter(f => !(f.type === 'appt' && f.data && (data.id && f.data.id === data.id || data.lead_phone && f.data.lead_phone === data.lead_phone && f.data.admin_email === data.admin_email))));
+          try {
+            _writeDeletedApptIds([..._readDeletedApptIds(), ..._apptDeleteKeys({
+              id: data.id,
+              dbApptId: data.id,
+              calEventId: data.calendar_event_id,
+              phone: data.lead_phone,
+              name: data.lead_name,
+              apptDate: data.appt_date,
+              apptTime: data.appt_time,
+              admin: data.admin_email
+            })], 1000);
+          } catch (_e) {}
           _markSuppressedPush('appts');
           setAppointments(prev => prev.filter(a => !(data.id && String(a.dbApptId || a.rowId || a.id || '') === String(data.id) || data.calendar_event_id && a.calEventId === data.calendar_event_id || data.lead_phone && (a.phone || '') === data.lead_phone && (!data.admin_email || (a.admin || '').toLowerCase() === String(data.admin_email || '').toLowerCase()) && (!data.appt_date || a.apptDate === data.appt_date))));
           if (typeof window._liveSyncPull === 'function') window._liveSyncPull();
@@ -13468,6 +13616,22 @@ function App() {
   var [lastSyncAt, setLastSyncAt] = useState(0);
   var [pullGate, setPullGate] = useState(false);
   var [, setSyncTick] = useState(0);
+  useEffect(() => {
+    if (!_SB || !_user?.id || !pullGate) return;
+    var cancelled = false;
+    (async () => {
+      var cloudIds = await _pullDeletedApptIdsCloud();
+      if (cancelled || !Array.isArray(cloudIds) || !cloudIds.length) return;
+      var local = _readDeletedApptIds();
+      var merged = [...new Set([...local, ...cloudIds].filter(Boolean).map(String))].slice(-1000);
+      if (merged.length !== local.length) {
+        _writeDeletedApptIds(merged, 1000);
+        var ds = _getDelIds();
+        setAppointments(prev => (prev || []).filter(a => !isApptDeleted(a, ds)));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [_user?.id, pullGate]);
   useEffect(() => {
     var t = setInterval(() => setSyncTick(x => x + 1), 30000);
     return () => clearInterval(t);
@@ -13865,8 +14029,8 @@ function App() {
             }
           });
           if (added > 0) {
-            var merged = [...local].slice(-500);
-            _writeDeletedApptIds(merged);
+            var merged = [...local].slice(-1000);
+            _writeDeletedApptIds(merged, 1000);
             var ds = _getDelIds();
             setAppointments(prev => prev.filter(a => !isApptDeleted(a, ds)));
             DBG('[LiveSync] merged', added, 'delIds from remote → stripped local appts');
@@ -14780,7 +14944,8 @@ function App() {
     devId: window._devId
   }));
   _useSyncedPush('sharedappt', appointments, (v, me) => {
-    var mine = (v || []).filter(a => !a.admin || a.admin.toLowerCase() === me);
+    var delIds = _getDelIds();
+    var mine = (v || []).filter(a => (!a.admin || a.admin.toLowerCase() === me) && !isApptDeleted(a, delIds));
     return {
       data: mine.slice(-500),
       ts: Date.now(),
@@ -15508,6 +15673,7 @@ function App() {
       if (k) sheetByKey.set(String(k), s);
     });
     var local = appointments || [];
+    var delSet = _getDelIds();
     var added = 0, updated = 0, removed = 0;
     var nextAppts = [];
     var keepLocalIds = new Set();
@@ -15517,10 +15683,16 @@ function App() {
       var match = sheetByKey.get(String(k));
       if (match) {
         // Sheet wins — overwrite local
-        nextAppts.push(Object.assign({}, la, match, {
+        var mergedRow = Object.assign({}, la, match, {
           id: la.id || match.id,
           autoId: match.autoId || la.autoId
-        }));
+        });
+        if (isApptDeleted(mergedRow, delSet)) {
+          sheetByKey.delete(String(k));
+          removed++;
+          return;
+        }
+        nextAppts.push(mergedRow);
         sheetByKey.delete(String(k));
         keepLocalIds.add(String(la.id || la.autoId));
         updated++;
@@ -15528,19 +15700,20 @@ function App() {
         // Not in sheet — manually deleted; tombstone it
         try {
           var delIds = _readDeletedApptIds();
-          if (la.id) delIds.push(String(la.id));
-          if (la.autoId) delIds.push(String(la.autoId));
-          _writeDeletedApptIds(delIds);
+          delIds.push(..._apptDeleteKeys(la));
+          var savedDelIds = _writeDeletedApptIds(delIds, 1000);
+          _syncDeletedApptIdsForOwners(la, savedDelIds).catch(() => {});
         } catch (_e) {}
         removed++;
       }
     });
     // Anything left in sheetByKey is new from the Sheet
     sheetByKey.forEach(s => {
+      if (isApptDeleted(s, delSet)) return;
       nextAppts.push(s);
       added++;
     });
-    setAppointments(nextAppts);
+    setAppointments(_dedupAppts(nextAppts));
     if (!quiet) toast('✓ Sheet pull: +' + added + ' new · ' + updated + ' updated · ' + removed + ' removed');
     // Phase 7B2: live_appts_<email> push eliminated. Sheet-pulled appts are
     // already merged into the local appointments state above; downstream
@@ -28016,10 +28189,11 @@ function App() {
           notes: 'Deleted by ' + userName + ' ' + new Date().toLocaleString('en-SG')
         })));
         _sheetDeletes.forEach(a => {
-          if (a.id) _d.push(String(a.id));
-          if (a.phone) _d.push(a.phone);
+          _d.push(..._apptDeleteKeys(a));
         });
-        _writeDeletedApptIds(_d);
+        var _savedBulkDelIds = _writeDeletedApptIds(_d, 1000);
+        await Promise.all(_sheetDeletes.map(a => _syncDeletedApptIdsForOwners(a, _savedBulkDelIds).catch(() => {})));
+        await Promise.all(_sheetDeletes.map(a => _purgeCloudAppointment(a).catch(() => false)));
         setAppointments(p => p.filter(a => !selectedAppts.has(a.id)));
         setSelectedAppts(new Set());
         toast('✓ ' + _selCount + ' deleted');
@@ -41255,16 +41429,16 @@ function App() {
         } catch (_logErr) {}
       }
       var delIds = _readDeletedApptIds();
-      if (_a.id) delIds.push(String(_a.id));
-      if (_a.calEventId) delIds.push(String(_a.calEventId));
-      if (_a.phone && (_a.apptDate || _a.createdAt)) delIds.push(_a.phone + '_' + (_a.apptDate || _a.createdAt));
-      var savedDelIds = _writeDeletedApptIds(delIds);
-      await _syncDeletedApptIdsCloud(savedDelIds);
+      delIds.push(..._apptDeleteKeys(_a));
+      var savedDelIds = _writeDeletedApptIds(delIds, 1000);
+      await _syncDeletedApptIdsForOwners(_a, savedDelIds);
       setAppointments(p => p.filter(x => !_apptHardMatch(x, _a)));
       if (_SB) await DB.deleteApptUndo({
         rowId: _a.dbApptId,
         calEventId: _a.calEventId,
         phone: _a.phone,
+        apptDate: _a.apptDate,
+        apptTime: _a.apptTime,
         admin: _a.admin || myEmail
       }).catch(() => ({
         ok: false
