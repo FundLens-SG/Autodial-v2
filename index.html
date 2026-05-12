@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0015'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.13.0144'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1693,7 +1693,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0015';
+window.APP_VERSION='2026.05.13.0144';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -4644,6 +4644,24 @@ var _leadSearchHaystack = lead => {
   ].filter(v => v !== undefined && v !== null && String(v).trim() !== '').join(' ');
 };
 var leadSearchScore = (lead, query) => {
+  // 0142 fix: pre-fix the subsequence fallback ran for EVERY token,
+  // including pure-digit tokens. Typing a phone fragment like "8126"
+  // would return matches from leads where the digits 8→1→2→6
+  // happened to appear in order anywhere across the whole haystack
+  // (phone + notes + sheetRow + income + …). With "income: More
+  // than $1000" and the lead's sheetRow being a 3-digit number,
+  // basically every lead matched at least one digit fuzzy
+  // permutation — making the search useless for phone lookups.
+  //
+  // New rules:
+  //  - Pure-digit token: STRICT phone-digit substring only. No
+  //    subsequence, no acronym, no word-prefix. If "8126" isn't a
+  //    contiguous substring of the lead's phone, the lead is out.
+  //  - Text token (or mixed alphanumeric): keep the existing fuzzy
+  //    chain (substring → word-prefix → acronym → subsequence) but
+  //    raise the subsequence floor to 3 chars to cut false hits.
+  //  - The full query also keeps its top-tier whole-string score
+  //    bonuses when it lands as a substring of fields or phone.
   var raw = String(query || '').trim();
   if (!raw) return 0;
   var q = _leadSearchNormalize(raw);
@@ -4653,6 +4671,7 @@ var leadSearchScore = (lead, query) => {
   var words = fields.split(/\s+/).filter(Boolean);
   var acronym = words.map(w => w[0] || '').join('');
   var qDigits = raw.replace(/\D/g, '');
+  var qIsAllDigits = /^\d+$/.test(qDigits) && qDigits.length === raw.length;
   var phoneDigits = String(lead?.phone || '').replace(/\D/g, '');
   var tokens = q.split(/\s+/).filter(Boolean);
   var score = 0;
@@ -4661,12 +4680,20 @@ var leadSearchScore = (lead, query) => {
   for (var i = 0; i < tokens.length; i++) {
     var tok = tokens[i];
     var tokDigits = tok.replace(/\D/g, '');
+    var tokIsAllDigits = /^\d+$/.test(tok);
     var ok = false;
-    if (fields.includes(tok)) { ok = true; score += 50 + Math.min(15, tok.length); }
-    else if (tokDigits && phoneDigits.includes(tokDigits)) { ok = true; score += 45 + Math.min(12, tokDigits.length); }
-    else if (words.some(w => w.startsWith(tok) || w.includes(tok))) { ok = true; score += 35; }
-    else if (acronym.includes(tok)) { ok = true; score += 30; }
-    else if (tok.length >= 2 && _leadSearchSubsequence(tok, compact)) { ok = true; score += 18; }
+    if (tokIsAllDigits) {
+      // Numeric token — only count a strict phone-digit substring.
+      // Falling back to name/notes fuzzy match made phone searches
+      // return half the queue.
+      if (phoneDigits.includes(tok)) { ok = true; score += 60 + Math.min(20, tok.length); }
+    } else {
+      if (fields.includes(tok)) { ok = true; score += 50 + Math.min(15, tok.length); }
+      else if (tokDigits && phoneDigits.includes(tokDigits)) { ok = true; score += 45 + Math.min(12, tokDigits.length); }
+      else if (words.some(w => w.startsWith(tok) || w.includes(tok))) { ok = true; score += 35; }
+      else if (acronym.includes(tok)) { ok = true; score += 30; }
+      else if (tok.length >= 3 && _leadSearchSubsequence(tok, compact)) { ok = true; score += 18; }
+    }
     if (!ok) return -1;
   }
   if (_leadSearchNormalize(lead?.name || '').startsWith(q)) score += 35;
