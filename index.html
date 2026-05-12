@@ -1686,7 +1686,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0008';
+window.APP_VERSION='2026.05.12.0009';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -4034,7 +4034,22 @@ window.DB={
   }catch(e){console.warn('[updateApptShaky]',e?.message||e);return false}},
   async getAppts(email){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('appointments').select('*').eq('admin_email',email).order('created_at',{ascending:false});return r.data||[]}catch(e){console.warn('[getAppts]',e?.message||e);return[]}},
   async getAllAppts(){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('appointments').select('*').order('created_at',{ascending:false});return r.data||[]}catch(e){console.warn('[getAllAppts]',e?.message||e);return[]}},
-  async updateApptFollowUp(id,followUp,tip){if(!_SB)return;try{await _SB.schema('autodial').from('appointments').update({follow_up:followUp,follow_up_date:new Date().toISOString(),tip:tip||0}).eq('id',id)}catch(e){console.warn('[updateApptFollowUp]',e?.message||e)}},
+  async updateApptFollowUp(id,followUp,tip,match){
+    if(!_SB)return false;
+    var payload={follow_up:followUp||'pending',follow_up_date:new Date().toISOString(),tip:tip||0};
+    var wrote=false;
+    async function run(q){try{var r=await q;if(r&&r.error)throw r.error;wrote=true}catch(e){console.warn('[updateApptFollowUp]',e?.message||e)}}
+    try{
+      if(id)await run(_SB.schema('autodial').from('appointments').update(payload).eq('id',id));
+      if(match&&match.calEventId)await run(_SB.schema('autodial').from('appointments').update(payload).eq('calendar_event_id',match.calEventId));
+      if(match&&match.phone&&match.apptDate){
+        var q=_SB.schema('autodial').from('appointments').update(payload).eq('lead_phone',match.phone).eq('appt_date',match.apptDate);
+        if(match.admin)q=q.eq('admin_email',match.admin);
+        await run(q);
+      }
+      return wrote;
+    }catch(e){console.warn('[updateApptFollowUp]',e?.message||e);return false}
+  },
 
   // Incentives
   async saveIncentive(inc){if(!_SB)return;try{await _SB.schema('autodial').from('incentives').insert({
@@ -8154,75 +8169,113 @@ function App() {
   // banner, followUp doesn't update, banner doesn't shrink, popup
   // looks frozen. This helper resolves the match across every field
   // we have, so the update always lands on the right row.
+  var _normApptFollowUp = v => {
+    var s = String(v || 'pending').toLowerCase().trim().replace(/[\s-]+/g, '_');
+    if (s === 'flykite' || s === 'fly_kite' || s === 'no_show') return 'fly_kite';
+    if (s === 'closed' || s === 'met' || s === 'postponed' || s === 'pending') return s;
+    return 'pending';
+  };
+  var _apptStableId = a => String(a?.dbApptId || a?.apptSheetAutoId || a?.id || a?.calEventId || '').trim();
+  var _apptOwnerEmail = a => String(a?.admin || a?.adminEmail || a?.adminName || myEmail || '').toLowerCase();
   var _matchAppt = (x, target) => {
     if (!x || !target) return false;
+    if (target.dbApptId && x.dbApptId === target.dbApptId) return true;
     if (target.id && x.id === target.id) return true;
     if (target.calEventId && x.calEventId === target.calEventId) return true;
-    if (target.phone && x.phone === target.phone && target.apptDate && x.apptDate === target.apptDate && target.apptTime && x.apptTime === target.apptTime) return true;
+    if (target.phone && x.phone === target.phone && target.apptDate && x.apptDate === target.apptDate && (!target.apptTime || !x.apptTime || x.apptTime === target.apptTime)) return true;
     return false;
+  };
+  var _sameApptIncentive = (inc, a, type, owner) => {
+    if (!inc || inc.type !== type) return false;
+    if (owner && String(inc.admin || '').toLowerCase() !== owner) return false;
+    var apptId = _apptStableId(a);
+    if (apptId && String(inc.apptId || '') === apptId) return true;
+    var lead = String(a?.name || a?.leadName || '').toLowerCase();
+    if (!lead || String(inc.leadName || '').toLowerCase() !== lead) return false;
+    var phone = String(a?.phone || '');
+    if (phone && String(inc.phone || inc.leadPhone || '') === phone) return true;
+    var day = String(a?.apptDate || a?.createdAt || '').slice(0, 10);
+    return !!day && String(inc.apptOriginalDate || '').slice(0, 10) === day;
+  };
+  var _metIncentiveAmount = a => {
+    var owner = _apptOwnerEmail(a);
+    var ac = (adminConfigs || {})[owner] || {};
+    return n(ac.metIncentive ?? myCfg.metIncentive, 10);
+  };
+  var _ensureMetIncentive = (a, ts) => {
+    var owner = _apptOwnerEmail(a) || String(myEmail || '').toLowerCase();
+    var amt = _metIncentiveAmount(a);
+    if (!(amt > 0)) return 0;
+    setIncentives(p => {
+      var list = p || [];
+      if (list.some(inc => _sameApptIncentive(inc, a, 'met', owner))) return list;
+      return [...list, {
+        id: Date.now() + Math.random(),
+        apptId: _apptStableId(a),
+        phone: a.phone || '',
+        admin: a.admin || a.adminEmail || a.adminName || myEmail,
+        leadName: a.name || a.leadName || '',
+        type: 'met',
+        amount: amt,
+        date: ts || new Date().toISOString(),
+        apptOriginalDate: a.apptDate || a.createdAt || ts || new Date().toISOString(),
+        paid: false
+      }];
+    });
+    return amt;
+  };
+  var _removeApptPayoutIncentives = (a, types) => {
+    var wanted = new Set(types || []);
+    var owner = _apptOwnerEmail(a) || String(myEmail || '').toLowerCase();
+    setIncentives(p => (p || []).filter(inc => !(wanted.has(inc.type) && _sameApptIncentive(inc, a, inc.type, owner))));
+  };
+  var _persistApptFollowUp = async (appt, followUp, tip) => {
+    try {
+      var dbId = appt?.dbApptId || (/^appt_/.test(String(appt?.id || '')) ? '' : appt?.id || '');
+      await DB.updateApptFollowUp(dbId, followUp || 'pending', tip || 0, {
+        calEventId: appt?.calEventId || '',
+        phone: appt?.phone || '',
+        apptDate: appt?.apptDate || '',
+        admin: appt?.admin || ''
+      });
+    } catch (e) {
+      console.warn('[persistApptFollowUp]', e?.message || e);
+    }
   };
   var resolvePastApptStatus = useCallback((a, status) => {
     if (!a || !status) return;
-    if (status === 'closed') {
-      setTipModal({ appt: a, fromMet: false });
+    var wanted = _normApptFollowUp(status);
+    if (wanted === 'closed') {
+      setTipModal({ appt: a, fromMet: _normApptFollowUp(a.followUp) === 'met' });
       setTipAmountInput('');
       setAdminTipAmountInput('');
       return;
     }
     var ts = new Date().toISOString();
-    var localStatus = status; // keep canonical: 'met' | 'fly_kite' | 'postponed' | 'closed'
-    var sheetStatus = status === 'met' ? 'Met'
-                    : status === 'fly_kite' ? 'Fly Kite'
-                    : status === 'postponed' ? 'Postponed'
-                    : status === 'closed' ? 'Closed'
-                    : status;
-    // 0094: optimistic UI — local state + toast fire immediately, then
-    // sync to Sheets in the background.
-    // 0097 fix: also write back to the admin's cloud row when a Main
-    // resolves an admin's appt. Pre-fix, fly_kite/met/postponed/closed
-    // were local-only; next pull from admin's shared_appointments
-    // restored the original status and the past-appt banner kept
-    // re-appearing.
-    var updated = { ...a, followUp: localStatus, followUpDate: ts };
-    setAppointments(p => (p || []).map(x => _matchAppt(x, a) ? updated : x));
-    // 0124: Met → adds the per-admin metIncentive (Main configures in
-    // Admin config). Fly Kite stays $0 by design (set count kept, no
-    // bonus). Closed opens the tip flow so the user can enter the
-    // tip/EFYC amount, which then becomes the incentive. Without this
-    // the Claude past-appt banner + new apptsView outcome buttons
-    // changed status but never paid anyone — incentive came only from
-    // the legacy inline appt-row buttons that the Claude shell skips.
-    if (status === 'met') {
-      var _ownerEm = String(a.admin || a.adminEmail || a.adminName || myEmail || '').toLowerCase();
-      var _adminAc = (adminConfigs || {})[_ownerEm] || {};
-      var _metAmt = n(_adminAc.metIncentive ?? myCfg.metIncentive, 10);
-      if (_metAmt > 0) {
-        setIncentives(p => [...(p || []), {
-          id: Date.now() + Math.random(),
-          admin: a.admin || myEmail,
-          leadName: a.name || a.leadName || '',
-          type: 'met',
-          amount: _metAmt,
-          date: ts,
-          apptOriginalDate: a.createdAt || ts,
-          paid: false
-        }]);
-      }
-    }
-    var emoji = status === 'met' ? '✓' : status === 'fly_kite' ? '🪁' : status === 'postponed' ? '⏰' : '🏁';
-    if (status === 'met') {
-      var _ownerEm2 = String(a.admin || a.adminEmail || a.adminName || myEmail || '').toLowerCase();
-      var _adminAc2 = (adminConfigs || {})[_ownerEm2] || {};
-      var _metAmt2 = n(_adminAc2.metIncentive ?? myCfg.metIncentive, 10);
-      toast(emoji + ' ' + (a.name || 'appointment') + ' → Met · +$' + _metAmt2 + ' incentive', 'info');
+    var sheetStatus = wanted === 'met' ? 'Met'
+                    : wanted === 'fly_kite' ? 'Fly Kite'
+                    : wanted === 'postponed' ? 'Postponed'
+                    : 'Pending';
+    var updated = { ...a, followUp: wanted, followUpDate: ts };
+    updated.tip = 0;
+    updated.efyc = 0;
+    setAppointments(p => (p || []).map(x => _matchAppt(x, a) ? { ...x, ...updated } : x));
+    try { _liveSyncRef.current.localApptsGuardUntil = Date.now() + 8000; } catch (_e) {}
+    if (wanted === 'met') {
+      var metAmt = _ensureMetIncentive(updated, ts);
+      _removeApptPayoutIncentives(updated, ['tip', 'efyc']);
+      toast('Met: ' + (a.name || 'appointment') + (metAmt > 0 ? ' +$' + metAmt + ' incentive' : ''), 'info');
     } else {
-      toast(emoji + ' ' + (a.name || 'appointment') + ' → ' + sheetStatus, 'info');
+      _removeApptPayoutIncentives(updated, ['met', 'tip', 'efyc']);
+      var label = wanted === 'fly_kite' ? 'Fly Kite' : wanted === 'postponed' ? 'Postponed' : 'Pending';
+      toast((a.name || 'appointment') + ' -> ' + label, 'info');
     }
-    syncApptSheet(updated, { followUp: sheetStatus }).catch(() => {});
-    if (a.admin && a.admin.toLowerCase() !== (myEmail || '').toLowerCase()) {
+    _persistApptFollowUp(updated, wanted, 0);
+    syncApptSheet(updated, { status: 'Set', followUp: sheetStatus, tip: 0 }).catch(() => {});
+    if (updated.admin && updated.admin.toLowerCase() !== (myEmail || '').toLowerCase()) {
       _mainWritebackAdminAppt(updated);
     }
-    // 0125: deps intentionally omit myCfg.* — myCfg is a derived var
+    // 0125: deps intentionally omit myCfg.* - myCfg is a derived var
     // declared further down; reading myCfg.metIncentive at hook-init
     // time throws (undefined). The closure picks up latest myCfg at
     // call time, and adminConfigs being in the deps is enough to
@@ -10200,24 +10253,15 @@ function App() {
   };
   var _dedupAppts = arr => {
     var map = new Map();
-    var prio = {
-      closed: 4,
-      met: 3,
-      postponed: 2,
-      pending: 1,
-      flykite: 0
-    };
+    var prio = { closed: 4, met: 3, postponed: 2, pending: 1, fly_kite: 0 };
     (arr || []).forEach(a => {
       if (!a) return;
-      var key = a.leadId || a.id || a.calEventId || (a.admin || '') + '|' + (a.phone || '') + '|' + (a.apptDate || '') + '|' + (a.followUp || 'pending');
+      var key = a.dbApptId || a.apptSheetAutoId || a.id || a.calEventId || (a.admin || '') + '|' + (a.phone || '') + '|' + (a.apptDate || '') + '|' + (a.apptTime || '') + '|' + (a.createdAt || '');
       var ex = map.get(key);
-      if (!ex) {
-        map.set(key, a);
-        return;
-      }
-      var pA = prio[a.followUp] ?? -1,
-        pE = prio[ex.followUp] ?? -1;
-      if (pA > pE || pA === pE && new Date(a.followUpDate || a.createdAt || 0) > new Date(ex.followUpDate || ex.createdAt || 0)) map.set(key, a);
+      if (!ex) { map.set(key, a); return; }
+      var pA = prio[_normApptFollowUp(a.followUp)] ?? -1;
+      var pE = prio[_normApptFollowUp(ex.followUp)] ?? -1;
+      if (pA > pE || (pA === pE && new Date(a.followUpDate || a.createdAt || 0) > new Date(ex.followUpDate || ex.createdAt || 0))) map.set(key, a);
     });
     return Array.from(map.values());
   };
@@ -20833,13 +20877,21 @@ function App() {
             // four call resolvePastApptStatus → same handlers used by
             // the past-appt banner, so no duplicate state paths.
             h('span', { className: 'cad-appt-actions' },
-              _canEditAppt(a) && (a.followUp || 'pending') === 'pending' && h('button', { className: 'cad-btn ghost', onClick: () => resolvePastApptStatus(a, 'met'), title: 'Prospect attended — adds the configured met incentive' }, '✓ Met'),
-              _canEditAppt(a) && (a.followUp || 'pending') === 'pending' && h('button', { className: 'cad-btn ghost', onClick: () => resolvePastApptStatus(a, 'closed'), title: 'Met + signed/paid — enter the tip/EFYC amount next' }, '🏁 Closed'),
-              _canEditAppt(a) && (a.followUp || 'pending') === 'pending' && h('button', { className: 'cad-btn ghost', onClick: () => resolvePastApptStatus(a, 'fly_kite'), title: "Prospect didn't show — set count kept, no incentive" }, '🪁 Fly Kite'),
-              _canEditAppt(a) && h('button', { className: 'cad-btn ghost', onClick: () => _openRescheduleFlow(a), title: 'Edit / reschedule (syncs to Calendar + Sheets)' }, '✎ Edit'),
-              _canEditAppt(a) && !a.needsDetails && h('button', { className: 'cad-btn ghost danger', onClick: () => _deleteAppt(a), title: 'Remove this appointment from the calendar + sheet' }, '🗑 Delete'),
-              a.needsDetails && h('button', { className: 'cad-btn ghost danger', onClick: () => undoIncompleteSetAppt(a) }, 'Undo'),
-              !_canEditAppt(a) && h('span', { className: 'cad-subtle', style: { fontSize: 11 } }, 'set by ', a.admin || a.adminName || 'admin')
+              (() => {
+                var st = _normApptFollowUp(status);
+                var actionBtn = (key, label, title) => _canEditAppt(a) && st !== key && h('button', { className: 'cad-btn ghost', onClick: () => resolvePastApptStatus(a, key), title }, label);
+                return h(React.Fragment, null,
+                  actionBtn('pending', 'Pending', 'Reset this appointment follow-up to pending'),
+                  actionBtn('met', 'Met', 'Prospect attended - adds the configured met incentive'),
+                  actionBtn('closed', 'Closed', 'Met + signed/paid - enter EFYC/tip next'),
+                  actionBtn('postponed', 'Postpone', 'Mark as postponed / reschedule later'),
+                  actionBtn('fly_kite', 'Fly Kite', "Prospect didn't show - set count kept, no incentive"),
+                  _canEditAppt(a) && h('button', { className: 'cad-btn ghost', onClick: () => _openRescheduleFlow(a), title: 'Edit / reschedule (syncs to Calendar + Sheets)' }, 'Edit'),
+                  _canEditAppt(a) && !a.needsDetails && h('button', { className: 'cad-btn ghost danger', onClick: () => _deleteAppt(a), title: 'Remove this appointment from the calendar + sheet' }, 'Delete'),
+                  a.needsDetails && h('button', { className: 'cad-btn ghost danger', onClick: () => undoIncompleteSetAppt(a) }, 'Undo'),
+                  !_canEditAppt(a) && h('span', { className: 'cad-subtle', style: { fontSize: 11 } }, 'set by ', a.admin || a.adminName || 'admin')
+                );
+              })()
             )
           );
         })
@@ -22805,23 +22857,24 @@ function App() {
       setTipAmountInput('');
       setAdminTipAmountInput('');
       setAppointments(p => (p || []).map(x => _matchAppt(x, a) ? { ...x, ...update } : x));
-      try { _liveSyncRef.current.localApptsGuardUntil = Date.now() + 6000; } catch (_e) {}
-      if (tipModal.fromMet) {
-        setIncentives(p => (p || []).filter(inc => !(inc.type === 'met' && inc.leadName === a.name && (inc.admin || '').toLowerCase() === (ownerEmail || meEmail))));
-      }
+      try { _liveSyncRef.current.localApptsGuardUntil = Date.now() + 8000; } catch (_e) {}
+      var metAmt = _ensureMetIncentive(updated, now);
+      _removeApptPayoutIncentives(updated, ['tip', 'efyc']);
       if (tipAmt > 0) {
         setIncentives(p => [...(p || []), {
           id: Date.now() + Math.random(),
-          admin: a.admin || a.adminEmail || a.adminName || myEmail,
-          leadName: a.name || '',
+          apptId: _apptStableId(updated),
+          phone: updated.phone || '',
+          admin: updated.admin || updated.adminEmail || updated.adminName || myEmail,
+          leadName: updated.name || '',
           type: 'tip',
           amount: tipAmt,
           date: now,
-          apptOriginalDate: a.createdAt || now,
+          apptOriginalDate: updated.apptDate || updated.createdAt || now,
           paid: false
         }]);
       }
-      toast('Closed ' + (a.name || 'appointment') + (efycAmt > 0 ? ' - EFYC $' + efycAmt : '') + (tipAmt > 0 ? ' - Tip $' + tipAmt : ''), 'info');
+      toast('Closed ' + (a.name || 'appointment') + (metAmt > 0 ? ' - Met +$' + metAmt : '') + (efycAmt > 0 ? ' - EFYC $' + efycAmt : '') + (tipAmt > 0 ? ' - Tip $' + tipAmt : ''), 'info');
       var celebrateAmt = tipAmt > 0 ? tipAmt : efycAmt;
       var tier = Math.min(10, Math.floor(celebrateAmt / 100));
       if (tier > 0) {
@@ -22829,6 +22882,7 @@ function App() {
         window.playTipSound && window.playTipSound(tier);
         setTimeout(() => setCelebration(null), Math.min(6000, 2500 + tier * 350));
       }
+      _persistApptFollowUp(updated, 'closed', tipAmt);
       (async () => {
         if (a.calEventId && window.gCal) {
           try {
