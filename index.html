@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0005'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0006'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -962,6 +962,7 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 @media(min-width:1200px){.cad-script{display:grid;grid-template-columns:minmax(280px,.9fr) minmax(280px,1.1fr);grid-template-rows:minmax(0,1fr)}.cad-script-main{border-right:1px solid var(--ad-line-1)}.cad-script-tabs{border-top:0;min-height:0;display:flex;flex-direction:column}.cad-script-tabs .cad-objections{max-height:none;min-height:0;flex:1}}
 .cad-time-axis,.cad-time-day{height:var(--cad-calendar-height,900px)}.cad-time-board.compact .cad-time-axis,.cad-time-board.compact .cad-time-day{height:var(--cad-calendar-height,900px)}.cad-time-block{display:flex;flex-direction:column;gap:2px;line-height:1.15;white-space:normal}.cad-time-block strong{font-size:10px;line-height:1.1}.cad-time-block small{font-size:9px;line-height:1.12;opacity:.86;font-weight:700}.cad-time-free{z-index:1}.cad-time-busy{z-index:3}.cad-time-cb{z-index:4}.cad-time-line:nth-child(2n){background:rgba(255,255,255,.01)}.cad-time-free:hover{filter:brightness(1.08);border-color:rgba(74,222,128,.9)}
 .cad-time-now{position:absolute;left:0;right:0;height:0;border-top:2px solid var(--ad-red);z-index:5;pointer-events:none}.cad-time-now i{position:absolute;left:2px;top:-4px;width:8px;height:8px;border-radius:999px;background:var(--ad-red);box-shadow:0 0 0 3px rgba(248,113,113,.16)}
+.cad-calendar-controls-row>.cad-inline{flex-wrap:wrap;justify-content:flex-end}.cad-cal-size-control{display:inline-flex;align-items:center;gap:8px;min-height:34px;padding:5px 9px;border-radius:10px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-1);font-size:11px;font-weight:800}.cad-cal-size-control input{width:116px;min-height:0;padding:0;accent-color:var(--ad-brass)}.cad-cal-size-control .cad-mono{color:var(--ad-brass-2);font-size:10px}@media(max-width:900px){.cad-calendar-controls-row{align-items:flex-start!important}.cad-calendar-controls-row>.cad-inline{justify-content:flex-start}.cad-cal-size-control{width:100%;justify-content:space-between}.cad-cal-size-control input{width:auto;flex:1;max-width:180px}}
 .cad-lead-list{display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--ad-line-1);border-radius:12px;background:var(--ad-bg-1)}
 .cad-lead-row{display:grid;grid-template-columns:minmax(180px,1.35fr) 130px 90px 1fr auto;gap:14px;align-items:center;padding:13px 16px;border-bottom:1px solid var(--ad-line-1);font-size:12px}
 .cad-lead-row:last-child{border-bottom:0}.cad-lead-row.head{background:var(--ad-bg-2);color:var(--ad-t-3);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
@@ -1684,7 +1685,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0005';
+window.APP_VERSION='2026.05.12.0006';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -9876,6 +9877,7 @@ function App() {
   var [showInvited, setShowInvited] = useState(load('showinv') ?? true);
   var [showDeclined, setShowDeclined] = useState(load('showdecl') ?? false);
   var [calFilterOpen, setCalFilterOpen] = useState(load('calFilterOpen') ?? true);
+  var [calHourPx, setCalHourPx] = useState(() => _slotMinutes(load('calHourPx'), 48, 32, 72));
   var [callLog, setCallLog] = useState([]);
   var [apptTravelBefore, setApptTravelBefore] = useState(() => _slotMinutes(load('apptTravelBefore'), 0, 0, 240));
   var [apptDuration, setApptDuration] = useState(() => _slotMinutes(load('apptDur'), 60, 1, 480));
@@ -12271,6 +12273,9 @@ function App() {
     }).catch(function () {});
   }, [showInvited, showDeclined]);
   useEffect(() => {
+    save('calHourPx', calHourPx);
+  }, [calHourPx]);
+  useEffect(() => {
     save('prcv', paymentsReceived);
     // Phase 7B2: prcv_ remote cache eliminated — derived from payments rows.
   }, [paymentsReceived]);
@@ -13208,11 +13213,10 @@ function App() {
                   });
                 });
               });
-              if (fbEvents.length) {
-                var fbFiltered = applyCalFilters(fbEvents);
-                setWeekEvents(fbFiltered);
-                DBG('[Cal]', fbFiltered.length, 'busy windows from freeBusy');
-              }
+              var fbFiltered = applyCalFilters(fbEvents);
+              setWeekEvents(fbFiltered);
+              setWeekEventsWeekKey(weekKey);
+              DBG('[Cal]', fbFiltered.length, 'busy windows from freeBusy');
             }
           } catch (e) {
             console.warn('[FreeBusy]', e?.message || e);
@@ -21247,7 +21251,7 @@ function App() {
       var k0 = localDateKey(dLocal);
       calDays.push({ key: k0, date: dLocal, events: (calByDay[k0] || []).slice().sort((a, b) => new Date(a.start?.dateTime || a.start?.date || 0) - new Date(b.start?.dateTime || b.start?.date || 0)) });
     }
-    var BIZ_START = 7, BIZ_END = 22, HOUR_PX = 60;
+    var BIZ_START = 7, BIZ_END = 22, HOUR_PX = _slotMinutes(calHourPx, 48, 32, 72);
     var calTodayKey = localDateKey(new Date());
     var cadCalendarWeekReady = weekEventsWeekKey === localDateKey(calStart);
     var cadSlotClock = dt => String(dt.getHours()).padStart(2, '0') + ':' + String(dt.getMinutes()).padStart(2, '0');
@@ -21476,10 +21480,15 @@ function App() {
       if (role === 'main') setCalListReady(false);
       setCalRefreshTrigger(p => p + 1);
     };
-    var cadCalendarControls = h('div', { className: 'cad-card', style: { padding: 12, marginBottom: 10 } },
-      h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', gap: 10 } },
+    var cadCalendarControls = h('div', { className: 'cad-card cad-calendar-controls', style: { padding: 12, marginBottom: 10 } },
+      h('div', { className: 'cad-inline cad-calendar-controls-row', style: { justifyContent: 'space-between', gap: 10 } },
         h('span', { className: 'cad-muted', style: { fontSize: 13 } }, fmtDayMonth(calStart), ' - ', fmtDayMonth(new Date(calStart.getTime() + 6 * 86400000)), ' - ', (weekEvents || []).length, ' events', calRefreshing ? ' - loading' : ''),
         h('div', { className: 'cad-inline' },
+          h('label', { className: 'cad-cal-size-control', title: 'Adjust calendar vertical density' },
+            h('span', null, 'Size'),
+            h('input', { type: 'range', min: 32, max: 72, step: 4, value: HOUR_PX, onChange: e => setCalHourPx(_slotMinutes(e.target.value, 48, 32, 72)) }),
+            h('span', { className: 'cad-mono' }, HOUR_PX, 'px/hr')
+          ),
           h('button', { type: 'button', className: 'cad-btn', onClick: () => cadGoCalendarWeek(-1), title: 'Previous week' }, '<'),
           h('button', { type: 'button', className: 'cad-btn', onClick: () => cadGoCalendarWeek(0), title: 'Current week' }, 'Today'),
           h('button', { type: 'button', className: 'cad-btn', onClick: () => cadGoCalendarWeek(1), title: 'Next week' }, '>'),
