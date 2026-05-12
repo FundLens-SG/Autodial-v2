@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0004'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0005'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1684,7 +1684,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0004';
+window.APP_VERSION='2026.05.12.0005';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -4885,6 +4885,21 @@ function _htmlToPlain(html, max) {
   template.innerHTML = _sanitizeRichHtml(String(html || ''));
   return _plainText(template.content.textContent || template.innerText || '', max || 4000);
 }
+function _decodeHtmlEntities(value) {
+  var text = String(value || '');
+  if (!/&(?:lt|gt|amp|quot|#39|#x27);/i.test(text)) return text;
+  var textarea = document.createElement('textarea');
+  textarea.innerHTML = text;
+  return textarea.value;
+}
+function _coerceRichAnswerHtml(raw) {
+  var text = String(raw || '');
+  if (/&lt;\/?[a-z][\s\S]*?&gt;/i.test(text) && !/<\/?[a-z][\s\S]*?>/i.test(text)) {
+    text = _decodeHtmlEntities(text);
+  }
+  if (/<\/?[a-z][\s\S]*?>/i.test(text)) return _sanitizeRichHtml(text);
+  return _sanitizeRichHtml(_escapeHtml(text.slice(0, 5000)).replace(/\n/g, '<br>'));
+}
 var OBJECTION_CATEGORIES = [{
   key: 'common',
   label: 'Common',
@@ -4913,7 +4928,7 @@ function _normalizeObjections(list) {
   return list.map(function (o, i) {
     var title = _plainText(o?.title || o?.label || '', 80);
     var rawAnswer = String(o?.answerHtml || o?.html || o?.answer || o?.response || '');
-    var answer = /<\/?[a-z][\s\S]*>/i.test(rawAnswer) ? _sanitizeRichHtml(rawAnswer) : _escapeHtml(_plainText(rawAnswer, 5000)).replace(/\n/g, '<br>');
+    var answer = _coerceRichAnswerHtml(rawAnswer);
     return {
       id: String(o?.id || 'obj_' + i + '_' + title.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 32)),
       title,
@@ -10360,6 +10375,7 @@ function App() {
     value: defaultValue || '',
     placeholder: opts.placeholder || '',
     multiline: !!opts.multiline,
+    rich: !!opts.rich,
     confirmLabel: opts.confirmLabel || 'Save',
     cancelLabel: opts.cancelLabel || 'Cancel',
     resolve
@@ -11868,7 +11884,7 @@ function App() {
       rich: true
     });
     if (!answer) return;
-    var answerHtml = /<[a-z][^>]*>/i.test(answer) ? safeRich(answer) : cadPlainToHtml(answer);
+    var answerHtml = _coerceRichAnswerHtml(answer);
     var item = {
       id: 'obj_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
       title,
@@ -11885,15 +11901,16 @@ function App() {
       title: 'Edit objection'
     });
     if (!title) return;
-    var answer = await promptAsync('Suggested answer / talk track', _htmlToPlain(item.answer || '', 4000), {
+    var answer = await promptAsync('Suggested answer / talk track', _coerceRichAnswerHtml(item.answer || item.response || item.body || ''), {
       title: 'Edit talk track',
-      multiline: true
+      multiline: true,
+      rich: true
     });
     if (!answer) return;
     saveObjections((cfg.objections || []).map(o => o.id === item.id ? {
       ...o,
       title,
-      answer
+      answer: _coerceRichAnswerHtml(answer)
     } : o));
     setActiveObjectionId(item.id);
     toast('Objection updated');
@@ -19709,12 +19726,12 @@ function App() {
       // toolbar as the calling-script editor. Existing answer HTML
       // (color spans, bolds, etc.) is preserved through the round-trip
       // — no more lossy plain-text conversion that stripped formatting.
-      var existingHtml = safeRich(item.answer || item.response || item.body || '');
+      var existingHtml = _coerceRichAnswerHtml(item.answer || item.response || item.body || '');
       var answer = await promptAsync('Suggested answer / talk track', existingHtml, { title: 'Edit talk track', multiline: true, rich: true });
       if (answer === null) return;
       // If the input came back as plain text (legacy fallback), wrap it;
       // otherwise it's already HTML from the rich editor — keep as-is.
-      var answerHtml = /<[a-z][^>]*>/i.test(answer) ? safeRich(answer) : cadPlainToHtml(answer);
+      var answerHtml = _coerceRichAnswerHtml(answer);
       var list = cadEditableObjectionBase();
       var found = false;
       var next = list.map(o => {
