@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0014'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0015'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1693,7 +1693,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0014';
+window.APP_VERSION='2026.05.12.0015';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -4539,9 +4539,65 @@ var openTelHref = (phone, delay = 0) => {
   }, wait);
 };
 var LS = k => 'ad3_' + k + '_' + (window._user?.id || 'l');
+var PERSONAL_PRESET_KEYS = new Set([
+  'starget',
+  'mainMode',
+  'apptDur',
+  'apptTravelBefore',
+  'apptTravelAfter',
+  'preferredApptTimes',
+  'calvis',
+  'showinv',
+  'showdecl',
+  'calHourPx',
+  'calvm',
+  'apptCalendarId',
+  'invitees',
+  'apptRecentLocations',
+  'pickerVM'
+]);
+var PERSONAL_PRESET_BACKUP_KEY = () => 'autodial_personal_presets_' + (window._user?.id || 'l');
+var _readPersonalPresetBackup = () => {
+  try {
+    var raw = localStorage.getItem(PERSONAL_PRESET_BACKUP_KEY());
+    return raw ? JSON.parse(raw) || {} : {};
+  } catch (_e) {
+    return {};
+  }
+};
+var _writePersonalPresetBackup = (k, v) => {
+  if (!PERSONAL_PRESET_KEYS.has(k)) return;
+  try {
+    var all = _readPersonalPresetBackup();
+    all.__ts = all.__ts || {};
+    if (v === null || v === undefined) {
+      delete all[k];
+      delete all.__ts[k];
+    } else {
+      all[k] = v;
+      all.__ts[k] = Date.now();
+    }
+    all.__version = window.APP_VERSION || all.__version || '';
+    localStorage.setItem(PERSONAL_PRESET_BACKUP_KEY(), JSON.stringify(all));
+  } catch (_e) {}
+};
+var _personalPresetTs = k => {
+  try {
+    var all = _readPersonalPresetBackup();
+    return +(all.__ts && all.__ts[k] || 0);
+  } catch (_e) {
+    return 0;
+  }
+};
 var load = k => {
   try {
-    return JSON.parse(localStorage.getItem(LS(k)));
+    var raw = localStorage.getItem(LS(k));
+    if (raw !== null) return JSON.parse(raw);
+    if (PERSONAL_PRESET_KEYS.has(k)) {
+      var backup = _readPersonalPresetBackup();
+      if (Object.prototype.hasOwnProperty.call(backup, k)) return backup[k];
+    }
+    return null;
   } catch {
     return null;
   }
@@ -4549,7 +4605,72 @@ var load = k => {
 var save = (k, v) => {
   try {
     localStorage.setItem(LS(k), JSON.stringify(v));
+    _writePersonalPresetBackup(k, v);
   } catch {}
+};
+var _leadSearchNormalize = v => {
+  var s = String(v || '').toLowerCase();
+  try { s = s.normalize('NFKD').replace(/[\u0300-\u036f]/g, ''); } catch (_e) {}
+  return s.replace(/[^a-z0-9+@.\s_-]/g, ' ').replace(/\s+/g, ' ').trim();
+};
+var _leadSearchSubsequence = (needle, hay) => {
+  if (!needle) return true;
+  var j = 0;
+  for (var i = 0; i < hay.length && j < needle.length; i++) {
+    if (hay[i] === needle[j]) j++;
+  }
+  return j === needle.length;
+};
+var _leadSearchHaystack = lead => {
+  var l = lead || {};
+  return [
+    l.name,
+    l.phone,
+    l.email,
+    l.notes,
+    l.note,
+    l.remarks,
+    l.company,
+    l.industry,
+    l.race,
+    l.gender,
+    l.status,
+    l.age,
+    l.sheetRow,
+    l.income,
+    l.savings,
+    l.source,
+    l._sourceSheetTab
+  ].filter(v => v !== undefined && v !== null && String(v).trim() !== '').join(' ');
+};
+var leadSearchScore = (lead, query) => {
+  var raw = String(query || '').trim();
+  if (!raw) return 0;
+  var q = _leadSearchNormalize(raw);
+  if (!q) return 0;
+  var fields = _leadSearchNormalize(_leadSearchHaystack(lead));
+  var compact = fields.replace(/\s+/g, '');
+  var words = fields.split(/\s+/).filter(Boolean);
+  var acronym = words.map(w => w[0] || '').join('');
+  var qDigits = raw.replace(/\D/g, '');
+  var phoneDigits = String(lead?.phone || '').replace(/\D/g, '');
+  var tokens = q.split(/\s+/).filter(Boolean);
+  var score = 0;
+  if (fields.includes(q)) score += 80 + Math.min(30, q.length);
+  if (qDigits && phoneDigits.includes(qDigits)) score += 75 + Math.min(20, qDigits.length);
+  for (var i = 0; i < tokens.length; i++) {
+    var tok = tokens[i];
+    var tokDigits = tok.replace(/\D/g, '');
+    var ok = false;
+    if (fields.includes(tok)) { ok = true; score += 50 + Math.min(15, tok.length); }
+    else if (tokDigits && phoneDigits.includes(tokDigits)) { ok = true; score += 45 + Math.min(12, tokDigits.length); }
+    else if (words.some(w => w.startsWith(tok) || w.includes(tok))) { ok = true; score += 35; }
+    else if (acronym.includes(tok)) { ok = true; score += 30; }
+    else if (tok.length >= 2 && _leadSearchSubsequence(tok, compact)) { ok = true; score += 18; }
+    if (!ok) return -1;
+  }
+  if (_leadSearchNormalize(lead?.name || '').startsWith(q)) score += 35;
+  return score;
 };
 var SESSION_END_GUARD_KEY = '_sessionEndGuard';
 var SESSION_END_GUARD_TTL = 7 * 86400000;
@@ -10315,6 +10436,7 @@ function App() {
   // jump straight to dialing them, regardless of their current status.
   var [showLeadJump, setShowLeadJump] = useState(false);
   var [leadJumpQuery, setLeadJumpQuery] = useState('');
+  var leadJumpGuardUntilRef = useRef(0);
   // 0127: focus state controls the empty-query browse window (full
   // queue, scroll-to-current, click-to-jump). When the input is
   // blurred and the query is empty, the dropdown closes.
@@ -13037,12 +13159,12 @@ function App() {
               }
             }
             if (us.invitees?.length && !savedInvitees.length) setSavedInvitees(us.invitees);
-            if (us.starget) setSessionTarget(us.starget);
-            if (us.mainMode) setMainMode(us.mainMode);
-            if (us.apptDur) setApptDuration(_slotMinutes(us.apptDur, 60, 1, 480));
-            if (us.apptTravelBefore !== undefined) setApptTravelBefore(_slotMinutes(us.apptTravelBefore, 0, 0, 240));
-            if (us.apptTravelAfter !== undefined) setApptTravelAfter(_slotMinutes(us.apptTravelAfter, 0, 0, 240));
-            if (Array.isArray(us.preferredApptTimes)) setPreferredApptTimes(_normalizePreferredApptTimes(us.preferredApptTimes));
+            if (us.starget && load('starget') === null) setSessionTarget(us.starget);
+            if (us.mainMode && load('mainMode') === null) setMainMode(us.mainMode);
+            if (us.apptDur && load('apptDur') === null) setApptDuration(_slotMinutes(us.apptDur, 60, 1, 480));
+            if (us.apptTravelBefore !== undefined && load('apptTravelBefore') === null) setApptTravelBefore(_slotMinutes(us.apptTravelBefore, 0, 0, 240));
+            if (us.apptTravelAfter !== undefined && load('apptTravelAfter') === null) setApptTravelAfter(_slotMinutes(us.apptTravelAfter, 0, 0, 240));
+            if (Array.isArray(us.preferredApptTimes) && load('preferredApptTimes') === null) setPreferredApptTimes(_normalizePreferredApptTimes(us.preferredApptTimes));
           }
         }
       } catch (e) {
@@ -13642,10 +13764,18 @@ function App() {
             localStorage.setItem('autodial_gemini', sec.gemini_api_key);
           }
           var ad = (us.ui_preferences && us.ui_preferences.appt_dur) || null;
-          if (ad?.dur) setApptDuration(prev => _slotMinutes(ad.dur, 60, 1, 480) !== prev ? _slotMinutes(ad.dur, 60, 1, 480) : prev);
-          if (ad?.before !== undefined) setApptTravelBefore(prev => _slotMinutes(ad.before, 0, 0, 240) !== prev ? _slotMinutes(ad.before, 0, 0, 240) : prev);
-          if (ad?.after !== undefined) setApptTravelAfter(prev => _slotMinutes(ad.after, 0, 0, 240) !== prev ? _slotMinutes(ad.after, 0, 0, 240) : prev);
-          if (Array.isArray(ad?.preferred)) setPreferredApptTimes(prev => {
+          var adTs = +(ad && ad.ts || 0);
+          var localApptPrefTs = Math.max(
+            _personalPresetTs('apptDur'),
+            _personalPresetTs('apptTravelBefore'),
+            _personalPresetTs('apptTravelAfter'),
+            _personalPresetTs('preferredApptTimes')
+          );
+          var remoteApptPrefsAreFresh = !localApptPrefTs || !adTs || adTs >= localApptPrefTs;
+          if (remoteApptPrefsAreFresh && ad?.dur) setApptDuration(prev => _slotMinutes(ad.dur, 60, 1, 480) !== prev ? _slotMinutes(ad.dur, 60, 1, 480) : prev);
+          if (remoteApptPrefsAreFresh && ad?.before !== undefined) setApptTravelBefore(prev => _slotMinutes(ad.before, 0, 0, 240) !== prev ? _slotMinutes(ad.before, 0, 0, 240) : prev);
+          if (remoteApptPrefsAreFresh && ad?.after !== undefined) setApptTravelAfter(prev => _slotMinutes(ad.after, 0, 0, 240) !== prev ? _slotMinutes(ad.after, 0, 0, 240) : prev);
+          if (remoteApptPrefsAreFresh && Array.isArray(ad?.preferred)) setPreferredApptTimes(prev => {
             var next = _normalizePreferredApptTimes(ad.preferred);
             return next.join('|') !== _normalizePreferredApptTimes(prev).join('|') ? next : prev;
           });
@@ -20780,7 +20910,10 @@ function App() {
                   placeholder: '🔍 Find lead — or click here to browse',
                   value: leadJumpQuery,
                   onChange: e => { setLeadJumpQuery(e.target.value); },
-                  onFocus: () => { setLeadJumpFocused(true); },
+                  onFocus: () => {
+                    leadJumpGuardUntilRef.current = Date.now() + 320;
+                    setLeadJumpFocused(true);
+                  },
                   // Delay blur close so the click on a result row registers.
                   onBlur: () => { setTimeout(() => setLeadJumpFocused(false), 150); },
                   onKeyDown: e => {
@@ -20827,6 +20960,7 @@ function App() {
                         } : null,
                         onMouseDown: e => e.preventDefault(),
                         onClick: () => {
+                          if (Date.now() < (leadJumpGuardUntilRef.current || 0)) return;
                           var jumpIdx = originalIdx >= 0 ? originalIdx : (leads || []).findIndex(x => x === l || (l.id && x.id === l.id));
                           if (jumpIdx < 0) return;
                           setLeadJumpQuery('');
@@ -20861,16 +20995,12 @@ function App() {
                       );
                     };
                     if (leadJumpQuery) {
-                      var q = String(leadJumpQuery || '').toLowerCase().trim();
-                      var qDigits = q.replace(/\D/g, '');
                       var hits = [];
                       (leads || []).forEach((l, idx) => {
-                        var nameHit = String(l.name || '').toLowerCase().includes(q);
-                        var phoneHit = qDigits && String(l.phone || '').replace(/\D/g, '').includes(qDigits);
-                        var emailHit = String(l.email || '').toLowerCase().includes(q);
-                        if (nameHit || phoneHit || emailHit) hits.push({ l, idx });
+                        var score = leadSearchScore(l, leadJumpQuery);
+                        if (score >= 0) hits.push({ l, idx, score });
                       });
-                      hits = hits.slice(0, 20);
+                      hits = hits.sort((a, b) => b.score - a.score || a.idx - b.idx).slice(0, 20);
                       if (hits.length === 0) return h('div', { className: 'cad-lead-jump-inline__empty' }, 'No matches for "' + leadJumpQuery + '"');
                       return hits.map(({ l, idx }) => renderRow(l, idx, idx === curIdx));
                     }
@@ -21495,12 +21625,10 @@ function App() {
         settingsPages[activeSettingsKey] || setupPage
       )
     ));
-    var leadPairs = (leads || []).map((l, i) => ({ lead: l, idx: i })).filter(x => {
-      var q = String(leadSearch || search || '').toLowerCase().trim();
-      if (!q) return true;
-      var l = x.lead || {};
-      return String(l.name || '').toLowerCase().includes(q) || String(l.phone || '').includes(q) || String(l.email || '').toLowerCase().includes(q);
-    });
+    var leadListQuery = String(leadSearch || search || '').trim();
+    var leadPairs = (leads || []).map((l, i) => ({ lead: l, idx: i, score: leadSearchScore(l, leadListQuery) }))
+      .filter(x => !leadListQuery || x.score >= 0)
+      .sort((a, b) => leadListQuery ? (b.score - a.score || a.idx - b.idx) : a.idx - b.idx);
     var statusTone = s => /set|book/i.test(s || '') ? 'green' : /cb|call/i.test(s || '') ? 'blue' : /ni|no/i.test(s || '') ? 'red' : /np/i.test(s || '') ? 'amber' : '';
     var leadPhoneCounts = {};
     (leads || []).forEach(l => {
@@ -23361,16 +23489,14 @@ function App() {
       return '';
     };
     var leadJumpResults = (() => {
-      var q = String(leadJumpQuery || '').toLowerCase().trim();
-      var qDigits = q.replace(/\D/g, '');
+      var q = String(leadJumpQuery || '').trim();
       var src = leads || [];
       if (!q) return src.slice(0, 30);
-      return src.filter(l => {
-        var nameHit = String(l.name || '').toLowerCase().includes(q);
-        var phoneHit = qDigits && String(l.phone || '').replace(/\D/g, '').includes(qDigits);
-        var emailHit = String(l.email || '').toLowerCase().includes(q);
-        return nameHit || phoneHit || emailHit;
-      }).slice(0, 30);
+      return src.map((l, idx) => ({ l, idx, score: leadSearchScore(l, q) }))
+        .filter(x => x.score >= 0)
+        .sort((a, b) => b.score - a.score || a.idx - b.idx)
+        .slice(0, 30)
+        .map(x => x.l);
     })();
     var jumpToLead = lead => {
       if (!lead) return;
@@ -31175,7 +31301,7 @@ function App() {
       color: 'var(--text3)',
       marginBottom: 6
     }
-  }, leads.filter(l => !leadSearch || (l.name || '').toLowerCase().includes(leadSearch.toLowerCase()) || (l.phone || '').includes(leadSearch)).length, " of ", leads.length, " leads")), leads.filter(l => !leadSearch || (l.name || '').toLowerCase().includes(leadSearch.toLowerCase()) || (l.phone || '').includes(leadSearch)).slice(0, 50).map(l => React.createElement("div", {
+  }, (leads || []).filter(l => !leadSearch || leadSearchScore(l, leadSearch) >= 0).length, " of ", leads.length, " leads")), (leads || []).filter(l => !leadSearch || leadSearchScore(l, leadSearch) >= 0).sort((a, b) => leadSearch ? leadSearchScore(b, leadSearch) - leadSearchScore(a, leadSearch) : 0).slice(0, 50).map(l => React.createElement("div", {
     key: l.id,
     style: {
       display: 'flex',
@@ -43663,11 +43789,9 @@ function App() {
     zIndex: 170
   }, (() => {
     var q = String(allLeadsSearch || '').trim().toLowerCase();
-    var filtered = (leads || []).map((l, i) => ({ idx: i, lead: l })).filter(({ lead }) => {
-      if (!q) return true;
-      var hay = ((lead.name || '') + ' ' + (lead.phone || '') + ' ' + (lead.notes || '') + ' ' + (lead.status || '')).toLowerCase();
-      return q.split(/\s+/).filter(Boolean).every(tok => hay.includes(tok));
-    });
+    var filtered = (leads || []).map((l, i) => ({ idx: i, lead: l, score: leadSearchScore(l, q) }))
+      .filter(x => !q || x.score >= 0)
+      .sort((a, b) => q ? (b.score - a.score || a.idx - b.idx) : a.idx - b.idx);
     var statusColor = s => {
       if (s === 'set') return 'var(--green)';
       if (s === 'cb') return 'var(--blue)';
