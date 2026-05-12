@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0013'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0014'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1693,7 +1693,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0013';
+window.APP_VERSION='2026.05.12.0014';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -7594,6 +7594,7 @@ function App() {
       var li = curIdx;
       var _pending = appStateRef.current._pendingSetCalEventId || {};
       var _baseUndo = appStateRef.current._pendingSetUndoBase || {};
+      var _undoTs = Date.now();
       appStateRef.current._lastUndo = {
         leadIdx: _baseUndo.leadIdx ?? li,
         leadId: _baseUndo.leadId || leads[_baseUndo.leadIdx ?? li]?.id || '',
@@ -7607,10 +7608,13 @@ function App() {
         sheetRow: _baseUndo.sheetRow || leads[_baseUndo.leadIdx ?? li]?.sheetRow || 0,
         sheetId: _baseUndo.sheetId || leads[_baseUndo.leadIdx ?? li]?._sourceSheetId || cfg.sheetId || '',
         sheetTab: _baseUndo.sheetTab || leads[_baseUndo.leadIdx ?? li]?._sourceSheetTab || cfg.sheetTab || 'Sheet1',
-        ts: Date.now(),
+        ts: _undoTs,
         calEventId: _pending.calEventId || '',
         apptId: _pending.apptId || '',
         dbApptId: _pending.dbApptId || '',
+        apptSheetAutoId: _pending.apptSheetAutoId || _pending.apptId || '',
+        apptDate: _pending.apptDate || '',
+        apptTime: _pending.apptTime || '',
         apptSheetId: _pending.apptSheetId || '',
         apptSheetRange: _pending.apptSheetRange || '',
         calendarId: _pending.calendarId || 'primary'
@@ -7623,7 +7627,7 @@ function App() {
         leadIdx: _baseUndo.leadIdx ?? li,
         name: leads[_baseUndo.leadIdx ?? li]?.name || '',
         status: 'set',
-        ts: Date.now(),
+        ts: _undoTs,
         detail: 'Undo will revert lead status, calendar, Supabase, and sheets where possible.'
       });
       var _returnAfterCallbackSet = () => {
@@ -9461,6 +9465,17 @@ function App() {
         if (remoteSess && remoteSess.devId !== window._devId && remoteSess.ts) {
           var remoteAge = Date.now() - remoteSess.ts;
           if (remoteAge < 20 * 60000) {
+            var undoGuard = appStateRef.current._undoSetGuard;
+            if (undoGuard && undoGuard.until > Date.now() && !remoteSess.ended) {
+              var sameUndoSession = !undoGuard.startTime || Number(remoteSess.startTime || 0) === Number(undoGuard.startTime || 0);
+              var remoteSetsForUndo = Number(remoteSess.sets || 0);
+              var remoteIdxForUndo = typeof remoteSess.curIdx === 'number' ? remoteSess.curIdx : -1;
+              var idxMismatch = undoGuard.curIdx >= 0 && remoteIdxForUndo >= 0 && remoteIdxForUndo !== undoGuard.curIdx;
+              if (sameUndoSession && (remoteSetsForUndo > Number(undoGuard.sets || 0) || idxMismatch)) {
+                DBG('[liveSession] ignored stale Set snapshot during undo rollback');
+                return;
+              }
+            }
             if (remoteSess.ended) {
               appStateRef.current._lastLiveSessionAppliedTs = remoteSess.ts || Date.now();
               var endedGuard = _rememberSessionEndGuard(remoteSess, remoteSess.endTime || remoteSess.ts || Date.now());
@@ -10627,6 +10642,9 @@ function App() {
       calEventId: a.calEventId || raw.calEventId || '',
       apptId: a.id || raw.apptId || '',
       dbApptId: a.dbApptId || raw.dbApptId || '',
+      apptSheetAutoId: a.apptSheetAutoId || a.autoId || raw.apptSheetAutoId || raw.autoId || '',
+      apptDate: a.apptDate || raw.apptDate || '',
+      apptTime: a.apptTime || raw.apptTime || '',
       apptSheetId: a.apptSheetId || raw.apptSheetId || '',
       apptSheetRange: a.apptSheetRange || raw.apptSheetRange || '',
       calendarId: a.calendarId || raw.calendarId || 'primary'
@@ -10875,33 +10893,96 @@ function App() {
     if (restoredIdx < 0 && u.leadIdx >= 0 && nextLeadState[u.leadIdx]) restoredIdx = u.leadIdx;
     if (restoredIdx >= 0) {
       setCurIdx(restoredIdx);
+      curIdxRef.current = restoredIdx;
       setPhase('calling');
       if (running || session && !session.ended) setRunning(true);
     }
+    try {
+      _liveSyncRef.current.lastLeadsAppliedTs = Math.max(_liveSyncRef.current.lastLeadsAppliedTs || 0, Date.now());
+    } catch (_e) {}
+    var undoApptTarget = null;
     if (u.status === 'set') {
-      setAppointments(p => (p || []).filter(a => !_apptHardMatch(a, {
+      undoApptTarget = (appointments || []).find(a => _apptHardMatch(a, {
         id: u.apptId,
         dbApptId: u.dbApptId,
+        apptSheetAutoId: u.apptSheetAutoId,
         calEventId: u.calEventId,
         phone: undoPhone,
         apptDate: u.apptDate,
         apptTime: u.apptTime
-      })));
+      })) || null;
+      var tombstoneTarget = {
+        ...(undoApptTarget || {}),
+        id: u.apptId || undoApptTarget?.id,
+        dbApptId: u.dbApptId || undoApptTarget?.dbApptId,
+        apptSheetAutoId: u.apptSheetAutoId || undoApptTarget?.apptSheetAutoId || u.apptId,
+        calEventId: u.calEventId || undoApptTarget?.calEventId,
+        phone: undoPhone || undoApptTarget?.phone,
+        name: u.leadName || undoApptTarget?.name,
+        apptDate: u.apptDate || undoApptTarget?.apptDate,
+        apptTime: u.apptTime || undoApptTarget?.apptTime,
+        admin: undoApptTarget?.admin || myEmail
+      };
+      try {
+        var savedDelIdsNow = _writeDeletedApptIds([..._readDeletedApptIds(), ..._apptDeleteKeys(tombstoneTarget)], 1000);
+        _syncDeletedApptIdsForOwners(tombstoneTarget, savedDelIdsNow).catch(() => {});
+        _liveSyncRef.current.localApptsGuardUntil = Date.now() + 30000;
+        appStateRef.current._undoSetGuard = {
+          until: Date.now() + 30000,
+          ts: Date.now(),
+          startTime: Number(sessionRef.current?.startTime || session?.startTime || 0),
+          sets: Math.max(0, Number(sessionRef.current?.sets ?? session?.sets ?? 1) - 1),
+          totalSets: Math.max(0, Number(totalSets || 1) - 1),
+          dailySets: Math.max(0, Number(dailySetsState || 1) - 1),
+          curIdx: restoredIdx >= 0 ? restoredIdx : u.leadIdx,
+          apptId: tombstoneTarget.id || '',
+          dbApptId: tombstoneTarget.dbApptId || '',
+          calEventId: tombstoneTarget.calEventId || '',
+          leadPhone: undoPhone || ''
+        };
+        appStateRef.current._lastLiveSessionAppliedTs = Date.now();
+      } catch (_e) {}
+    }
+    if (u.status === 'set') {
+      var undoDelSet = _getDelIds();
+      setAppointments(p => (p || []).filter(a => !_apptHardMatch(a, {
+        id: u.apptId,
+        dbApptId: u.dbApptId,
+        apptSheetAutoId: u.apptSheetAutoId,
+        calEventId: u.calEventId,
+        phone: undoPhone,
+        apptDate: u.apptDate,
+        apptTime: u.apptTime
+      }) && !isApptDeleted(a, undoDelSet)));
     }
     step('Lead status reverted locally', true);
     if (u.status === 'set') {
-      setSession(p => p ? {
-        ...p,
-        dialed: Math.max(0, (p.dialed || 1) - 1),
-        sets: Math.max(0, (p.sets || 1) - 1)
-      } : p);
-      setTotalSets(p => Math.max(0, p - 1));
+      var _baseUndoSession = sessionRef.current || session;
+      var _undoSessionAfter = _baseUndoSession ? {
+        ..._baseUndoSession,
+        dialed: Math.max(0, (_baseUndoSession.dialed || 1) - 1),
+        sets: Math.max(0, (_baseUndoSession.sets || 1) - 1)
+      } : null;
+      if (_undoSessionAfter) {
+        sessionRef.current = _undoSessionAfter;
+        setSession(_undoSessionAfter);
+      } else {
+        setSession(p => p ? {
+          ...p,
+          dialed: Math.max(0, (p.dialed || 1) - 1),
+          sets: Math.max(0, (p.sets || 1) - 1)
+        } : p);
+      }
+      var _undoTotalAfter = Math.max(0, Number(totalSets || 1) - 1);
+      setTotalSets(_undoTotalAfter);
       setSetDone(false);
       var _dsFast = JSON.parse(localStorage.getItem('autodial_daily_sets') || '{}');
+      var _dailyAfter = Math.max(0, Number(dailySetsState || 0));
       if (_dsFast.date === getTodaySGT() && _dsFast.count > 0) {
         _dsFast.count--;
         localStorage.setItem('autodial_daily_sets', JSON.stringify(_dsFast));
         setDailySetsStateR(_dsFast.count);
+        _dailyAfter = _dsFast.count;
       }
       if (u.calEventId) setWeekEvents(prev => prev.filter(ev => ev.id !== u.calEventId));
       setShowPostCall(null);
@@ -10914,9 +10995,25 @@ function App() {
       }
       if (fastRestoreIdx >= 0) {
         setCurIdx(fastRestoreIdx);
+        curIdxRef.current = fastRestoreIdx;
         setPhase('calling');
         setRunning(true);
       }
+      try {
+        if (appStateRef.current._undoSetGuard) {
+          appStateRef.current._undoSetGuard.curIdx = fastRestoreIdx >= 0 ? fastRestoreIdx : restoredIdx;
+          appStateRef.current._undoSetGuard.sets = _undoSessionAfter ? _undoSessionAfter.sets || 0 : appStateRef.current._undoSetGuard.sets;
+          appStateRef.current._undoSetGuard.totalSets = _undoTotalAfter;
+          appStateRef.current._undoSetGuard.dailySets = _dailyAfter;
+        }
+        if (_undoSessionAfter) {
+          pushLiveSessionSnapshotNow(makeLiveSessionSnapshot(_undoSessionAfter, {
+            running: true,
+            phase: 'calling',
+            curIdx: fastRestoreIdx >= 0 ? fastRestoreIdx : restoredIdx
+          })).catch(() => {});
+        }
+      } catch (_e) {}
       setUndoInfo(p => p && p.ts === info.ts ? null : p);
       setUndoHistory(p => p.filter(x => x.ts !== info.ts));
       if (!overrideUndo) appStateRef.current._lastUndo = null;
@@ -10951,13 +11048,14 @@ function App() {
               bgStep('Calendar event deleted', false, e?.message || 'failed');
             }
           } else bgStep('Calendar event deleted', false, 'no event id saved');
-          var _matchedAppt = null;
+          var _matchedAppt = undoApptTarget || null;
           if (undoPhone) {
             try {
               var _d2 = _readDeletedApptIds();
-              _matchedAppt = (appointments || []).find(a => _apptHardMatch(a, {
+              _matchedAppt = _matchedAppt || (appointments || []).find(a => _apptHardMatch(a, {
                 id: u.apptId,
                 dbApptId: u.dbApptId,
+                apptSheetAutoId: u.apptSheetAutoId,
                 calEventId: u.calEventId,
                 phone: undoPhone,
                 apptDate: u.apptDate,
@@ -11007,7 +11105,7 @@ function App() {
               bgStep('Cloud appointment cache removed', false, e?.message || 'failed');
             }
           }
-          var _sheetTarget = {
+            var _sheetTarget = {
             ...(_matchedAppt || {}),
             id: u.apptId || _matchedAppt?.id,
             dbApptId: u.dbApptId || _matchedAppt?.dbApptId,
@@ -13945,6 +14043,17 @@ function App() {
       if (remote.devId === window._devId) return;
       if (remote.ts <= _liveSyncRef.current.lastAppliedTs) return;
       _liveSyncRef.current.lastAppliedTs = remote.ts;
+      var undoGuard = appStateRef.current._undoSetGuard;
+      var undoGuardActive = !!(undoGuard && undoGuard.until > Date.now());
+      var remoteBlockedByUndo = false;
+      if (undoGuardActive && remote.session && !remote.session.ended) {
+        var sameUndoSession = !undoGuard.startTime || Number(remote.session.startTime || 0) === Number(undoGuard.startTime || 0);
+        if (sameUndoSession) {
+          var remoteSetsForUndo = Number(remote.session.sets || 0);
+          var remoteIdxForUndo = typeof remote.curIdx === 'number' ? remote.curIdx : typeof remote.session.curIdx === 'number' ? remote.session.curIdx : -1;
+          remoteBlockedByUndo = remoteSetsForUndo > Number(undoGuard.sets || 0) || (undoGuard.curIdx >= 0 && remoteIdxForUndo >= 0 && remoteIdxForUndo !== undoGuard.curIdx);
+        }
+      }
       _markSuppressedPush('live');
       setSyncStatus('synced');
       setLastSyncAt(Date.now());
@@ -13970,7 +14079,9 @@ function App() {
         }
         return;
       }
-      if ('session' in remote) {
+      if ('session' in remote && remoteBlockedByUndo) {
+        DBG('[LiveSync] ignored stale Set session during undo rollback');
+      } else if ('session' in remote) {
         if (remote.session === null || remote.session === undefined) {
           setSession(null);
           setRunning(false);
@@ -13996,11 +14107,11 @@ function App() {
           save('activeSession', remote.session);
         }
       }
-      if (typeof remote.dailySets === 'number' && remote.dailySetsDate === getTodaySGT()) {
+      if (typeof remote.dailySets === 'number' && remote.dailySetsDate === getTodaySGT() && !(undoGuardActive && remote.dailySets > Number(undoGuard.dailySets || 0))) {
         setDailySetsStateR(remote.dailySets);
         window.setDailySetsCount(remote.dailySets);
       }
-      if (typeof remote.totalSets === 'number') {
+      if (typeof remote.totalSets === 'number' && !(undoGuardActive && remote.totalSets > Number(undoGuard.totalSets || 0))) {
         setTotalSets(remote.totalSets);
       }
       if (remote.resetTs) {
@@ -22591,7 +22702,15 @@ function App() {
           toast('Appointment kept locally; Supabase save is slow/unavailable.', 'err');
         }
         var localId = savedApptRow?.id || 'appt_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-        appStateRef.current._pendingSetCalEventId = { calEventId: evt?.id || '', apptId: localId, dbApptId: savedApptRow?.id || '', calendarId: eventCalId };
+        appStateRef.current._pendingSetCalEventId = {
+          calEventId: evt?.id || '',
+          apptId: localId,
+          dbApptId: savedApptRow?.id || '',
+          apptSheetAutoId: localId,
+          apptDate,
+          apptTime,
+          calendarId: eventCalId
+        };
         setAppointments(prev => {
           var list = Array.isArray(prev) ? prev.slice() : [];
           var idx = list.findIndex(a => (a.leadId === lead.id || a.phone === lead.phone && a.phone) && (!a.followUp || a.followUp === 'pending') && !a.apptDate);
@@ -22608,11 +22727,19 @@ function App() {
         if (lead.phone) setShowWA({ name: lead.name, phone: lead.phone, date: apptDate, time: apptTime, location: apptLocation });
         var apptSheetId = myCfg.timesheetId || cfg.sheetId;
         if (apptSheetId && localStorage.getItem('ad_gt')) {
-          var sheetPayload = { id: localId, autoId: localId, calEventId: evt?.id || '', name: lead.name, phone: lead.phone, gender: lead.gender || '', age: lead.age || lead.computed_age || '', industry: lead.industry || lead.company || '', apptDate, apptTime, location: apptLocation, duration: dur, remarks: apptObs, leadNotes: lead.notes || '' };
+          var sheetPayload = { id: localId, autoId: localId, apptSheetAutoId: localId, dbApptId: savedApptRow?.id || '', calEventId: evt?.id || '', calendarId: eventCalId, admin: myEmail, name: lead.name, phone: lead.phone, gender: lead.gender || '', age: lead.age || lead.computed_age || '', industry: lead.industry || lead.company || '', apptDate, apptTime, location: apptLocation, duration: dur, remarks: apptObs, leadNotes: lead.notes || '' };
           (async () => {
             try {
+              if (isApptDeleted(sheetPayload, _getDelIds())) return;
               var res = await withTimeout(gSheets.appendAppt(apptSheetId, sheetPayload, userName), 10000, 'Appointment sheet append');
-              appStateRef.current._pendingSetCalEventId = { ...(appStateRef.current._pendingSetCalEventId || {}), calEventId: evt?.id || '', calendarId: eventCalId, apptId: localId, apptSheetId, apptSheetRange: res?.updates?.updatedRange || '' };
+              var appendedRange = res?.updates?.updatedRange || '';
+              if (isApptDeleted(sheetPayload, _getDelIds())) {
+                try { await gSheets.deleteApptRow(apptSheetId, sheetPayload, appendedRange); } catch (_delErr) {}
+                return;
+              }
+              var pendingSet = appStateRef.current._pendingSetCalEventId;
+              if (!pendingSet || pendingSet.apptId !== localId) return;
+              appStateRef.current._pendingSetCalEventId = { ...pendingSet, calEventId: evt?.id || '', calendarId: eventCalId, apptId: localId, dbApptId: savedApptRow?.id || '', apptSheetAutoId: localId, apptDate, apptTime, apptSheetId, apptSheetRange: appendedRange };
             } catch (err) {
               console.warn('[Claude appointment sheet append]', err?.message || err);
               toast('Appointment created; sheet append needs a sync check.', 'err');
@@ -39279,8 +39406,11 @@ function App() {
         });
         appStateRef.current._pendingSetCalEventId = {
           calEventId: evt?.id || '',
-          apptId: lead?.phone || '',
+          apptId: _localApptId,
           dbApptId: savedApptRow?.id || '',
+          apptSheetAutoId: _localApptId,
+          apptDate,
+          apptTime,
           calendarId: eventCalId
         };
         if (lead) setAppointments(p => {
@@ -39296,6 +39426,8 @@ function App() {
               apptTime,
               duration: dur,
               calEventId: evt?.id || '',
+              calendarId: eventCalId,
+              _calId: eventCalId,
               location: apptLocation,
               remarks: apptObs,
               leadNotes: lead?.notes || '',
@@ -39326,6 +39458,8 @@ function App() {
             createdAt: new Date().toISOString(),
             admin: myEmail,
             calEventId: evt?.id || '',
+            calendarId: eventCalId,
+            _calId: eventCalId,
             shaky: apptShaky,
             needsDetails: false
           }];
@@ -39354,7 +39488,11 @@ function App() {
           var sheetPayload = {
             id: _localApptId,
             autoId: _localApptId,
+            apptSheetAutoId: _localApptId,
+            dbApptId: savedApptRow?.id || '',
             calEventId: evt?.id || '',
+            calendarId: eventCalId,
+            admin: myEmail,
             name: lead?.name,
             phone: lead?.phone,
             // Pull demographic fields from the lead so the new Appts schema
@@ -39371,16 +39509,31 @@ function App() {
           };
           (async () => {
             try {
+              if (isApptDeleted(sheetPayload, _getDelIds())) return;
               var apptSheetRes = await withTimeout(gSheets.appendAppt(apptSheetId, sheetPayload, userName), 10000, 'Appointment sheet append');
+              var apptSheetRange = apptSheetRes?.updates?.updatedRange || '';
+              if (isApptDeleted(sheetPayload, _getDelIds())) {
+                try { await gSheets.deleteApptRow(apptSheetId, sheetPayload, apptSheetRange); } catch (_delErr) {}
+                return;
+              }
+              var pendingSet = appStateRef.current._pendingSetCalEventId;
+              if (!pendingSet || pendingSet.apptId !== _localApptId) return;
               appStateRef.current._pendingSetCalEventId = {
-                ...(appStateRef.current._pendingSetCalEventId || {}),
+                ...pendingSet,
+                calEventId: evt?.id || '',
+                calendarId: eventCalId,
+                apptId: _localApptId,
+                dbApptId: savedApptRow?.id || '',
+                apptSheetAutoId: _localApptId,
+                apptDate,
+                apptTime,
                 apptSheetId,
-                apptSheetRange: apptSheetRes?.updates?.updatedRange || ''
+                apptSheetRange
               };
               setAppointments(p => p.map(a => a.id === _localApptId || a.phone === lead?.phone && a.apptDate === apptDate && a.apptTime === apptTime ? {
                 ...a,
                 apptSheetId,
-                apptSheetRange: apptSheetRes?.updates?.updatedRange || '',
+                apptSheetRange,
                 apptSheetAutoId: _localApptId
               } : a));
             } catch (_sheetErr) {
