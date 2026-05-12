@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0011'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.12.0012'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -483,6 +483,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 .cad-btn.ghost{background:transparent;border-color:transparent;color:var(--ad-t-2)}
 .cad-btn.ghost.danger:hover{color:var(--ad-red)}
 .cad-main{flex:1;min-height:0;overflow:auto;padding:26px 32px;display:flex;flex-direction:column;gap:22px}
+.cad-cal-main{gap:10px;padding-top:18px}
+.cad-cal-main .cad-dashboard-head{margin-bottom:0}
+.cad-cal-main .cad-calendar-controls{margin-bottom:6px!important}
 .cad-card{background:var(--ad-bg-1);border:1px solid var(--ad-line-1);border-radius:14px;box-shadow:var(--ad-shadow-1)}
 .cad-label{color:var(--ad-t-2);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
 .cad-muted{color:var(--ad-t-2)}.cad-subtle{color:var(--ad-t-3)}.cad-mono{font-family:'JetBrains Mono',ui-monospace,monospace;font-variant-numeric:tabular-nums}
@@ -926,18 +929,22 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-leads-head{display:grid;grid-template-columns:minmax(260px,1fr) auto;gap:18px;align-items:end}
 .cad-search{min-height:42px;width:100%;padding:0 14px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-1);color:var(--ad-t-0);font-size:13px}
 .cad-sheet-results,.cad-free-slots{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow:auto}.cad-free-slot{padding:7px 9px;border-radius:9px;border:1px dashed oklch(0.74 0.16 150 / .34);background:var(--ad-green-dim);color:var(--ad-green);font-size:11px;display:flex;justify-content:space-between;gap:8px;text-align:left}.cad-script-versionbar{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.cad-script-versionbar select{min-height:30px;flex:1 1 120px;min-width:0;padding:0 8px;border-radius:9px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font-size:11px}.cad-script-edit{width:100%;min-height:220px;margin-top:12px;padding:12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font:13px/1.55 'Inter',system-ui,sans-serif;resize:vertical}.cad-rich-tools{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.cad-rich-tools button{min-width:30px;height:30px;padding:0 9px;border-radius:8px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-1);font-size:11px;font-weight:850}.cad-rich-swatch{width:26px!important;min-width:26px!important;padding:0!important}.cad-rich-editor{width:100%;min-height:220px;margin-top:8px;padding:12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font:13px/1.55 'Inter',system-ui,sans-serif;overflow:auto;outline:none}.cad-rich-editor:focus{border-color:var(--ad-brass-line);box-shadow:0 0 0 3px rgba(214,168,122,.12)}.cad-rich-editor.small{min-height:120px}.cad-objection-wrap{display:flex;flex-direction:column;gap:6px}.cad-objection-tools{display:flex;gap:6px;flex-wrap:wrap}.cad-objection-split{display:grid;grid-template-columns:minmax(160px,.8fr) minmax(190px,1fr);gap:8px;min-height:0}.cad-objection-list{display:flex;flex-direction:column;gap:6px;max-height:360px;overflow:auto}.cad-objection-side{min-height:160px;max-height:360px;overflow:auto;padding:11px;border-radius:10px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1)}.cad-cal-visibility{display:flex;gap:8px;overflow:auto;padding-bottom:4px}.cad-cal-toggle{display:inline-flex;align-items:center;gap:8px;min-width:160px;padding:8px 10px;border-radius:10px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2);color:var(--ad-t-1);font-size:11px;text-align:left}.cad-cal-toggle.off{opacity:.55}.cad-slot-settings{display:grid;grid-template-columns:repeat(5,minmax(94px,1fr));gap:8px;margin:12px 0}.cad-slot-settings input{width:100%;min-height:34px;padding:7px 9px;border-radius:9px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font-size:12px}
-/* 0078: grouped slot-settings layout — two stacked groups, each with a
-   small head + a horizontal row of inputs. Replaces the legacy 5-column
-   grid which jammed footprint + preferred-duration concepts together. */
-.cad-slot-settings-wrap{display:flex;flex-direction:column;gap:14px;margin:12px 0}
-.cad-slot-group{display:flex;flex-direction:column;gap:8px;padding:12px 14px;border-radius:12px;border:1px solid var(--ad-line-1);background:var(--ad-bg-1)}
-.cad-slot-group-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
-.cad-slot-row{display:grid;gap:10px}
+/* 0078/0130: compact grouped slot settings. Desktop keeps footprint and
+   preferred durations side-by-side so the week grid stays high on screen. */
+.cad-slot-settings-wrap{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:8px;margin:4px 0 6px}
+.cad-slot-group{display:flex;flex-direction:column;gap:6px;padding:8px 10px;border-radius:10px;border:1px solid var(--ad-line-1);background:var(--ad-bg-1)}
+.cad-slot-group-head{display:flex;align-items:center;gap:8px;flex-wrap:nowrap;min-height:18px}
+.cad-slot-group-head .cad-subtle{font-size:10px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cad-slot-row{display:grid;gap:8px}
 .cad-slot-row--three{grid-template-columns:repeat(3,minmax(120px,1fr))}
 .cad-slot-row--two{grid-template-columns:repeat(2,minmax(160px,1fr))}
-.cad-slot-row label{display:flex;flex-direction:column;gap:5px;color:var(--ad-t-3);font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.06em}
+.cad-slot-row label{display:flex;flex-direction:column;gap:3px;color:var(--ad-t-3);font-size:9px;font-weight:850;text-transform:uppercase;letter-spacing:.05em}
 .cad-slot-row label span{color:var(--ad-t-3)}
-.cad-slot-row input{width:100%;min-height:36px;padding:8px 10px;border-radius:9px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font-size:13px;font-variant-numeric:tabular-nums}
+.cad-slot-row input{width:100%;min-height:30px;padding:5px 8px;border-radius:8px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font-size:12px;font-variant-numeric:tabular-nums}
+@media(max-width:1100px){
+  .cad-slot-settings-wrap{grid-template-columns:1fr}
+  .cad-slot-group-head .cad-subtle{display:none}
+}
 @media(max-width:900px){
   .cad-slot-row--three,.cad-slot-row--two{grid-template-columns:1fr}
 }.cad-time-board{border:1px solid var(--ad-line-1);border-radius:12px;background:var(--ad-bg-1);overflow:auto}.cad-time-head,.cad-time-body{display:grid;grid-template-columns:54px repeat(7,minmax(128px,1fr));min-width:1040px}.cad-time-head{position:sticky;top:0;z-index:4;background:var(--ad-bg-2);border-bottom:1px solid var(--ad-line-1)}.cad-time-head>div{padding:9px 8px;text-align:center;border-right:1px solid var(--ad-line-1)}.cad-time-axis,.cad-time-day{position:relative;height:var(--cad-calendar-height,660px)}.cad-time-axis{background:var(--ad-bg-2);border-right:1px solid var(--ad-line-1)}.cad-time-label{height:44px;padding:3px 6px 0 0;text-align:right;border-top:1px solid var(--ad-line-1);color:var(--ad-t-3);font-size:10px}.cad-time-day{border-right:1px solid var(--ad-line-1);background:linear-gradient(180deg,rgba(255,255,255,.012),transparent);position:relative}
@@ -1686,7 +1693,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.12.0011';
+window.APP_VERSION='2026.05.12.0012';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -21618,7 +21625,7 @@ function App() {
         )
       );
     }));
-    var calView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
+    var calView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main cad-cal-main' },
       h('div', { className: 'cad-dashboard-head' },
         h('div', null, h('h2', { style: { fontSize: 24 } }, 'Calendar'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, 'Week view with blocker-aware smart slots'))
       ),
