@@ -169,6 +169,18 @@ test('cloud appointment purge retries every owner candidate', () => {
   assert.equal(html.includes('admin: owners[0] ||'), false);
 });
 
+test('undo set cleanup persists and replays pending deletes', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /_undoSetCleanupQueue_/);
+  assert.match(html, /var _buildUndoSetCleanupItem = \(\{ u, info, undoPhone, restoredLead, matchedAppt \}\) =>/);
+  assert.match(html, /var cleanupItem = _enqueueUndoSetCleanup\(_buildUndoSetCleanupItem/);
+  assert.match(html, /_markUndoSetCleanupRetry\(cleanupItem/);
+  assert.match(html, /var _flushUndoSetCleanupQueue = async reason =>/);
+  assert.match(html, /_flushUndoSetCleanupQueue\('boot'\)/);
+  assert.match(html, /window\.addEventListener\('online', wake\)/);
+  assert.match(html, /window\.addEventListener\('focus', wake\)/);
+});
+
 test('README is stored as clean UTF-8 text', () => {
   const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   assert.equal(/â†|â€|ðŸ/.test(readme), false);

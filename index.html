@@ -10926,6 +10926,8 @@ function App() {
   var [undoHistory, setUndoHistory] = useState([]);
   var [syncTrail, setSyncTrail] = useState([]);
   var [sheetQueueStatus, setSheetQueueStatus] = useState({ lastError: '', retryAt: 0, lastFlushAt: 0 });
+  var undoSetCleanupFlushInFlight = useRef(false);
+  var undoSetCleanupFlushTimer = useRef(null);
   useEffect(() => {
     if (!undoInfo) return;
     if (undoInfo.status === 'set') return;
@@ -11166,6 +11168,211 @@ function App() {
     } catch (_e) {}
     return changed;
   };
+  var _undoSetCleanupQueueKey = () => '_undoSetCleanupQueue_' + (window._user?.id || (window._prof?.email || window._user?.email || '').toLowerCase() || 'local');
+  var _readUndoSetCleanupQueue = () => {
+    try {
+      var q = JSON.parse(localStorage.getItem(_undoSetCleanupQueueKey()) || '[]');
+      var minTs = Date.now() - 7 * 86400000;
+      return Array.isArray(q) ? q.filter(x => x && (!x.createdAt || x.createdAt >= minTs)) : [];
+    } catch (_e) {
+      return [];
+    }
+  };
+  var _writeUndoSetCleanupQueue = q => {
+    var clean = (Array.isArray(q) ? q : []).filter(Boolean).slice(-50);
+    try {
+      if (clean.length) localStorage.setItem(_undoSetCleanupQueueKey(), JSON.stringify(clean));
+      else localStorage.removeItem(_undoSetCleanupQueueKey());
+    } catch (_e) {}
+    return clean;
+  };
+  var _buildUndoSetCleanupItem = ({ u, info, undoPhone, restoredLead, matchedAppt }) => {
+    if (!u || u.status !== 'set') return null;
+    var appt = {
+      ...(matchedAppt || {}),
+      id: u.apptId || matchedAppt?.id || '',
+      dbApptId: u.dbApptId || matchedAppt?.dbApptId || matchedAppt?.rowId || '',
+      apptSheetAutoId: u.apptSheetAutoId || matchedAppt?.apptSheetAutoId || matchedAppt?.autoId || u.apptId || '',
+      calEventId: u.calEventId || matchedAppt?.calEventId || '',
+      calendarId: u.calendarId || matchedAppt?.calendarId || matchedAppt?._calId || 'primary',
+      phone: undoPhone || matchedAppt?.phone || u.leadPhone || '',
+      name: u.leadName || matchedAppt?.name || info?.name || '',
+      apptDate: u.apptDate || matchedAppt?.apptDate || '',
+      apptTime: u.apptTime || matchedAppt?.apptTime || '',
+      apptSheetId: u.apptSheetId || matchedAppt?.apptSheetId || '',
+      apptSheetRange: u.apptSheetRange || matchedAppt?.apptSheetRange || '',
+      admin: matchedAppt?.admin || u.admin || myEmail || ''
+    };
+    var leadSheetId = u.sheetId || restoredLead?._sourceSheetId || cfg.sheetId || '';
+    var leadSheetTab = u.sheetTab || restoredLead?._sourceSheetTab || cfg.sheetTab || 'Sheet1';
+    var idBits = [appt.dbApptId, appt.id, appt.apptSheetAutoId, appt.calEventId, appt.phone, appt.apptDate, appt.apptTime].filter(Boolean).map(String);
+    return {
+      id: 'undo_set:' + (idBits.join('|') || String(Date.now())),
+      createdAt: Date.now(),
+      attempts: 0,
+      nextTryAt: 0,
+      info: { name: info?.name || u.leadName || appt.name || 'lead' },
+      lead: restoredLead ? {
+        sheetId: leadSheetId,
+        sheetTab: leadSheetTab,
+        sheetRow: restoredLead.sheetRow || u.sheetRow || 0,
+        statusCol: restoredLead.statusCol ?? u.statusCol,
+        prevSheetValue: u.prevSheetValue ?? '',
+        prevStatus: u.prevStatus || 'pending'
+      } : null,
+      appt
+    };
+  };
+  var _enqueueUndoSetCleanup = item => {
+    if (!item) return null;
+    var q = _readUndoSetCleanupQueue().filter(x => x.id !== item.id);
+    var saved = _writeUndoSetCleanupQueue([...q, item]);
+    return saved.find(x => x.id === item.id) || item;
+  };
+  var _removeUndoSetCleanup = id => {
+    if (!id) return;
+    _writeUndoSetCleanupQueue(_readUndoSetCleanupQueue().filter(x => x.id !== id));
+  };
+  var _markUndoSetCleanupRetry = (item, err) => {
+    if (!item?.id) return;
+    var attempts = Number(item.attempts || 0) + 1;
+    var retryMs = Math.min(5 * 60000, 8000 * Math.pow(2, Math.min(attempts - 1, 5)));
+    var updated = {
+      ...item,
+      attempts,
+      nextTryAt: Date.now() + retryMs,
+      lastError: err?.message || String(err || 'cleanup pending')
+    };
+    _writeUndoSetCleanupQueue(_readUndoSetCleanupQueue().map(x => x.id === item.id ? updated : x));
+    clearTimeout(undoSetCleanupFlushTimer.current);
+    undoSetCleanupFlushTimer.current = setTimeout(() => _flushUndoSetCleanupQueue('retry'), retryMs + 250);
+  };
+  var _runUndoSetCleanupItem = async item => {
+    var steps = [];
+    var okAll = true;
+    var step = (label, ok, detail) => {
+      if (!ok) okAll = false;
+      steps.push({ label, ok: !!ok, detail: detail || '' });
+    };
+    var appt = item?.appt || {};
+    var lead = item?.lead || null;
+    var undoPhone = normalizePhone(appt.phone || '');
+    var matchedAppt = (appointments || []).find(a => _apptHardMatch(a, {
+      id: appt.id,
+      dbApptId: appt.dbApptId,
+      apptSheetAutoId: appt.apptSheetAutoId,
+      calEventId: appt.calEventId,
+      phone: undoPhone,
+      apptDate: appt.apptDate,
+      apptTime: appt.apptTime
+    })) || null;
+    var target = { ...(matchedAppt || {}), ...appt };
+    if (lead?.sheetId && lead?.sheetRow && Number.isFinite(Number(lead.statusCol)) && Number(lead.statusCol) >= 0) {
+      try {
+        var queued = await queueSheetValue({
+          _sourceSheetId: lead.sheetId,
+          _sourceSheetTab: lead.sheetTab || 'Sheet1',
+          sheetRow: lead.sheetRow,
+          statusCol: Number(lead.statusCol)
+        }, lead.prevSheetValue ?? '');
+        step('Lead sheet revert queued', queued, queued ? '' : 'missing sheet details');
+      } catch (e) {
+        step('Lead sheet revert queued', false, e?.message || 'failed');
+      }
+    } else {
+      step('Lead sheet revert queued', true, 'no lead sheet row saved');
+    }
+    try {
+      var savedDelIds = _writeDeletedApptIds([..._readDeletedApptIds(), ..._apptDeleteKeys(target)], 1000);
+      await _syncDeletedApptIdsForOwners(target, savedDelIds);
+      step('Delete tombstone synced', true);
+    } catch (e) {
+      step('Delete tombstone synced', false, e?.message || 'failed');
+    }
+    if (target.calEventId) {
+      if (window.gCal && localStorage.getItem('ad_gt')) {
+        try {
+          var calOk = await gCal.del(target.calEventId, target.calendarId || target._calId || 'primary');
+          step('Calendar event deleted', calOk, calOk ? '' : 'check Google Calendar');
+        } catch (e) {
+          step('Calendar event deleted', false, e?.message || 'failed');
+        }
+      } else {
+        step('Calendar event deleted', false, 'Google not connected');
+      }
+    } else {
+      step('Calendar event deleted', true, 'no event id saved');
+    }
+    try {
+      var cloudGone = await _purgeCloudAppointment(target);
+      step('Cloud appointment cache removed', cloudGone || !_SB, cloudGone ? '' : 'no matching cloud row');
+    } catch (e) {
+      step('Cloud appointment cache removed', false, e?.message || 'failed');
+    }
+    var sheetTarget = {
+      ...target,
+      id: target.id || appt.id,
+      dbApptId: target.dbApptId || appt.dbApptId,
+      apptSheetAutoId: target.apptSheetAutoId || appt.apptSheetAutoId || target.id || appt.id,
+      calEventId: target.calEventId || appt.calEventId,
+      phone: target.phone || appt.phone,
+      name: target.name || appt.name,
+      apptDate: target.apptDate || appt.apptDate,
+      apptTime: target.apptTime || appt.apptTime
+    };
+    var sheetId = target.apptSheetId || appt.apptSheetId || myCfg.timesheetId || cfg.sheetId;
+    if (sheetId) {
+      if (localStorage.getItem('ad_gt')) {
+        try {
+          var sheetGone = await gSheets.deleteApptRow(sheetId, sheetTarget, target.apptSheetRange || appt.apptSheetRange || '');
+          step('Appointment sheet row removed', sheetGone, sheetGone ? '' : 'row not found');
+          try {
+            gSheets.appendLog(sheetId, {
+              admin: userName || myEmail,
+              action: 'Undo Set',
+              entity: 'Appointment',
+              entityId: sheetTarget.autoId || sheetTarget.apptId || sheetTarget.id || '',
+              lead: sheetTarget.name || item?.info?.name || '',
+              phone: sheetTarget.phone || '',
+              date: (sheetTarget.apptDate || '') + (sheetTarget.apptTime ? ' ' + sheetTarget.apptTime : ''),
+              notes: 'Set undone via app'
+            });
+          } catch (_logErr) {}
+        } catch (e) {
+          step('Appointment sheet row removed', false, e?.message || 'failed');
+        }
+      } else {
+        step('Appointment sheet row removed', false, 'Google not connected');
+      }
+    } else {
+      step('Appointment sheet row removed', true, 'no appointment sheet id saved');
+    }
+    return { ok: okAll, steps };
+  };
+  var _flushUndoSetCleanupQueue = async reason => {
+    if (undoSetCleanupFlushInFlight.current) return;
+    var now = Date.now();
+    var due = _readUndoSetCleanupQueue().filter(x => !x.nextTryAt || x.nextTryAt <= now);
+    if (!due.length) return;
+    undoSetCleanupFlushInFlight.current = true;
+    try {
+      for (var qi = 0; qi < due.length; qi++) {
+        var item = due[qi];
+        var result = await _runUndoSetCleanupItem(item);
+        addSyncTrail('Set undo cleanup for ' + (item.info?.name || item.appt?.name || 'lead'), result.steps);
+        if (result.ok) _removeUndoSetCleanup(item.id);
+        else _markUndoSetCleanupRetry(item, result.steps.find(s => !s.ok)?.detail || 'cleanup pending');
+      }
+    } finally {
+      undoSetCleanupFlushInFlight.current = false;
+      var q = _readUndoSetCleanupQueue();
+      var next = q.filter(x => x.nextTryAt).sort((a, b) => a.nextTryAt - b.nextTryAt)[0];
+      if (next) {
+        clearTimeout(undoSetCleanupFlushTimer.current);
+        undoSetCleanupFlushTimer.current = setTimeout(() => _flushUndoSetCleanupQueue(reason || 'scheduled'), Math.max(1000, next.nextTryAt - Date.now() + 250));
+      }
+    }
+  };
   var doUndo = async (overrideInfo, overrideUndo) => {
     var info = overrideInfo || undoInfo;
     if (!info) return;
@@ -11385,6 +11592,13 @@ function App() {
       setUndoInfo(p => p && p.ts === info.ts ? null : p);
       setUndoHistory(p => p.filter(x => x.ts !== info.ts));
       if (!overrideUndo) appStateRef.current._lastUndo = null;
+      var cleanupItem = _enqueueUndoSetCleanup(_buildUndoSetCleanupItem({
+        u,
+        info,
+        undoPhone,
+        restoredLead,
+        matchedAppt: undoApptTarget
+      }));
       toast('↩ Undo Set — restored lead, syncing cleanup...', 'info');
       setTimeout(() => {
         (async () => {
@@ -11506,7 +11720,10 @@ function App() {
             }
           } else bgStep('Appointment sheet row removed', false, 'no sheet access');
           addSyncTrail('Set undo cleanup for ' + (info.name || lead?.name || u.leadName || 'lead'), bgSteps);
+          if (cleanupItem && bgSteps.every(s => s.ok)) _removeUndoSetCleanup(cleanupItem.id);
+          else if (cleanupItem) _markUndoSetCleanupRetry(cleanupItem, bgSteps.find(s => !s.ok)?.detail || 'cleanup pending');
         })().catch(e => {
+          if (cleanupItem) _markUndoSetCleanupRetry(cleanupItem, e);
           addSyncTrail('Set undo cleanup needs attention', [{ label: 'Background cleanup', ok: false, detail: e?.message || String(e) }]);
         });
       }, 0);
@@ -16950,6 +17167,24 @@ function App() {
       if (sheetQueueRef.current.length) flushSheetQueue();
     };
   }, []);
+  useEffect(() => {
+    if (_readUndoSetCleanupQueue().length) {
+      clearTimeout(undoSetCleanupFlushTimer.current);
+      undoSetCleanupFlushTimer.current = setTimeout(() => _flushUndoSetCleanupQueue('boot'), 900);
+    }
+    var wake = () => {
+      if (_readUndoSetCleanupQueue().length) {
+        clearTimeout(undoSetCleanupFlushTimer.current);
+        undoSetCleanupFlushTimer.current = setTimeout(() => _flushUndoSetCleanupQueue('wake'), 300);
+      }
+    };
+    window.addEventListener('online', wake);
+    window.addEventListener('focus', wake);
+    return () => {
+      window.removeEventListener('online', wake);
+      window.removeEventListener('focus', wake);
+    };
+  }, [gOk, cfg.sheetId, cfg.sheetTab, myCfg.timesheetId, myEmail]);
   var startSession = chosenSlot => {
     _clearSessionEndGuard();
     if (callAssist) {
