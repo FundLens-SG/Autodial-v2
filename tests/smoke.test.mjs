@@ -140,6 +140,15 @@ test('appointment set flow pauses before dialing next lead', () => {
   assert.match(html, /Book appointment/);
 });
 
+test('google readiness uses verified API health instead of raw token', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /var googleApiOk = !!\(gOk && googleHealth\.state === 'ok'\)/);
+  assert.match(html, /done: googleApiOk/);
+  assert.match(html, /Sheets and Calendar verified from Main access/);
+  assert.match(html, /googleApiOk && React\.createElement\("div", \{/);
+  assert.equal(/done: !!\(gOk \|\| myCfg\.timesheetId \|\| cfg\.sheetId\)/.test(html), false);
+});
+
 test('README is stored as clean UTF-8 text', () => {
   const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   assert.equal(/â†|â€|ðŸ/.test(readme), false);

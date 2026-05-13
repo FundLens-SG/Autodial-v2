@@ -19813,8 +19813,8 @@ function App() {
     if (role === 'admin') return [{
       key: 'sheet',
       label: 'Google connected',
-      detail: 'Managed by Main; synced when your workspace loads',
-      done: !!(gOk || myCfg.timesheetId || cfg.sheetId)
+      detail: googleApiOk ? 'Sheets and Calendar verified from Main access' : gOk ? (googleHealth.detail || 'Verifying Google API access') : 'Waiting for Main Google access',
+      done: googleApiOk
     }, {
       key: 'lead-sheet',
       label: 'Lead sheet linked',
@@ -35001,7 +35001,7 @@ function App() {
       fontSize: 12,
       padding: '8px'
     }
-  })), gOk && React.createElement("div", {
+  })), googleApiOk && React.createElement("div", {
     style: {
       marginTop: 10,
       paddingTop: 10,
