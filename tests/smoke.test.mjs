@@ -102,6 +102,17 @@ test('session sync applies remote control-state changes, not only counters', () 
   assert.match(html, /creditHours: creditElapsed \? creditElapsed \/ 3600 : null/);
 });
 
+test('stability hardening keeps recovery, config, appts, and calendar safe', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.equal(html.includes('localStorage.clear('), false);
+  assert.match(html, /window\.autodialSafeRepair=function\(\)/);
+  assert.match(html, /function _normalizeCfgShape\(cfg, opts\)/);
+  assert.match(html, /var myCfg = _normalizeCfgShape/);
+  assert.match(html, /var _mergeApptRecords = \(existing, incoming\) =>/);
+  assert.match(html, /migrateMissingLeadSourceMeta/);
+  assert.match(html, /calendarWeekCacheRef/);
+});
+
 test('README is stored as clean UTF-8 text', () => {
   const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   assert.equal(/â†|â€|ðŸ/.test(readme), false);
