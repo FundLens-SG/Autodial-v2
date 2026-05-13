@@ -128,6 +128,18 @@ test('appointment status merge protects durable follow-up outcomes', () => {
   assert.equal(/fly_kite:\s*0/.test(html), false);
 });
 
+test('appointment set flow pauses before dialing next lead', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /var _apptOrdinal = value =>/);
+  assert.equal(html.includes("Congratulations on setting your ' + _setOrdinal + ' appointment.\\n\\nContinue?"), true);
+  assert.match(html, /confirmLabel: 'Continue'/);
+  assert.match(html, /cancelLabel: 'Take break'/);
+  assert.match(html, /_pendingSetApptSaved/);
+  assert.match(html, /_confirmSetContinue\(_advance\)/);
+  assert.match(html, /_advanceAfterWARef\.current = run/);
+  assert.match(html, /Book appointment/);
+});
+
 test('README is stored as clean UTF-8 text', () => {
   const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   assert.equal(/â†|â€|ðŸ/.test(readme), false);

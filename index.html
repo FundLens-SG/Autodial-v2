@@ -7800,12 +7800,24 @@ function App() {
   var autoAdvanceTimerRef = useRef(null);
   var callbackReturnIdxRef = useRef(-1);
   var _advanceAfterWARef = useRef(null);
+  var _apptOrdinal = value => {
+    var x = Math.max(1, Number(value) || 1);
+    var mod100 = x % 100;
+    var suffix = mod100 >= 11 && mod100 <= 13 ? 'th' : x % 10 === 1 ? 'st' : x % 10 === 2 ? 'nd' : x % 10 === 3 ? 'rd' : 'th';
+    return x + suffix;
+  };
   useEffect(() => {
     if (!showAppt && setDone && running) {
       setSetDone(false);
+      var _setApptSaved = !!appStateRef.current._pendingSetApptSaved;
+      appStateRef.current._pendingSetApptSaved = false;
+      if (!_setApptSaved) return;
       var li = curIdx;
+      var _setLeadIdx = -1;
       var _pending = appStateRef.current._pendingSetCalEventId || {};
       var _baseUndo = appStateRef.current._pendingSetUndoBase || {};
+      var _setOrdinalN = Math.max(1, Number(appStateRef.current._pendingSetOrdinal || 0) || Number(session?.sets || 0) || 1);
+      var _setOrdinal = _apptOrdinal(_setOrdinalN);
       var _undoTs = Date.now();
       appStateRef.current._lastUndo = {
         leadIdx: _baseUndo.leadIdx ?? li,
@@ -7835,6 +7847,8 @@ function App() {
       appStateRef.current._pendingSetCalEventId = null;
       appStateRef.current._pendingSetUndoBase = null;
       appStateRef.current._pendingCallbackSetReturn = null;
+      appStateRef.current._pendingSetOrdinal = null;
+      _setLeadIdx = _baseUndo.leadIdx ?? li;
       setUndoInfo({
         leadIdx: _baseUndo.leadIdx ?? li,
         name: leads[_baseUndo.leadIdx ?? li]?.name || '',
@@ -7842,6 +7856,39 @@ function App() {
         ts: _undoTs,
         detail: 'Undo will revert lead status, calendar, Supabase, and sheets where possible.'
       });
+      var _releaseJustSetLead = () => {
+        try {
+          var _justSetLead = (typeof _setLeadIdx === 'number' && _setLeadIdx >= 0)
+            ? leadsRef.current[_setLeadIdx]
+            : null;
+          if (_justSetLead && typeof releaseClaim === 'function') releaseClaim(_justSetLead);
+        } catch (_e) {}
+      };
+      var _confirmSetContinue = action => {
+        var run = async () => {
+          autoAdvanceTimerRef.current = null;
+          var ok = await confirmAsync('Congratulations on setting your ' + _setOrdinal + ' appointment.\n\nContinue?', {
+            title: 'Appointment set',
+            confirmLabel: 'Continue',
+            cancelLabel: 'Take break'
+          });
+          if (ok) {
+            action();
+          } else {
+            _releaseJustSetLead();
+            setShowPostCall(null);
+            setShowNextPreview(false);
+            toast('Paused after your ' + _setOrdinal + ' appointment. Continue when ready.', 'info');
+          }
+        };
+        if (showWA) {
+          _advanceAfterWARef.current = run;
+          return undefined;
+        }
+        var timer = setTimeout(run, 200);
+        autoAdvanceTimerRef.current = timer;
+        return undefined;
+      };
       var _returnAfterCallbackSet = () => {
         autoAdvanceTimerRef.current = null;
         setShowPostCall(null);
@@ -7859,33 +7906,18 @@ function App() {
         }
       };
       if (_callbackSetReturn) {
-        if (showWA) {
-          _advanceAfterWARef.current = _returnAfterCallbackSet;
-        } else {
-          var _returnTimer = setTimeout(_returnAfterCallbackSet, 200);
-          autoAdvanceTimerRef.current = _returnTimer;
-          return () => {
-            clearTimeout(_returnTimer);
-            if (autoAdvanceTimerRef.current === _returnTimer) autoAdvanceTimerRef.current = null;
-          };
-        }
+        return _confirmSetContinue(() => {
+          _releaseJustSetLead();
+          _returnAfterCallbackSet();
+        });
       }
       var _advance = () => {
         autoAdvanceTimerRef.current = null;
         setShowPostCall(null);
         setShowNextPreview(false);
-        // 0126 sync fix: release the prior lead's claim on Set
-        // auto-advance. Same rationale as the NP/CB/NI advance:
-        // we're done with this lead, drop the lock so teammates see
-        // it as available immediately instead of after the 10-min
-        // takeover window. `li` was captured as curIdx at the top
-        // of this effect, so it points at the lead we just Set.
-        try {
-          var _justSetLead = (typeof li === 'number' && li >= 0)
-            ? leadsRef.current[li]
-            : null;
-          if (_justSetLead && typeof releaseClaim === 'function') releaseClaim(_justSetLead);
-        } catch (_e) {}
+        // Release the Set lead claim only when the user intentionally continues
+        // or pauses, so the break itself does not leave a stale team lock.
+        _releaseJustSetLead();
         var nextIdx = nextLeadRef.current;
         if (nextIdx === -1) {
           setRunning(false);
@@ -7905,16 +7937,7 @@ function App() {
           }, 400);
         }
       };
-      if (showWA) {
-        _advanceAfterWARef.current = _advance;
-      } else {
-        var timer = setTimeout(_advance, 400);
-        autoAdvanceTimerRef.current = timer;
-        return () => {
-          clearTimeout(timer);
-          if (autoAdvanceTimerRef.current === timer) autoAdvanceTimerRef.current = null;
-        };
-      }
+      return _confirmSetContinue(_advance);
     }
   }, [showAppt, setDone, running]);
   var [apptLead, setApptLead] = useState(null);
@@ -18533,6 +18556,7 @@ function App() {
         return s;
       });
       if (status === 'set') {
+        appStateRef.current._pendingSetOrdinal = (session && !session.ended ? (session.sets || 0) : 0) + 1;
         _incDailySets();
         setTotalSets(p => p + 1);
       }
@@ -18636,6 +18660,7 @@ function App() {
       });
       if (session) {
         var s = session.sets + 1;
+        appStateRef.current._pendingSetOrdinal = s;
         if (s === 1) checkAchievement('first_set', 'First Blood!', '🩸');
         // 0124: per-session bar-clear celebrations. The pre-fix nested-if
         // (s === apptsBar) (s === bonusBar) only fired when both bars were
@@ -18669,6 +18694,8 @@ function App() {
             try { setConfetti(true); setTimeout(() => setConfetti(false), 3000); } catch (_e) {}
           }
         }
+      } else {
+        appStateRef.current._pendingSetOrdinal = Math.max(1, Number(appStateRef.current._pendingSetOrdinal || 0) || 1);
       }
       var lead = leadIdx >= 0 && leadIdx < leads.length ? {
         ...leads[leadIdx]
@@ -23075,7 +23102,7 @@ function App() {
           // addition to the existing confetti rain. Visual punch right at
           // the moment the agent earned it.
           try { setSetStampShow(true); setTimeout(() => setSetStampShow(false), 950); } catch (_e) {}
-          var _setCount = (currentSession && currentSession.sets || 0) + 1;
+          var _setCount = Math.max(1, Number(appStateRef.current._pendingSetOrdinal || 0) || Number(currentSession && currentSession.sets || 0) || 1);
           var _streakBadge = _setCount >= 20 ? '🔱 ' : _setCount >= 10 ? '👑 ' : _setCount >= 5 ? '🔥 ' : _setCount >= 3 ? '🎩 ' : '🎉 ';
           var _firstName = (lead.name || '').split(/\s+/)[0] || 'lead';
           if (evt?.id) toast(_streakBadge + 'BOOKED with ' + _firstName + '! · #' + _setCount + ' this session', 'info');
@@ -23084,6 +23111,7 @@ function App() {
           if (evt?.id) toast('✓ Appointment updated.');
           else toast('Appointment saved locally; calendar event needs a sync check.', 'err');
         }
+        appStateRef.current._pendingSetApptSaved = true;
         setShowAppt(false);
         setApptLead(null);
         setApptLocation('');
@@ -23279,7 +23307,7 @@ function App() {
               ? ((apptDate === (rescheduleTargetAppt.apptDate || '') && apptTime === (rescheduleTargetAppt.apptTime || ''))
                   ? 'Confirm edits'
                   : 'Reschedule')
-              : 'Book & next lead'
+              : 'Book appointment'
         )
       )
     ));
@@ -39844,6 +39872,7 @@ function App() {
             }
           })();
         }
+        appStateRef.current._pendingSetApptSaved = true;
       } catch (ev) {
         toast(ev.message, 'err');
       }
