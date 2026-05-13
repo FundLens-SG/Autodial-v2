@@ -1951,7 +1951,8 @@ function authGrant(){
   var _prevUser=localStorage.getItem('autodial_last_user');var _curUser=(_prof?.email||_user?.email||'').toLowerCase();
   if(!window._localPreviewMode&&_prevUser&&_prevUser!==_curUser){console.log('[AutoDial] Different user detected — clearing local data for cloud sync');
     var _keep=['autodial_role','autodial_last_user','autodial_seen_help'];
-    Object.keys(localStorage).filter(function(k){return k.startsWith('autodial')||k.startsWith('ad_')}).forEach(function(k){if(_keep.indexOf(k)===-1)localStorage.removeItem(k)})}
+    Object.keys(localStorage).filter(function(k){return k.startsWith('autodial')||k.startsWith('ad_')}).forEach(function(k){if(_keep.indexOf(k)===-1)localStorage.removeItem(k)});
+    localStorage.removeItem('_deletedApptIds')}
   if(!window._localPreviewMode){localStorage.setItem('autodial_last_user',_curUser);localStorage.setItem('autodial_role',window._role);initSync()}
   // Wait for Babel to compile initApp (defined in JSX section)
   var _mt=0;

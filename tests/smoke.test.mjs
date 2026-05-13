@@ -169,6 +169,12 @@ test('appointment delete tombstones avoid broad phone-date keys for new deletes'
   assert.match(html, /if \(_apptLegacyDeleteKeys\(a\)\.some\(k => delSet\.has\(k\)\)\) return true/);
 });
 
+test('legacy appointment tombstones are cleared on account switch', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /_prevUser&&_prevUser!==_curUser/);
+  assert.match(html, /localStorage\.removeItem\('_deletedApptIds'\)/);
+});
+
 test('appointment wipe removes visible week events by raw calendar event id', () => {
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /var _calEventIdsForWipe = \[\]/);
