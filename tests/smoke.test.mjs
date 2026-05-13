@@ -149,6 +149,18 @@ test('google readiness uses verified API health instead of raw token', () => {
   assert.equal(/done: !!\(gOk \|\| myCfg\.timesheetId \|\| cfg\.sheetId\)/.test(html), false);
 });
 
+test('appointment delete tombstones avoid broad phone-date keys for new deletes', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  const exactStart = html.indexOf('function _apptDeleteKeys(a)');
+  const legacyStart = html.indexOf('function _apptLegacyDeleteKeys(a)');
+  const exactBlock = html.slice(exactStart, legacyStart);
+  assert.ok(exactStart >= 0 && legacyStart > exactStart);
+  assert.equal(exactBlock.includes("add(phone + '_' + date)"), false);
+  assert.match(exactBlock, /if \(phone && date && time\) add\('pdt:' \+ phone \+ '\|' \+ date \+ '\|' \+ time\)/);
+  assert.match(html, /function _apptLegacyDeleteKeys\(a\)/);
+  assert.match(html, /if \(_apptLegacyDeleteKeys\(a\)\.some\(k => delSet\.has\(k\)\)\) return true/);
+});
+
 test('README is stored as clean UTF-8 text', () => {
   const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   assert.equal(/â†|â€|ðŸ/.test(readme), false);

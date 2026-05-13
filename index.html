@@ -7079,6 +7079,21 @@ function _apptDeleteKeys(a) {
   var created = String(a.createdAt || a.created_at || '').trim();
   var name = String(a.name || a.leadName || a.lead_name || '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (phone && created) add(phone + '_' + created);
+  if (phone && date && time) add('pdt:' + phone + '|' + date + '|' + time);
+  if (name && date && time) add('ndt:' + name + '|' + date + '|' + time);
+  return keys;
+}
+function _apptLegacyDeleteKeys(a) {
+  if (!a) return [];
+  var keys = [];
+  var add = v => {
+    v = String(v || '').trim();
+    if (v && !keys.includes(v)) keys.push(v);
+  };
+  var phone = normalizePhone(a.phone || a.leadPhone || a.lead_phone || '');
+  var date = String(a.apptDate || a.appt_date || '').slice(0, 10);
+  var time = String(a.apptTime || a.appt_time || '').slice(0, 5);
+  var name = String(a.name || a.leadName || a.lead_name || '').trim().toLowerCase().replace(/\s+/g, ' ');
   if (phone && date) {
     add(phone + '_' + date);
     add('pdt:' + phone + '|' + date + '|' + time);
@@ -7097,10 +7112,12 @@ function isApptDeleted(a, delSet) {
   if (!delSet) delSet = _getDelIds();
   if (!delSet.size) return false;
   if (_apptDeleteKeys(a).some(k => delSet.has(k))) return true;
+  if (_apptLegacyDeleteKeys(a).some(k => delSet.has(k))) return true;
   return false;
 }
 window.isApptDeleted = isApptDeleted;
 window._apptDeleteKeys = _apptDeleteKeys;
+window._apptLegacyDeleteKeys = _apptLegacyDeleteKeys;
 try {
   var _d = _readDeletedApptIds();
   if (Array.isArray(_d) && _d.length) {
