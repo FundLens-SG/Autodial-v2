@@ -109,6 +109,8 @@ test('stability hardening keeps recovery, config, appts, and calendar safe', () 
   assert.match(html, /function _normalizeCfgShape\(cfg, opts\)/);
   assert.match(html, /var myCfg = _normalizeCfgShape/);
   assert.match(html, /var _mergeApptRecords = \(existing, incoming\) =>/);
+  assert.match(html, /var _mapDbApptRow = a =>/);
+  assert.match(html, /leadNotes: a\.lead_notes \|\| a\.leadNotes \|\| ''/);
   assert.match(html, /migrateMissingLeadSourceMeta/);
   assert.match(html, /calendarWeekCacheRef/);
 });

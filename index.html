@@ -10558,6 +10558,36 @@ function App() {
     });
     return merged;
   };
+  var _mapDbApptRow = a => ({
+    id: a.id || Date.now() + Math.random(),
+    dbApptId: a.id || '',
+    rowId: a.id || '',
+    name: a.lead_name || a.name || '',
+    phone: a.lead_phone || a.phone || '',
+    apptDate: a.appt_date || a.apptDate || '',
+    apptTime: a.appt_time || a.apptTime || '',
+    duration: a.duration_mins || a.duration || 60,
+    calEventId: a.calendar_event_id || a.calEventId || '',
+    calendarId: a.calendar_id || a.calendarId || '',
+    _calId: a.calendar_id || a.calendarId || '',
+    inviteEmails: a.invite_emails || a.inviteEmails || '',
+    admin: a.admin_email || a.admin || '',
+    followUp: a.follow_up || a.followUp || 'pending',
+    tip: a.tip || 0,
+    createdAt: a.created_at || a.createdAt || new Date().toISOString(),
+    updatedAt: a.updated_at || a.updatedAt || '',
+    followUpDate: a.follow_up_date || a.followUpDate || null,
+    statusUpdatedAt: a.status_updated_at || a.statusUpdatedAt || null,
+    clientOpId: a.client_op_id || a.clientOpId || '',
+    shaky: !!a.shaky,
+    location: a.location || a.meeting_location || a.venue || '',
+    industry: a.industry || a.company || a.occupation || '',
+    remarks: a.remarks || a.notes || a.specialist_notes || a.description || '',
+    notes: a.notes || a.remarks || '',
+    leadNotes: a.lead_notes || a.leadNotes || '',
+    gender: a.gender || a.lead_gender || '',
+    age: a.age || a.lead_age || ''
+  });
   var _softApptSame = (a, b) => {
     if (!a || !b) return false;
     var aIds = [a.id, a.dbApptId, a.rowId, a.autoId, a.apptSheetAutoId, a.calEventId].filter(Boolean).map(String);
@@ -13548,27 +13578,7 @@ function App() {
             var existing = new Set(prev.map(a => (a.phone || '') + '_' + (a.createdAt || '')));
             var merged = [...prev];
             dbAppts.forEach(a => {
-              var candidate = {
-                id: a.id || Date.now() + Math.random(),
-                dbApptId: a.id || '',
-                rowId: a.id || '',
-                name: a.lead_name || '',
-                phone: a.lead_phone || '',
-                apptDate: a.appt_date || '',
-                apptTime: a.appt_time || '',
-                calEventId: a.calendar_event_id || '',
-                admin: a.admin_email || '',
-                followUp: a.follow_up || 'pending',
-                tip: a.tip || 0,
-                createdAt: a.created_at || new Date().toISOString(),
-                followUpDate: a.follow_up_date || null,
-                shaky: !!a.shaky,
-                location: a.location || a.meeting_location || a.venue || '',
-                industry: a.industry || a.company || '',
-                remarks: a.remarks || a.notes || a.specialist_notes || '',
-                gender: a.gender || '',
-                age: a.age || ''
-              };
+              var candidate = _mapDbApptRow(a);
               if (isApptDeleted(candidate, delSet)) return;
               var key = (a.lead_phone || '') + '_' + (a.created_at || '');
               if (!existing.has(key)) merged.push(candidate);
@@ -14562,27 +14572,7 @@ function App() {
         var dbAppts = role === 'main' ? await DB.getAllAppts() : await DB.getAppts(myEmail);
         if (!dbAppts.length) return false;
         var delIds = _getDelIds();
-        var mapped = dbAppts.map(a => ({
-          id: a.id || Date.now() + Math.random(),
-          dbApptId: a.id || '',
-          name: a.lead_name || '',
-          phone: a.lead_phone || '',
-          apptDate: a.appt_date || '',
-          apptTime: a.appt_time || '',
-          duration: a.duration_mins || 60,
-          calEventId: a.calendar_event_id || '',
-          admin: a.admin_email || '',
-          followUp: a.follow_up || 'pending',
-          tip: a.tip || 0,
-          createdAt: a.created_at || new Date().toISOString(),
-          followUpDate: a.follow_up_date || null,
-          shaky: !!a.shaky,
-          location: a.location || a.meeting_location || a.venue || '',
-          industry: a.industry || a.company || '',
-          remarks: a.remarks || a.notes || a.specialist_notes || '',
-          gender: a.gender || '',
-          age: a.age || ''
-        })).filter(a => !isApptDeleted(a, delIds));
+        var mapped = dbAppts.map(_mapDbApptRow).filter(a => !isApptDeleted(a, delIds));
         var newHash = _hashAppts(mapped);
         if (newHash === _liveSyncRef.current.lastApptsHash) return false;
         _liveSyncRef.current.lastApptsHash = newHash;
