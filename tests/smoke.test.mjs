@@ -181,6 +181,16 @@ test('undo set cleanup persists and replays pending deletes', () => {
   assert.match(html, /window\.addEventListener\('focus', wake\)/);
 });
 
+test('calendar loading keeps ready week and prioritizes target calendar', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.equal(/setCalRefreshing\(true\);\s*setWeekEventsWeekKey\(''\);\s*gCalShare\.listCalendars/.test(html), false);
+  assert.match(html, /var targetCalForFetch = myCfg\?\.targetCalendarId \|\| cfg\.targetCalendarId \|\| ''/);
+  assert.match(html, /var calFetchRank = c =>/);
+  assert.match(html, /if \(c\.id === targetCalForFetch\) return 0/);
+  assert.match(html, /calFetchList\.sort\(\(a, b\) => calFetchRank\(a\) - calFetchRank\(b\)/);
+  assert.match(html, /cfg\.targetCalendarId, myCfg\?\.targetCalendarId/);
+});
+
 test('README is stored as clean UTF-8 text', () => {
   const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   assert.equal(/â†|â€|ðŸ/.test(readme), false);

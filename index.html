@@ -13975,7 +13975,6 @@ function App() {
     if (role === 'main' && !calListReady) {
       var cancelled = false;
       setCalRefreshing(true);
-      setWeekEventsWeekKey('');
       gCalShare.listCalendars().then(list => {
         if (cancelled) return;
         setCalList(Array.isArray(list) ? list : []);
@@ -14027,6 +14026,13 @@ function App() {
         seen.add(c.id);
         return true;
       });
+      var targetCalForFetch = myCfg?.targetCalendarId || cfg.targetCalendarId || '';
+      var calFetchRank = c => {
+        if (c.id === targetCalForFetch) return 0;
+        if (c.primary || c.id === 'primary') return 1;
+        return 2;
+      };
+      calFetchList.sort((a, b) => calFetchRank(a) - calFetchRank(b) || String(a.summary || a.id || '').localeCompare(String(b.summary || b.id || '')));
     }
     var loadWeekEvents = async () => {
       var now = new Date();
@@ -14191,7 +14197,7 @@ function App() {
     // user's screenshot. Drop adminConfigs (the calFetchList we
     // actually consume is computed elsewhere); keep the explicit
     // calRefreshTrigger as the manual-refresh handle.
-  }, [gOk, role, calListReady, calShares, calList, myEmail, showAppt, calWeekOffset, tab, calRefreshTrigger, calVisibility, showInvited, showDeclined]);
+  }, [gOk, role, calListReady, calShares, calList, myEmail, showAppt, calWeekOffset, tab, calRefreshTrigger, calVisibility, showInvited, showDeclined, cfg.targetCalendarId, myCfg?.targetCalendarId]);
   useEffect(() => {
     if (!_SB || !_user) return;
     var _pullTimer = null,
