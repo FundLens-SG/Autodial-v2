@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.13.0153'),reloading=false;navigator.serviceWorker.addEventListener('controllerchange',()=>{var k='ad_sw_reload_'+v;if(reloading||sessionStorage.getItem(k)==='1')return;reloading=true;sessionStorage.setItem(k,'1');location.reload()});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.13.0154');navigator.serviceWorker.addEventListener('controllerchange',()=>{try{sessionStorage.setItem('ad_sw_updated_'+v,'1');window.dispatchEvent(new CustomEvent('autodial-sw-updated',{detail:{version:v}}))}catch(_e){}});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1693,7 +1693,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.13.0153';
+window.APP_VERSION='2026.05.13.0154';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -4543,7 +4543,6 @@ var openTelHref = (phone, delay = 0) => {
     try {
       var a = document.createElement('a');
       a.href = 'tel:' + clean;
-      a.target = '_blank';
       a.style.display = 'none';
       a.rel = 'noopener';
       document.body.appendChild(a);
@@ -10395,11 +10394,7 @@ function App() {
       } : null);
       if (_secs <= 0) {
         clearInterval(_tick);
-        try {
-          location.reload(true);
-        } catch (_e) {
-          location.reload();
-        }
+        setUpdateAvailable(u => u ? { ...u, countdown: 0 } : null);
       }
     }, 1000);
     setUpdateAvailable(u => u ? {
@@ -16087,20 +16082,21 @@ function App() {
   useEffect(() => {
     if (!isMob || !_SB || !_user || !myEmail) return;
     var stopped = false;
+    var pickPendingDial = q => (q || []).find(item => {
+      if (!item || !item.phone || item.devId === window._devId) return false;
+      if (item.ts && Date.now() - item.ts > 20 * 60000) return false;
+      if (item.handledBy) return false;
+      var localLast = '';
+      try { localLast = localStorage.getItem('ad_lastPhoneDialId') || ''; } catch (_e) {}
+      var itemId = item.id || ('dial_' + (item.ts || '') + '_' + String(item.phone || '').replace(/\D/g, ''));
+      return !(localLast && localLast === itemId);
+    }) || null;
     var checkPendingDial = async reason => {
       if (stopped) return;
       try {
         var r = await _SB.schema('autodial').from('user_settings').select('phone_dialer').eq('user_id', _user.id).maybeSingle();
         var q = normalizePhoneDialerQueue(r.data ? r.data.phone_dialer : null);
-        var d = q.find(item => {
-          if (!item || !item.phone || item.devId === window._devId) return false;
-          if (item.ts && Date.now() - item.ts > 20 * 60000) return false;
-          if (item.handledBy) return false;
-          var localLast = '';
-          try { localLast = localStorage.getItem('ad_lastPhoneDialId') || ''; } catch (_e) {}
-          var itemId = item.id || ('dial_' + (item.ts || '') + '_' + String(item.phone || '').replace(/\D/g, ''));
-          return !(localLast && localLast === itemId);
-        }) || null;
+        var d = pickPendingDial(q);
         if (!d || !d.phone || d.devId === window._devId) return;
         if (d.ts && Date.now() - d.ts > 20 * 60000) return;
         // 0106: skip if this device already handled this dial — prevents
@@ -16132,11 +16128,28 @@ function App() {
     var pollId = setInterval(() => {
       if (document.visibilityState === 'visible') checkPendingDial('poll');
     }, 2500);
-    // Phase 7B2: legacy filtered postgres_changes channel on
-    // autodial_admin_config replaced by polling against user_settings.
-    // user_settings can be added to the realtime publication later if
-    // sub-3s latency proves to matter; the 2.5s poll above is acceptable.
     var ch = null;
+    try {
+      ch = _SB.channel('phone-dialer-' + _user.id + '-' + window._devId)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'autodial',
+          table: 'user_settings',
+          filter: 'user_id=eq.' + _user.id
+        }, payload => {
+          if (stopped) return;
+          try {
+            var q = normalizePhoneDialerQueue(payload?.new ? payload.new.phone_dialer : null);
+            var d = pickPendingDial(q);
+            if (d) handlePhoneDialRequest(d, { source: 'db-realtime' });
+          } catch (e) {
+            console.warn('[PhoneDial realtime]', e?.message || e);
+          }
+        })
+        .subscribe();
+    } catch (e) {
+      console.warn('[PhoneDial realtime setup]', e?.message || e);
+    }
     return () => {
       stopped = true;
       clearInterval(pollId);
@@ -35853,7 +35866,7 @@ function App() {
   }, React.createElement("div", { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 8 } },
     React.createElement("h3", { style: { fontSize: 14, fontWeight: 700, margin: 0 } }, "App Version"),
     React.createElement("span", { className: "mono", style: { fontSize: 11, fontWeight: 700, color: 'var(--accent2)' } }, "v", window.APP_VERSION || 'unknown')
-  ), updateAvailable && React.createElement("p", { style: { margin: '0 0 8px', fontSize: 10, fontWeight: 800, color: 'var(--accent2)' } }, "\u21BB Update available \u2014 v", updateAvailable.remoteVersion), React.createElement("p", { style: { margin: '0 0 10px', fontSize: 10, color: 'var(--text3)', lineHeight: 1.4 } }, "AutoDial checks for new versions every 5 minutes and on tab focus. When a newer build is published, you'll see a banner with a 15-second countdown before auto-reload."), React.createElement("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, React.createElement("button", {
+  ), updateAvailable && React.createElement("p", { style: { margin: '0 0 8px', fontSize: 10, fontWeight: 800, color: 'var(--accent2)' } }, "\u21BB Update available \u2014 v", updateAvailable.remoteVersion), React.createElement("p", { style: { margin: '0 0 10px', fontSize: 10, color: 'var(--text3)', lineHeight: 1.4 } }, "AutoDial checks for new versions every 5 minutes and on tab focus. New builds show a banner, but the app will not auto-reload during a calling session."), React.createElement("div", { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } }, React.createElement("button", {
     onClick: async () => {
       toast('Checking for updates\u2026', 'info');
       try {
@@ -36607,7 +36620,7 @@ function App() {
       color: 'var(--text3)',
       lineHeight: 1.4
     }
-  }, "AutoDial checks for new versions every 5 minutes and on tab focus. When a newer build is published, you'll see a banner at the top with a 15-second countdown before auto-reload."), React.createElement("div", {
+  }, "AutoDial checks for new versions every 5 minutes and on tab focus. New builds show a banner, but the app will not auto-reload during a calling session."), React.createElement("div", {
     style: {
       display: 'flex',
       gap: 8,
@@ -40470,7 +40483,7 @@ function App() {
       fontSize: 10,
       color: '#e8c283'
     }
-  }, "Auto-reloading in ", updateAvailable.countdown ?? 15, "s")), React.createElement("button", {
+  }, "Refresh when you are ready; AutoDial will not reload during a call.")), React.createElement("button", {
     onClick: () => setUpdateAvailable(null),
     style: {
       width: 22,

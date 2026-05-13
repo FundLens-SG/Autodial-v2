@@ -1,4 +1,4 @@
-const APP_VERSION = '2026.05.13.0153';
+const APP_VERSION = '2026.05.13.0154';
 const CACHE_NAME = `autodial-v2-${APP_VERSION}`;
 const ASSETS = ['./', './index.html', './manifest.json', './icon-180.png', './icon-192.png', './icon-512.png'];
 
@@ -19,16 +19,14 @@ self.addEventListener('message', e => {
 self.addEventListener('notificationclick', e => {
   const data = e.notification && e.notification.data || {};
   const targetUrl = data.url || './?autodialFocus=dial';
-  const phone = String(data.phone || '').replace(/[^+\d]/g, '');
   e.notification.close();
   e.waitUntil(clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
     const sameApp = list.find(c => c.url && c.url.indexOf(self.registration.scope) === 0);
     if (sameApp) {
-      const focused = sameApp.navigate ? sameApp.navigate(targetUrl).then(c => c ? c.focus() : sameApp.focus()) : sameApp.focus();
-      return focused.then(() => phone && clients.openWindow ? clients.openWindow('tel:' + phone).catch(() => {}) : null);
+      return sameApp.navigate ? sameApp.navigate(targetUrl).then(c => c ? c.focus() : sameApp.focus()) : sameApp.focus();
     }
     if (clients.openWindow) {
-      return clients.openWindow(targetUrl).then(() => phone ? clients.openWindow('tel:' + phone).catch(() => {}) : null);
+      return clients.openWindow(targetUrl);
     }
   }));
 });
@@ -57,9 +55,16 @@ self.addEventListener('fetch', e => {
       if (r.ok) { const c = r.clone(); caches.open(CACHE_NAME).then(cache => cache.put(e.request, c)); }
       return r;
     }).catch(() => {
+      if (e.request.mode === 'navigate') {
+        return caches.match('./index.html').then(cached => cached || caches.match('./')).then(cached => cached || new Response('<!doctype html><title>AutoDial offline</title><body style="background:#07080d;color:#e6edf3;font-family:system-ui;padding:24px">AutoDial is offline. Reconnect and reload.</body>', {
+          status: 503,
+          statusText: 'Service Unavailable',
+          headers: { 'Content-Type': 'text/html; charset=utf-8' }
+        }));
+      }
       // Defensive: caches.match() resolves to undefined when there's no
-      // cache hit. Coerce to a synthetic empty Response so e.respondWith
-      // never receives undefined.
+      // cache hit. Coerce to a synthetic response so e.respondWith never
+      // receives undefined.
       return caches.match(e.request).then(cached => cached || new Response('', {
         status: 503,
         statusText: 'Service Unavailable',
