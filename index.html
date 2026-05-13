@@ -28497,7 +28497,7 @@ function App() {
       style: { padding: '6px 10px', borderRadius: 8, background: 'transparent', color: 'var(--text3)', fontSize: 11, fontWeight: 700, border: '1px solid var(--border)' }
     }, "Clear"));
   })(), isManageMode && (() => {
-    var _pendingAppts = appointments.filter(a => !a._deleted && a.followUp === 'pending' && !isApptDeleted(a, _getDelIds()));
+    var _pendingAppts = appointments.filter(a => !a._deleted && _normApptFollowUp(a.followUp) === 'pending' && !isApptDeleted(a, _getDelIds()));
     var _selCount = selectedAppts.size;
     var _bulkApply = async status => {
       if (_selCount === 0) return;
@@ -28507,7 +28507,7 @@ function App() {
       var _stampedById = new Map(_stampedTargets.map(a => [a.id, a]));
       setAppointments(p => p.map(a => selectedAppts.has(a.id) ? (_stampedById.get(a.id) || _stampApptStatus(a, status, { followUpDate: _now })) : a));
       if (status === 'met') {
-        var _targets = appointments.filter(a => selectedAppts.has(a.id) && a.followUp !== 'met' && a.followUp !== 'closed');
+        var _targets = appointments.filter(a => selectedAppts.has(a.id) && !['met', 'closed'].includes(_normApptFollowUp(a.followUp)));
         if (_targets.length) {
           setIncentives(p => [...p, ..._targets.map(a => ({
             id: Date.now() + Math.random(),
@@ -28658,14 +28658,14 @@ function App() {
       if (role === 'admin' && a.admin && a.admin.toLowerCase() !== myEmail.toLowerCase()) return false;
       if (role !== 'admin' && isCallMode && a.admin && a.admin.toLowerCase() !== myEmail.toLowerCase()) return false;
       if (!apptSearch) return true;
-      if (['pending', 'met', 'postponed', 'flykite', 'closed'].includes(apptSearch)) return a.followUp === apptSearch;
+      if (['pending', 'met', 'postponed', 'flykite', 'closed'].includes(apptSearch)) return _normApptFollowUp(a.followUp) === _normApptFollowUp(apptSearch);
       return (a.name || '').toLowerCase().includes(apptSearch.toLowerCase()) || (a.phone || '').includes(apptSearch) || (a.admin || '').toLowerCase().includes(apptSearch.toLowerCase());
     });
     var _sortApptRows = arr => {
       var _noDate = [],
         _rest = [];
       arr.forEach(x => {
-        if (x.followUp === 'postponed' && !x.apptDate) _noDate.push(x);else _rest.push(x);
+        if (_normApptFollowUp(x.followUp) === 'postponed' && !x.apptDate) _noDate.push(x);else _rest.push(x);
       });
       return [..._noDate, ..._rest];
     };
@@ -28723,6 +28723,8 @@ function App() {
       }
     }, a._count, " appts"));
     var isMain = role === 'main';
+    var _fu = _normApptFollowUp(a.followUp);
+    var _statusKey = _fu === 'fly_kite' ? 'flykite' : _fu;
     var statusColors = {
       pending: 'var(--accent)',
       met: 'var(--green)',
@@ -28738,14 +28740,14 @@ function App() {
       closed: 'Closed 💰'
     };
     var _isSelected = selectedAppts.has(a.id);
-    var _needsReschedule = a.followUp === 'postponed' && !a.apptDate;
+    var _needsReschedule = _fu === 'postponed' && !a.apptDate;
     return React.createElement("div", {
       key: a.id,
       className: "card" + (_needsReschedule ? " postponed-needs-date" : ""),
       onClick: _needsReschedule ? () => _openRescheduleFlow(a) : undefined,
       style: {
         marginBottom: 12,
-        borderColor: _isSelected ? 'rgba(214,168,122,.6)' : (statusColors[a.followUp] || 'var(--border)') + '30',
+        borderColor: _isSelected ? 'rgba(214,168,122,.6)' : (statusColors[_statusKey] || 'var(--border)') + '30',
         background: _isSelected ? 'linear-gradient(135deg,rgba(214,168,122,.08),var(--bg2))' : undefined,
         boxShadow: _isSelected ? '0 0 0 1px rgba(214,168,122,.3)' : undefined
       }
@@ -28757,7 +28759,7 @@ function App() {
         marginBottom: 6,
         gap: 8
       }
-    }, isManageMode && a.followUp === 'pending' && React.createElement("button", {
+    }, isManageMode && _fu === 'pending' && React.createElement("button", {
       onClick: e => {
         e.stopPropagation();
         setSelectedAppts(prev => {
@@ -28822,10 +28824,10 @@ function App() {
     }, React.createElement("span", {
       className: "pill",
       style: {
-        background: (statusColors[a.followUp] || 'var(--accent)') + '18',
-        color: statusColors[a.followUp] || 'var(--accent)'
+        background: (statusColors[_statusKey] || 'var(--accent)') + '18',
+        color: statusColors[_statusKey] || 'var(--accent)'
       }
-    }, statusLabels[a.followUp] || 'Pending'), a.postponeCount >= 1 && React.createElement("span", {
+    }, statusLabels[_statusKey] || 'Pending'), a.postponeCount >= 1 && React.createElement("span", {
       className: "pill",
       title: "Postponed " + a.postponeCount + " time" + (a.postponeCount === 1 ? '' : 's') + " — consider Fly Kite if it keeps slipping",
       style: {
@@ -28861,7 +28863,7 @@ function App() {
         color: 'var(--text2)',
         marginBottom: 4
       }
-    }, "\uD83D\uDCC5 ", a.apptDate, " ", a.apptTime, " ", a.location ? '· 📍' + a.location : ''), !a.apptDate && a.followUp !== 'met' && a.followUp !== 'closed' && React.createElement("button", {
+    }, "\uD83D\uDCC5 ", a.apptDate, " ", a.apptTime, " ", a.location ? '· 📍' + a.location : ''), !a.apptDate && _fu !== 'met' && _fu !== 'closed' && React.createElement("button", {
       onClick: e => {
         e.stopPropagation();
         _openRescheduleFlow(a);
@@ -28874,9 +28876,9 @@ function App() {
         padding: '8px 12px',
         marginBottom: 6,
         borderRadius: 10,
-        background: a.followUp === 'postponed' ? 'linear-gradient(135deg,rgba(255,255,255,.10),rgba(255,255,255,.04))' : 'linear-gradient(135deg,rgba(214,168,122,.12),rgba(139,92,246,.06))',
-        border: '1px dashed ' + (a.followUp === 'postponed' ? 'rgba(255,255,255,.5)' : 'rgba(214,168,122,.4)'),
-        color: a.followUp === 'postponed' ? '#fff' : 'var(--accent2)',
+        background: _fu === 'postponed' ? 'linear-gradient(135deg,rgba(255,255,255,.10),rgba(255,255,255,.04))' : 'linear-gradient(135deg,rgba(214,168,122,.12),rgba(139,92,246,.06))',
+        border: '1px dashed ' + (_fu === 'postponed' ? 'rgba(255,255,255,.5)' : 'rgba(214,168,122,.4)'),
+        color: _fu === 'postponed' ? '#fff' : 'var(--accent2)',
         fontSize: 11,
         fontWeight: 700
       }
@@ -28884,14 +28886,14 @@ function App() {
       style: {
         fontSize: 13
       }
-    }, a.followUp === 'postponed' ? '⏸' : '📅'), React.createElement("span", null, a.followUp === 'postponed' ? 'Tap to reschedule' : 'Set date & time'), React.createElement("span", {
+    }, _fu === 'postponed' ? '⏸' : '📅'), React.createElement("span", null, _fu === 'postponed' ? 'Tap to reschedule' : 'Set date & time'), React.createElement("span", {
       style: {
         marginLeft: 'auto',
         fontSize: 9,
         color: 'var(--text3)',
         fontWeight: 600
       }
-    }, a.followUp === 'postponed' ? 'postponed · awaiting date' : '⚠ no date set')), a.apptDate && (() => {
+    }, _fu === 'postponed' ? 'postponed · awaiting date' : '⚠ no date set')), a.apptDate && (() => {
       var isShaky = isApptShaky(a);
       return React.createElement("div", {
         onClick: e => {
@@ -28949,7 +28951,7 @@ function App() {
         marginBottom: 6,
         fontStyle: 'italic'
       }
-    }, a.remarks), a.followUp === 'pending' && React.createElement("div", {
+    }, a.remarks), _fu === 'pending' && React.createElement("div", {
       style: {
         display: 'flex',
         gap: 5
@@ -29036,7 +29038,7 @@ function App() {
         fontSize: 10,
         fontWeight: 700
       }
-    }, l))), a.followUp === 'closed' && React.createElement("div", {
+    }, l))), _fu === 'closed' && React.createElement("div", {
       style: {
         display: 'flex',
         alignItems: 'center',
@@ -29078,7 +29080,7 @@ function App() {
         fontSize: 10,
         fontWeight: 600
       }
-    }, "\u2713 Mark Tip Paid")), a.followUp === 'met' && React.createElement("div", {
+    }, "\u2713 Mark Tip Paid")), _fu === 'met' && React.createElement("div", {
       style: {
         marginTop: 6,
         display: 'flex',
@@ -29110,13 +29112,13 @@ function App() {
         fontWeight: 700,
         border: '1px solid rgba(240,180,41,.3)'
       }
-    }, "\u2192 Closed \uD83D\uDCB0")), a.followUp === 'postponed' && React.createElement("p", {
+    }, "\u2192 Closed \uD83D\uDCB0")), _fu === 'postponed' && React.createElement("p", {
       style: {
         fontSize: 10,
         color: 'var(--amber)',
         marginTop: 4
       }
-    }, "\u23F3 Postponed ", a.followUpDate ? new Date(a.followUpDate).toLocaleDateString('en-SG') : ''), isMain && a.followUp === 'pending' && React.createElement("div", {
+    }, "\u23F3 Postponed ", a.followUpDate ? new Date(a.followUpDate).toLocaleDateString('en-SG') : ''), isMain && _fu === 'pending' && React.createElement("div", {
       style: {
         marginTop: 8,
         paddingTop: 8,
@@ -39624,7 +39626,8 @@ function App() {
         });
         (appointments || []).forEach(ap => {
           if (!ap.apptDate || !ap.apptTime) return;
-          if (ap.shaky || ap.followUp === 'postponed' || ap.followUp === 'flykite' || ap.followUp === 'closed') return;
+          var _apFu = _normApptFollowUp(ap.followUp);
+          if (ap.shaky || _apFu === 'postponed' || _apFu === 'fly_kite' || _apFu === 'closed') return;
           if (ap.phone === lead?.phone) return;
           var _apStart = new Date(ap.apptDate + 'T' + ap.apptTime).getTime();
           var _apEnd = _apStart + (ap.duration || 60) * 60000;

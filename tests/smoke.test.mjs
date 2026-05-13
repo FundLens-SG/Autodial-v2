@@ -122,6 +122,9 @@ test('appointment status merge protects durable follow-up outcomes', () => {
   assert.match(html, /var _pickApptStatusSource = \(ex, inc\) =>/);
   assert.match(html, /statusUpdatedAt/);
   assert.match(html, /clientOpId/);
+  assert.match(html, /_normApptFollowUp\(a\.followUp\) === _normApptFollowUp\(apptSearch\)/);
+  assert.match(html, /var _statusKey = _fu === 'fly_kite' \? 'flykite' : _fu/);
+  assert.match(html, /var _apFu = _normApptFollowUp\(ap\.followUp\)/);
   assert.equal(/fly_kite:\s*0/.test(html), false);
 });
 
