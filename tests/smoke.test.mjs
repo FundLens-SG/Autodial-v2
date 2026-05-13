@@ -175,6 +175,13 @@ test('legacy appointment tombstones are cleared on account switch', () => {
   assert.match(html, /localStorage\.removeItem\('_deletedApptIds'\)/);
 });
 
+test('legacy appointment tombstone key is removed after migration check', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /var legacyRaw = localStorage\.getItem\('_deletedApptIds'\)/);
+  assert.match(html, /var legacy = JSON\.parse\(legacyRaw \|\| '\[\]'\)/);
+  assert.match(html, /if \(legacyRaw !== null\) localStorage\.removeItem\('_deletedApptIds'\)/);
+});
+
 test('appointment wipe removes visible week events by raw calendar event id', () => {
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /var _calEventIdsForWipe = \[\]/);

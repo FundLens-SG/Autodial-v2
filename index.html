@@ -7043,14 +7043,15 @@ function _readDeletedApptIds() {
     var key = _deletedApptIdsKey();
     var scopedRaw = localStorage.getItem(key);
     var scoped = JSON.parse(scopedRaw || '[]');
+    var legacyRaw = localStorage.getItem('_deletedApptIds');
     if ((!Array.isArray(scoped) || !scoped.length) && scopedRaw === null) {
-      var legacy = JSON.parse(localStorage.getItem('_deletedApptIds') || '[]');
+      var legacy = JSON.parse(legacyRaw || '[]');
       if (Array.isArray(legacy) && legacy.length) {
         scoped = legacy;
         localStorage.setItem(key, JSON.stringify(legacy));
-        localStorage.removeItem('_deletedApptIds');
       }
     }
+    if (legacyRaw !== null) localStorage.removeItem('_deletedApptIds');
     return Array.isArray(scoped) ? scoped : [];
   } catch (_e) {
     return [];
