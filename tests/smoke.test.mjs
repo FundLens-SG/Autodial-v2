@@ -191,6 +191,16 @@ test('calendar loading keeps ready week and prioritizes target calendar', () => 
   assert.match(html, /cfg\.targetCalendarId, myCfg\?\.targetCalendarId/);
 });
 
+test('pending undo cleanup is visible in sync diagnostics', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /var undoCleanupCount = _readUndoSetCleanupQueue\(\)\.length/);
+  assert.match(html, /var hasActionActivity = !!\(syncTrail\.length \|\| undoInfo \|\| importReview \|\| incompleteApptAlerts\.length \|\| undoCleanupCount\)/);
+  assert.match(html, /var cadUndoCleanupBanner = undoCleanupCount \?/);
+  assert.match(html, /Flush cleanup/);
+  assert.match(html, /\['Undo cleanup', undoCleanupCount === 0/);
+  assert.match(html, /label: 'Undo Cleanup'/);
+});
+
 test('README is stored as clean UTF-8 text', () => {
   const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   assert.equal(/â†|â€|ðŸ/.test(readme), false);

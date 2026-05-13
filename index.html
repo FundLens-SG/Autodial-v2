@@ -20230,7 +20230,8 @@ function App() {
     return !owner || owner === myEmail.toLowerCase();
   };
   var incompleteApptAlerts = (appointments || []).filter(_isIncompleteSetAppt).sort((a, b) => new Date(a.createdAt || 0) - new Date(b.createdAt || 0)).slice(0, 5);
-  var hasActionActivity = !!(syncTrail.length || undoInfo || importReview || incompleteApptAlerts.length);
+  var undoCleanupCount = _readUndoSetCleanupQueue().length;
+  var hasActionActivity = !!(syncTrail.length || undoInfo || importReview || incompleteApptAlerts.length || undoCleanupCount);
   var showCallbackReturnButton = (() => {
     if (!callbackBookmark || callbackBookmark.idx < 0 || !session || session.ended) return false;
     var curLeadForBookmark = curIdx >= 0 ? leads[curIdx] : null;
@@ -20954,6 +20955,12 @@ function App() {
       h('span', { className: 'cad-inline' },
         qRetryLeft > 0 && h('span', { className: 'cad-pill amber cad-mono' }, 'retry ', qRetryLeft, 's'),
         h('button', { className: 'cad-btn', onClick: flushSheetQueue }, 'Flush now')
+      )
+    ) : null;
+    var cadUndoCleanupBanner = undoCleanupCount ? h('div', { className: 'cad-sync-banner warn' },
+      h('span', null, h('b', null, undoCleanupCount, ' pending Undo Set cleanup', undoCleanupCount === 1 ? '' : 's'), ' - waiting to remove calendar/sheet/cloud traces'),
+      h('span', { className: 'cad-inline' },
+        h('button', { className: 'cad-btn', onClick: () => _flushUndoSetCleanupQueue('manual') }, 'Flush cleanup')
       )
     ) : null;
     // 0084: Feature B — past-appointment followup banner. Renders only
@@ -21943,12 +21950,14 @@ function App() {
       ['Leads source', !!((cfg.sheetId || myCfg.timesheetId) && (cfg.sheetTab || myCfg.sheetTab)), cfg.sheetTab || myCfg.sheetTab || 'No tab selected'],
       ['Calendar', role === 'admin' ? !!(calShares.length || myCfg.targetCalendarId || weekEvents.length) : gOk && (calList.length > 0 || weekEvents.length > 0 || calShares.length > 0), weekEvents.length ? weekEvents.length + ' events loaded' : 'No week events loaded'],
       ['Cloud sync', !!(_SB && window._cloudReady && syncStatus !== 'offline'), syncStatus + (lastSyncAt ? ' - ' + new Date(lastSyncAt).toLocaleTimeString() : '')],
-      ['Sheet queue', qCount === 0, qCount + ' pending write' + (qCount === 1 ? '' : 's')]
+      ['Sheet queue', qCount === 0, qCount + ' pending write' + (qCount === 1 ? '' : 's')],
+      ['Undo cleanup', undoCleanupCount === 0, undoCleanupCount + ' pending Set cleanup' + (undoCleanupCount === 1 ? '' : 's')]
     ];
     var syncPage = h('div', { className: 'cad-settings-stack' },
       h('div', { className: 'cad-card cad-editor-card' },
         h('div', { className: 'cad-inline', style: { justifyContent: 'space-between' } }, h('span', { className: 'cad-label' }, 'Sync diagnostics'), h('span', { className: 'cad-pill cad-mono' }, window.APP_VERSION || 'local')),
         cadSyncQueueBanner,
+        cadUndoCleanupBanner,
         diagRows.map(row => h('div', { className: 'cad-kv-row', key: row[0] }, h('span', null, h('b', null, row[0]), h('small', { className: 'cad-subtle', style: { display: 'block', marginTop: 3 } }, row[2])), pillState(row[1], row[1] ? 'OK' : 'Check'))),
         h('div', { className: 'cad-action-grid' }, h('button', { className: 'cad-btn', onClick: flushSheetQueue }, 'Flush queue'), h('button', { className: 'cad-btn', onClick: () => window._liveSyncPull && window._liveSyncPull() }, 'Pull cloud'), h('button', { className: 'cad-btn primary', onClick: async () => { await Promise.allSettled([pullApptsFromSheet(), pullSessionsFromSheet()]); } }, 'Pull sheets'))
       )
@@ -33366,6 +33375,10 @@ function App() {
       label: 'Sheet Queue',
       ok: qCount === 0,
       detail: qCount + ' pending write' + (qCount === 1 ? '' : 's')
+    }, {
+      label: 'Undo Cleanup',
+      ok: undoCleanupCount === 0,
+      detail: undoCleanupCount + ' pending Set cleanup' + (undoCleanupCount === 1 ? '' : 's')
     }];
     return React.createElement(React.Fragment, null, React.createElement("div", {
       className: "card",
