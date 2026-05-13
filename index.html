@@ -8863,6 +8863,7 @@ function App() {
     var _wipeCount = 0;
     var _allIdsForBlocklist = [];
     var _apptsForBlocklist = [];
+    var _calEventIdsForWipe = [];
     await Promise.all(_emailsLow.flatMap(em => [(async () => {
       // Phase 7B2: apptlive_ eliminated. shared_appointments(scope='live')
       // is the single source — both 'live' and 'snapshot' scoped rows are
@@ -8878,6 +8879,7 @@ function App() {
             _apptsForBlocklist.push(a);
             _allIdsForBlocklist.push(..._apptDeleteKeys(a));
             if (a.calEventId) {
+              _calEventIdsForWipe.push(String(a.calEventId));
               try {
                 window.gCal && gCal.del(a.calEventId).catch(() => {});
               } catch (_e) {}
@@ -8893,6 +8895,7 @@ function App() {
             _apptsForBlocklist.push(a);
             _allIdsForBlocklist.push(..._apptDeleteKeys(a));
             if (a.calEventId) {
+              _calEventIdsForWipe.push(String(a.calEventId));
               try {
                 window.gCal && gCal.del(a.calEventId).catch(() => {});
               } catch (_e) {}
@@ -8907,6 +8910,7 @@ function App() {
         _apptsForBlocklist.push(a);
         _allIdsForBlocklist.push(..._apptDeleteKeys(a));
         if (a.calEventId) {
+          _calEventIdsForWipe.push(String(a.calEventId));
           try {
             window.gCal && gCal.del(a.calEventId).catch(() => {});
           } catch (_e) {}
@@ -8984,7 +8988,7 @@ function App() {
       _liveSyncRef.current.lastApptsHash = '';
     } catch (_e) {}
     try {
-      var _calIds = new Set(_allIdsForBlocklist.filter(x => x && !String(x).includes('_')));
+      var _calIds = new Set(_calEventIdsForWipe.filter(Boolean));
       if (_calIds.size) setWeekEvents(prev => prev.filter(ev => !_calIds.has(ev.id)));
     } catch (_e) {}
     return _wipeCount;

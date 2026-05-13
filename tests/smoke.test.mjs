@@ -169,6 +169,14 @@ test('appointment delete tombstones avoid broad phone-date keys for new deletes'
   assert.match(html, /if \(_apptLegacyDeleteKeys\(a\)\.some\(k => delSet\.has\(k\)\)\) return true/);
 });
 
+test('appointment wipe removes visible week events by raw calendar event id', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /var _calEventIdsForWipe = \[\]/);
+  assert.match(html, /_calEventIdsForWipe\.push\(String\(a\.calEventId\)\)/);
+  assert.match(html, /var _calIds = new Set\(_calEventIdsForWipe\.filter\(Boolean\)\)/);
+  assert.equal(html.includes("filter(x => x && !String(x).includes('_'))"), false);
+});
+
 test('cloud appointment purge retries every owner candidate', () => {
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /var dbOwners = owners\.length \? owners : \[/);
