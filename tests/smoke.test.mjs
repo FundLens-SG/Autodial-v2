@@ -130,9 +130,10 @@ test('appointment status merge protects durable follow-up outcomes', () => {
 
 test('appointment follow-up actions persist cloud status before sheet sync', () => {
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /apptDate: appt\?\.matchApptDate \|\| appt\?\.originalApptDate \|\| appt\?\.apptDate \|\| ''/);
   assert.match(html, /await Promise\.allSettled\(_stampedTargets\.map\(a => _persistApptFollowUp\(a, _normApptFollowUp\(status\), 0\)\)\)/);
   assert.match(html, /if \(a\.admin && a\.admin\.toLowerCase\(\) !== myEmail\.toLowerCase\(\)\) _mainWritebackAdminAppt\(a\)/);
-  assert.match(html, /await _persistApptFollowUp\(_updated, _normApptFollowUp\(k\), 0\)/);
+  assert.match(html, /await _persistApptFollowUp\(\{ \.\.\._updated, matchApptDate: a\.apptDate \|\| _updated\.apptDate \}, _normApptFollowUp\(k\), 0\)/);
 });
 
 test('appointment set flow pauses before dialing next lead', () => {

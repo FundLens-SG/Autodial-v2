@@ -8505,7 +8505,7 @@ function App() {
       await DB.updateApptFollowUp(dbId, followUp || 'pending', tip || 0, {
         calEventId: appt?.calEventId || '',
         phone: appt?.phone || '',
-        apptDate: appt?.apptDate || '',
+        apptDate: appt?.matchApptDate || appt?.originalApptDate || appt?.apptDate || '',
         admin: appt?.admin || ''
       });
     } catch (e) {
@@ -29303,7 +29303,7 @@ function App() {
         if (a.admin && a.admin.toLowerCase() !== myEmail.toLowerCase()) {
           _mainWritebackAdminAppt(_updated);
         }
-        await _persistApptFollowUp(_updated, _normApptFollowUp(k), 0);
+        await _persistApptFollowUp({ ..._updated, matchApptDate: a.apptDate || _updated.apptDate }, _normApptFollowUp(k), 0);
         await syncApptSheet(_updated, {
           apptDate: k === 'postponed' ? '' : a.apptDate || '',
           apptTime: k === 'postponed' ? '' : a.apptTime || '',
