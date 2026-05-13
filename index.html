@@ -8202,7 +8202,7 @@ function App() {
     // appt). Pre-fix, local fly_kite got clobbered by the next cloud
     // pull because the cloud row still held the old followUp — symptom
     // was the calendar-deletion modal popping up again on every reload.
-    var updated = { ...a, followUp: 'fly_kite', followUpDate: ts };
+    var updated = _stampApptStatus(a, 'fly_kite', { followUpDate: ts });
     setAppointments(p => (p || []).map(x => x.id === a.id ? updated : x));
     setPendingCalDeletions(p => (p || []).filter(x => x.id !== a.id));
     toast('🪁 Marked ' + (a.name || 'appointment') + ' as fly kite', 'info');
@@ -8391,6 +8391,20 @@ function App() {
     if (s === 'closed' || s === 'met' || s === 'postponed' || s === 'pending') return s;
     return 'pending';
   };
+  var APPT_FOLLOWUP_RANK = { pending: 1, postponed: 2, fly_kite: 3, met: 4, closed: 5 };
+  var _newApptOpId = label => 'op_' + String(window._devId || 'dev') + '_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8) + '_' + String(label || 'status');
+  var _stampApptStatus = (appt, followUp, extra) => {
+    var patch = extra || {};
+    var now = patch.statusUpdatedAt || patch.status_updated_at || patch.followUpDate || new Date().toISOString();
+    return {
+      ...(appt || {}),
+      ...patch,
+      followUp: followUp || patch.followUp || appt?.followUp || 'pending',
+      followUpDate: patch.followUpDate || now,
+      statusUpdatedAt: now,
+      clientOpId: patch.clientOpId || patch.client_op_id || _newApptOpId(_normApptFollowUp(followUp || patch.followUp || appt?.followUp))
+    };
+  };
   var _apptStableId = a => String(a?.dbApptId || a?.apptSheetAutoId || a?.id || a?.calEventId || '').trim();
   var _apptOwnerEmail = a => String(a?.admin || a?.adminEmail || a?.adminName || myEmail || '').toLowerCase();
   var _matchAppt = (x, target) => {
@@ -8472,9 +8486,7 @@ function App() {
                     : wanted === 'fly_kite' ? 'Fly Kite'
                     : wanted === 'postponed' ? 'Postponed'
                     : 'Pending';
-    var updated = { ...a, followUp: wanted, followUpDate: ts };
-    updated.tip = 0;
-    updated.efyc = 0;
+    var updated = _stampApptStatus(a, wanted, { followUpDate: ts, tip: 0, efyc: 0 });
     setAppointments(p => (p || []).map(x => _matchAppt(x, a) ? { ...x, ...updated } : x));
     try { _liveSyncRef.current.localApptsGuardUntil = Date.now() + 8000; } catch (_e) {}
     if (wanted === 'met') {
@@ -10507,24 +10519,40 @@ function App() {
     });
     toast('Learned: "' + remark.slice(0, 30) + '…" = ' + status.toUpperCase());
   };
-  var prio = { closed: 4, met: 3, postponed: 2, pending: 1, fly_kite: 0 };
   var _isBlankApptVal = v => v === undefined || v === null || v === '';
-  var _apptRecordTime = a => Date.parse(a?.followUpDate || a?.updatedAt || a?.updated_at || a?.createdAt || a?.created_at || '') || 0;
+  var _apptExplicitStatusTime = a => Date.parse(a?.statusUpdatedAt || a?.status_updated_at || '') || 0;
+  var _apptStatusTime = a => _apptExplicitStatusTime(a) || Date.parse(a?.followUpDate || a?.follow_up_date || '') || 0;
+  var _apptRecordTime = a => Date.parse(a?.updatedAt || a?.updated_at || a?.createdAt || a?.created_at || a?.followUpDate || a?.follow_up_date || '') || 0;
+  var _pickApptStatusSource = (ex, inc) => {
+    var tIncExplicit = _apptExplicitStatusTime(inc);
+    var tExExplicit = _apptExplicitStatusTime(ex);
+    if (tIncExplicit || tExExplicit) {
+      if (tIncExplicit && tExExplicit) return tIncExplicit >= tExExplicit ? inc : ex;
+      return tIncExplicit ? inc : ex;
+    }
+    var pInc = APPT_FOLLOWUP_RANK[_normApptFollowUp(inc.followUp)] ?? -1;
+    var pEx = APPT_FOLLOWUP_RANK[_normApptFollowUp(ex.followUp)] ?? -1;
+    if (pInc !== pEx) return pInc > pEx ? inc : ex;
+    var tInc = _apptStatusTime(inc);
+    var tEx = _apptStatusTime(ex);
+    if (tInc !== tEx) return tInc >= tEx ? inc : ex;
+    return _apptRecordTime(inc) >= _apptRecordTime(ex) ? inc : ex;
+  };
   var _mergeApptRecords = (existing, incoming) => {
     var ex = existing || {};
     var inc = incoming || {};
-    var pInc = prio[_normApptFollowUp(inc.followUp)] ?? -1;
-    var pEx = prio[_normApptFollowUp(ex.followUp)] ?? -1;
-    var statusSource = pInc > pEx ? inc : pEx > pInc ? ex : (_apptRecordTime(inc) >= _apptRecordTime(ex) ? inc : ex);
+    var statusSource = _pickApptStatusSource(ex, inc);
     var merged = {
       ...ex,
       ...inc
     };
-    ['leadId','name','phone','gender','age','industry','location','remarks','notes','leadNotes','inviteEmails','calendarId','_calId','apptSheetId','apptSheetRange','apptSheetAutoId','dbApptId','rowId','calEventId','duration','createdAt'].forEach(function (f) {
+    ['leadId','name','phone','gender','age','industry','location','remarks','notes','leadNotes','inviteEmails','calendarId','_calId','apptSheetId','apptSheetRange','apptSheetAutoId','dbApptId','rowId','calEventId','duration','createdAt','statusUpdatedAt','clientOpId'].forEach(function (f) {
       if (_isBlankApptVal(merged[f]) && !_isBlankApptVal(ex[f])) merged[f] = ex[f];
     });
     merged.followUp = statusSource.followUp || merged.followUp || 'pending';
     merged.followUpDate = statusSource.followUpDate || merged.followUpDate || ex.followUpDate || inc.followUpDate || null;
+    merged.statusUpdatedAt = statusSource.statusUpdatedAt || statusSource.status_updated_at || merged.statusUpdatedAt || ex.statusUpdatedAt || inc.statusUpdatedAt || null;
+    merged.clientOpId = statusSource.clientOpId || statusSource.client_op_id || merged.clientOpId || ex.clientOpId || inc.clientOpId || null;
     ['tip','efyc'].forEach(function (f) {
       if ((Number(merged[f]) || 0) === 0 && (Number(ex[f]) || 0) > 0) merged[f] = ex[f];
     });
@@ -17833,6 +17861,7 @@ function App() {
           sheetTab: u._sourceSheetTab || appStateRef.current._pendingSetUndoBase?.sheetTab || cfg.sheetTab || 'Sheet1',
           savedAt: new Date().toISOString()
         };
+      var _setStatusTs = new Date().toISOString();
       setAppointments(p => {
         var _scrubbed = p.filter(a => !isApptDeleted(a, _delSet));
         var existingIdx = _scrubbed.findIndex(a => (a.leadId === u.id || a.phone === u.phone && a.phone) && (!a.followUp || a.followUp === 'pending' || a.followUp === 'postponed'));
@@ -17840,16 +17869,14 @@ function App() {
           var _ex = _scrubbed[existingIdx];
           if (_ex.followUp === 'postponed') {
             var next = _scrubbed.slice();
-            next[existingIdx] = {
-              ..._ex,
-              followUp: 'pending',
-              followUpDate: null,
+            next[existingIdx] = _stampApptStatus(_ex, 'pending', {
+              followUpDate: _setStatusTs,
               apptDate: '',
               apptTime: '',
               shaky: false,
               needsDetails: true,
               _setUndo: _undoForPendingAppt
-            };
+            });
             return next;
           }
           var _nextExisting = _scrubbed.slice();
@@ -17863,7 +17890,7 @@ function App() {
           };
           return _nextExisting;
         }
-        return [..._scrubbed, {
+        return [..._scrubbed, _stampApptStatus({
           id: Date.now() + Math.random(),
           leadId: u.id,
           name: u.name,
@@ -17882,7 +17909,7 @@ function App() {
           admin: myEmail,
           needsDetails: true,
           _setUndo: _undoForPendingAppt
-        }];
+        }, 'pending', { followUpDate: _setStatusTs })];
       });
     }
     // Pure update — pre-built `u` written in. If u is null (no
@@ -18422,23 +18449,23 @@ function App() {
         callbackReturnPhone: returnLead?.phone || '',
         savedAt: new Date().toISOString()
       };
+      var _setStatusTs = new Date().toISOString();
       setAppointments(p => {
         var clean = (Array.isArray(p) ? p : []).filter(a => !isApptDeleted(a, _delSet));
         var existingIdx = clean.findIndex(a => (a.leadId === updatedTarget.id || a.phone === updatedTarget.phone && a.phone) && (!a.followUp || a.followUp === 'pending' || a.followUp === 'postponed'));
         if (existingIdx >= 0) {
           var next = clean.slice();
-          next[existingIdx] = {
-            ...next[existingIdx],
-            followUp: 'pending',
+          next[existingIdx] = _stampApptStatus(next[existingIdx], 'pending', {
+            followUpDate: _setStatusTs,
             needsDetails: true,
             _setUndo: {
               ...(next[existingIdx]._setUndo || {}),
               ..._setUndo
             }
-          };
+          });
           return next;
         }
-        return [...clean, {
+        return [...clean, _stampApptStatus({
           id: Date.now() + Math.random(),
           leadId: updatedTarget.id,
           name: updatedTarget.name,
@@ -18457,7 +18484,7 @@ function App() {
           admin: myEmail,
           needsDetails: true,
           _setUndo
-        }];
+        }, 'pending', { followUpDate: _setStatusTs })];
       });
       appStateRef.current._pendingSetUndoBase = _setUndo;
       appStateRef.current._pendingCallbackSetReturn = {
@@ -22956,7 +22983,7 @@ function App() {
             }
           }
           _rememberApptCalendarId(eventCalId === 'primary' ? '' : eventCalId);
-          var updated = { ...target, apptDate, apptTime, duration: dur, location: apptLocation, remarks: apptObs || target.remarks, calEventId: evtId, calendarId: eventCalId, _calId: eventCalId, followUp: 'pending', followUpDate: new Date().toISOString(), shaky: apptShaky, leadNotes: target.leadNotes || lead?.notes || '' };
+          var updated = _stampApptStatus(target, 'pending', { apptDate, apptTime, duration: dur, location: apptLocation, remarks: apptObs || target.remarks, calEventId: evtId, calendarId: eventCalId, _calId: eventCalId, followUpDate: new Date().toISOString(), shaky: apptShaky, leadNotes: target.leadNotes || lead?.notes || '' });
           setAppointments(prev => prev.map(a => a.id === target.id ? updated : a));
           if (target.admin && target.admin.toLowerCase() !== myEmail.toLowerCase()) _mainWritebackAdminAppt(updated);
           try { syncApptSheet(updated, { apptDate, apptTime, location: apptLocation, duration: dur, status: 'Set', followUp: 'Pending', notes: apptObs || target.remarks || '' }); } catch (_e) {}
@@ -23014,7 +23041,8 @@ function App() {
         setAppointments(prev => {
           var list = Array.isArray(prev) ? prev.slice() : [];
           var idx = list.findIndex(a => (a.leadId === lead.id || a.phone === lead.phone && a.phone) && (!a.followUp || a.followUp === 'pending') && !a.apptDate);
-          var row = { id: localId, dbApptId: savedApptRow?.id || '', apptSheetAutoId: localId, leadId: lead.id, name: lead.name, phone: lead.phone, gender: lead.gender || '', age: lead.age || '', apptDate, apptTime, duration: dur, location: apptLocation, industry: lead.industry || '', remarks: apptObs, leadNotes: lead.notes || '', followUp: 'pending', tip: 0, tipPaid: false, createdAt: new Date().toISOString(), admin: myEmail, calEventId: evt?.id || '', calendarId: eventCalId, _calId: eventCalId, shaky: apptShaky, needsDetails: false };
+          var _rowCreatedAt = new Date().toISOString();
+          var row = _stampApptStatus({ id: localId, dbApptId: savedApptRow?.id || '', apptSheetAutoId: localId, leadId: lead.id, name: lead.name, phone: lead.phone, gender: lead.gender || '', age: lead.age || '', apptDate, apptTime, duration: dur, location: apptLocation, industry: lead.industry || '', remarks: apptObs, leadNotes: lead.notes || '', tip: 0, tipPaid: false, createdAt: _rowCreatedAt, admin: myEmail, calEventId: evt?.id || '', calendarId: eventCalId, _calId: eventCalId, shaky: apptShaky, needsDetails: false }, 'pending', { followUpDate: _rowCreatedAt });
           if (idx >= 0) {
             list[idx] = { ...list[idx], ...row, id: list[idx].id || row.id };
             return list;
@@ -23437,8 +23465,15 @@ function App() {
       var tipAmt = isMain ? (isAdminAppt ? (parseFloat(adminTipAmountInput) || 0) : 0) : (parseFloat(tipAmountInput) || 0);
       if (isMain ? !(efycAmt > 0 || tipAmt > 0) : !(tipAmt > 0)) { toast('Enter an amount', 'err'); return; }
       var now = new Date().toISOString();
-      var update = { efyc: isMain ? efycAmt : (a.efyc || 0), tip: tipAmt, followUp: 'closed', followUpDate: now };
-      var updated = { ...a, ...update };
+      var updated = _stampApptStatus(a, 'closed', { followUpDate: now, efyc: isMain ? efycAmt : (a.efyc || 0), tip: tipAmt });
+      var update = {
+        efyc: updated.efyc,
+        tip: updated.tip,
+        followUp: updated.followUp,
+        followUpDate: updated.followUpDate,
+        statusUpdatedAt: updated.statusUpdatedAt,
+        clientOpId: updated.clientOpId
+      };
       var closeNote = (a.remarks || a.notes || '') + ' [Closed ' + new Date().toLocaleString('en-SG') + (efycAmt > 0 ? ' - EFYC $' + efycAmt : '') + (tipAmt > 0 ? ' - Tip $' + tipAmt : '') + ']';
       setTipModal(null);
       setTipAmountInput('');
@@ -28478,11 +28513,9 @@ function App() {
       if (_selCount === 0) return;
       var _now = new Date().toISOString();
       var _targetsForSheet = appointments.filter(a => selectedAppts.has(a.id));
-      setAppointments(p => p.map(a => selectedAppts.has(a.id) ? {
-        ...a,
-        followUp: status,
-        followUpDate: _now
-      } : a));
+      var _stampedTargets = _targetsForSheet.map(a => _stampApptStatus(a, status, { followUpDate: _now }));
+      var _stampedById = new Map(_stampedTargets.map(a => [a.id, a]));
+      setAppointments(p => p.map(a => selectedAppts.has(a.id) ? (_stampedById.get(a.id) || _stampApptStatus(a, status, { followUpDate: _now })) : a));
       if (status === 'met') {
         var _targets = appointments.filter(a => selectedAppts.has(a.id) && a.followUp !== 'met' && a.followUp !== 'closed');
         if (_targets.length) {
@@ -28498,11 +28531,7 @@ function App() {
           }))]);
         }
       }
-      await Promise.all(_targetsForSheet.map(a => syncApptSheet({
-        ...a,
-        followUp: status,
-        followUpDate: _now
-      }, {
+      await Promise.all(_stampedTargets.map(a => syncApptSheet(a, {
         status: 'Set',
         followUp: status === 'flykite' ? 'Fly Kite' : status.charAt(0).toUpperCase() + status.slice(1),
         notes: (a.remarks || '') + ' [' + status + ' ' + new Date().toLocaleString('en-SG') + ']'
@@ -28961,38 +28990,24 @@ function App() {
             console.warn('[' + k + ' gCal.update]', _ge);
           }
         }
+        var _statusPatch = { followUpDate: now, statusUpdatedAt: now, clientOpId: _newApptOpId(_normApptFollowUp(k)) };
+        if (k === 'postponed') {
+          _statusPatch.apptDate = '';
+          _statusPatch.apptTime = '';
+          _statusPatch.shaky = true;
+          _statusPatch.postponeCount = (a.postponeCount || 0) + 1;
+        }
+        var _updated = _stampApptStatus(a, k, _statusPatch);
         setAppointments(p => p.map(x => {
           if (x.id !== a.id) return x;
-          if (k === 'postponed') return {
-            ...x,
-            followUp: 'postponed',
-            followUpDate: now,
-            apptDate: '',
-            apptTime: '',
-            shaky: true,
-            postponeCount: (x.postponeCount || 0) + 1
-          };
-          return {
-            ...x,
-            followUp: k,
-            followUpDate: now
-          };
+          var _statePatch = { ..._statusPatch };
+          if (k === 'postponed') _statePatch.postponeCount = (x.postponeCount || 0) + 1;
+          return _stampApptStatus(x, k, _statePatch);
         }));
         if (a.admin && a.admin.toLowerCase() !== myEmail.toLowerCase()) {
-          var _updated = {
-            ...a,
-            followUp: k,
-            followUpDate: now
-          };
-          if (k === 'postponed') {
-            _updated.apptDate = '';
-            _updated.apptTime = '';
-            _updated.shaky = true;
-            _updated.postponeCount = (a.postponeCount || 0) + 1;
-          }
           _mainWritebackAdminAppt(_updated);
         }
-        await syncApptSheet(a, {
+        await syncApptSheet(_updated, {
           apptDate: k === 'postponed' ? '' : a.apptDate || '',
           apptTime: k === 'postponed' ? '' : a.apptTime || '',
           status: 'Set',
@@ -39406,15 +39421,13 @@ function App() {
         }
       }
       var _now = new Date().toISOString();
-      var _updated = {
-        ..._target,
-        followUp: 'postponed',
+      var _updated = _stampApptStatus(_target, 'postponed', {
         followUpDate: _now,
         apptDate: '',
         apptTime: '',
         shaky: true,
         postponeCount: (_target.postponeCount || 0) + 1
-      };
+      });
       setAppointments(p => p.map(x => x.id === _target.id ? _updated : x));
       if (_target.admin && _target.admin.toLowerCase() !== myEmail.toLowerCase()) {
         _mainWritebackAdminAppt(_updated);
@@ -39525,18 +39538,16 @@ function App() {
           try {
             _liveSyncRef.current.localApptsGuardUntil = Date.now() + 6000;
           } catch (_e) {}
-          var _updated = {
-            ...(_target || {}),
+          var _updated = _stampApptStatus(_target || {}, 'pending', {
             apptDate,
             apptTime,
             duration: dur,
             location: apptLocation,
             remarks: apptObs || _target.remarks,
             calEventId: _evtId,
-            followUp: 'pending',
             followUpDate: new Date().toISOString(),
             shaky: apptShaky
-          };
+          });
           setAppointments(prev => prev.map(x => x.id === _target.id ? _updated : x));
           if (_evtId) setWeekEvents(prev => [...prev.filter(e => e.id !== _evtId), {
             id: _evtId,
@@ -39715,8 +39726,7 @@ function App() {
           var idx = p.findIndex(a => (a.leadId === lead.id || a.phone === lead.phone && a.phone) && (!a.followUp || a.followUp === 'pending') && !a.apptDate);
           if (idx >= 0) {
             var next = p.slice();
-            next[idx] = {
-              ...next[idx],
+            next[idx] = _stampApptStatus(next[idx], 'pending', {
               id: next[idx].id || _localApptId,
               dbApptId: savedApptRow?.id || next[idx].dbApptId || '',
               apptSheetAutoId: _localApptId,
@@ -39731,10 +39741,11 @@ function App() {
               leadNotes: lead?.notes || '',
               shaky: apptShaky,
               needsDetails: false
-            };
+            });
             return next;
           }
-          return [...p, {
+          var _apptCreatedAt = new Date().toISOString();
+          return [...p, _stampApptStatus({
             id: _localApptId,
             dbApptId: savedApptRow?.id || '',
             apptSheetAutoId: _localApptId,
@@ -39753,14 +39764,14 @@ function App() {
             followUp: 'pending',
             tip: 0,
             tipPaid: false,
-            createdAt: new Date().toISOString(),
+            createdAt: _apptCreatedAt,
             admin: myEmail,
             calEventId: evt?.id || '',
             calendarId: eventCalId,
             _calId: eventCalId,
             shaky: apptShaky,
             needsDetails: false
-          }];
+          }, 'pending', { followUpDate: _apptCreatedAt })];
         });
         try {
           _liveSyncRef.current.localApptsGuardUntil = Date.now() + 6000;
@@ -40022,14 +40033,13 @@ function App() {
       var a = tipModal.appt;
       var isMain = role === 'main';
       var now = new Date().toISOString();
-      var update = isMain ? {
-        efyc: amt,
-        followUp: 'closed',
-        followUpDate: now
-      } : {
-        tip: amt,
-        followUp: 'closed',
-        followUpDate: now
+      var updated = _stampApptStatus(a, 'closed', isMain ? { efyc: amt, followUpDate: now } : { tip: amt, followUpDate: now });
+      var update = {
+        ...(isMain ? { efyc: updated.efyc } : { tip: updated.tip }),
+        followUp: updated.followUp,
+        followUpDate: updated.followUpDate,
+        statusUpdatedAt: updated.statusUpdatedAt,
+        clientOpId: updated.clientOpId
       };
       if (a.calEventId && window.gCal) {
         try {
@@ -40057,10 +40067,7 @@ function App() {
           ...update
         });
       }
-      await syncApptSheet({
-        ...a,
-        ...update
-      }, {
+      await syncApptSheet(updated, {
         status: 'Set',
         followUp: 'Closed',
         tip: amt,
@@ -41931,26 +41938,16 @@ function App() {
         }
       }
       var _now = new Date().toISOString();
-      setAppointments(p => p.map(x => x.id === _a.id ? {
-        ...x,
-        followUp: 'flykite',
-        followUpDate: _now
-      } : x));
-      await syncApptSheet({
-        ..._a,
-        followUp: 'flykite',
-        followUpDate: _now
-      }, {
+      var _statusPatch = { followUpDate: _now, statusUpdatedAt: _now, clientOpId: _newApptOpId('fly_kite') };
+      var _updated = _stampApptStatus(_a, 'flykite', _statusPatch);
+      setAppointments(p => p.map(x => x.id === _a.id ? _stampApptStatus(x, 'flykite', _statusPatch) : x));
+      await syncApptSheet(_updated, {
         status: 'Set',
         followUp: 'Fly Kite',
         notes: (_a.remarks || '') + ' [Fly Kite ' + new Date().toLocaleString('en-SG') + ']'
       });
       if (_a.admin && _a.admin.toLowerCase() !== myEmail.toLowerCase()) {
-        _mainWritebackAdminAppt({
-          ..._a,
-          followUp: 'flykite',
-          followUpDate: _now
-        });
+        _mainWritebackAdminAppt(_updated);
       }
       toast(_a.name + ' — fly kite 🪁 (marked [FLY KITE] on calendar)');
       _close();

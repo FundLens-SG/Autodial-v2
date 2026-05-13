@@ -113,6 +113,16 @@ test('stability hardening keeps recovery, config, appts, and calendar safe', () 
   assert.match(html, /calendarWeekCacheRef/);
 });
 
+test('appointment status merge protects durable follow-up outcomes', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /APPT_FOLLOWUP_RANK = \{ pending: 1, postponed: 2, fly_kite: 3, met: 4, closed: 5 \}/);
+  assert.match(html, /var _stampApptStatus = \(appt, followUp, extra\) =>/);
+  assert.match(html, /var _pickApptStatusSource = \(ex, inc\) =>/);
+  assert.match(html, /statusUpdatedAt/);
+  assert.match(html, /clientOpId/);
+  assert.equal(/fly_kite:\s*0/.test(html), false);
+});
+
 test('README is stored as clean UTF-8 text', () => {
   const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   assert.equal(/â†|â€|ðŸ/.test(readme), false);
