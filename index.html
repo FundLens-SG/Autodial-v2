@@ -11117,15 +11117,19 @@ function App() {
     // Without #2 the appt resurrects on the next DB.getAppts pull on
     // any device, which is exactly the JohnToh / Chen Ni Wong symptom.
     try {
-      var dbRes = await DB.deleteApptUndo({
-        rowId: target.dbApptId || target.rowId,
-        calEventId: target.calEventId,
-        phone: target.phone,
-        apptDate: target.apptDate || target.appt_date || '',
-        apptTime: target.apptTime || target.appt_time || '',
-        admin: owners[0] || (String(target.admin || '').includes('@') ? String(target.admin).toLowerCase() : myEmail)
-      });
-      if (dbRes?.ok) changed = true;
+      var dbOwners = owners.length ? owners : [(String(target.admin || '').includes('@') ? String(target.admin).toLowerCase() : myEmail)].filter(Boolean);
+      if (!dbOwners.length) dbOwners = [null];
+      for (var doi = 0; doi < dbOwners.length; doi++) {
+        var dbRes = await DB.deleteApptUndo({
+          rowId: target.dbApptId || target.rowId,
+          calEventId: target.calEventId,
+          phone: target.phone,
+          apptDate: target.apptDate || target.appt_date || '',
+          apptTime: target.apptTime || target.appt_time || '',
+          admin: dbOwners[doi]
+        });
+        if (dbRes?.ok) changed = true;
+      }
     } catch (_e) {}
     for (var oi = 0; oi < owners.length; oi++) {
       var owner = owners[oi];

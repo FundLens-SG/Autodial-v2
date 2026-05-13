@@ -161,6 +161,14 @@ test('appointment delete tombstones avoid broad phone-date keys for new deletes'
   assert.match(html, /if \(_apptLegacyDeleteKeys\(a\)\.some\(k => delSet\.has\(k\)\)\) return true/);
 });
 
+test('cloud appointment purge retries every owner candidate', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /var dbOwners = owners\.length \? owners : \[/);
+  assert.match(html, /for \(var doi = 0; doi < dbOwners\.length; doi\+\+\)/);
+  assert.match(html, /admin: dbOwners\[doi\]/);
+  assert.equal(html.includes('admin: owners[0] ||'), false);
+});
+
 test('README is stored as clean UTF-8 text', () => {
   const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   assert.equal(/â†|â€|ðŸ/.test(readme), false);
