@@ -201,6 +201,14 @@ test('pending undo cleanup is visible in sync diagnostics', () => {
   assert.match(html, /label: 'Undo Cleanup'/);
 });
 
+test('mobile outcome dock hides while blocking modals are active', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /var mobileOutcomeDockBlocked = !!\(/);
+  assert.match(html, /showAppt \|\| showCb \|\| showWA \|\| showPostCall \|\| showNextPreview/);
+  assert.match(html, /showMoreMenu \|\| showActivityDrawer \|\| showAllLeadsModal \|\| showLeadJump \|\| dialogRequest/);
+  assert.match(html, /var showMobileOutcomeDock = !mobileOutcomeDockBlocked && running && curIdx >= 0/);
+});
+
 test('README is stored as clean UTF-8 text', () => {
   const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
   assert.equal(/â†|â€|ðŸ/.test(readme), false);
