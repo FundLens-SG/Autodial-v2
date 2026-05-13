@@ -72,7 +72,7 @@ if('requestIdleCallback' in window){
 <script>
 if(!navigator.locks)navigator.locks={request:(n,o,c)=>{if(typeof o==='function')c=o;return Promise.resolve(c({name:n}))}};
 (function(){var w=console.warn;console.warn=function(){if(typeof(arguments[0])==='string'&&(arguments[0].includes('gotrue')||arguments[0].includes('lock:')))return;w.apply(console,arguments)}})();
-if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.13.0154');navigator.serviceWorker.addEventListener('controllerchange',()=>{try{sessionStorage.setItem('ad_sw_updated_'+v,'1');window.dispatchEvent(new CustomEvent('autodial-sw-updated',{detail:{version:v}}))}catch(_e){}});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
+if('serviceWorker'in navigator&&!location.hostname.includes('claude')&&location.protocol!=='blob:')window.addEventListener('load',()=>{var v=(window.APP_VERSION||'2026.05.13.0155');navigator.serviceWorker.addEventListener('controllerchange',()=>{try{sessionStorage.setItem('ad_sw_updated_'+v,'1');window.dispatchEvent(new CustomEvent('autodial-sw-updated',{detail:{version:v}}))}catch(_e){}});navigator.serviceWorker.register('sw.js?v='+v).then(reg=>{reg.update().catch(()=>{});if(reg.waiting)reg.waiting.postMessage({type:'SKIP_WAITING'});reg.addEventListener('updatefound',()=>{var sw=reg.installing;if(sw)sw.addEventListener('statechange',()=>{if(sw.state==='installed'&&navigator.serviceWorker.controller)sw.postMessage({type:'SKIP_WAITING'})})})}).catch(()=>{});if(window.matchMedia&&window.matchMedia('(display-mode:standalone)').matches)console.log('[AutoDial] Running as installed PWA')});
 </script>
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -779,6 +779,16 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-objection-answer-inline{padding:4px 14px 14px;color:var(--ad-t-1);font-size:13px;line-height:1.65;animation:cadObjReveal .18s ease-out}
 .cad-objection-answer-inline .cad-rich{margin-top:4px}
 .cad-objection-answer-inline .cad-objection-tools .cad-btn{padding:4px 10px;font-size:11px}
+.cad-objcat-add{min-width:24px;height:22px;padding:0 7px;border-radius:8px;border:1px solid var(--ad-line-1);background:var(--ad-bg-2);color:var(--ad-brass-2);font-size:12px;font-weight:900;line-height:1}
+.cad-objcat-add:hover{border-color:var(--ad-brass-line);background:var(--ad-brass-dim)}
+.cad-objection-edit-head{display:grid;grid-template-columns:minmax(0,1fr) minmax(104px,128px);gap:8px;margin-bottom:8px}
+.cad-objection-title-input,.cad-objection-category-select{width:100%;min-height:34px;border-radius:9px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font:700 12px 'Inter',system-ui,sans-serif;outline:none}
+.cad-objection-title-input{padding:8px 10px}
+.cad-objection-category-select{padding:7px 9px}
+.cad-objection-title-input:focus,.cad-objection-category-select:focus{border-color:var(--ad-brass-line);box-shadow:0 0 0 3px rgba(214,168,122,.12)}
+.cad-objection-answer-inline .cad-rich-tools{margin:6px 0 8px}
+.cad-rich-editor.cad-objection-inline-editor{min-height:150px;max-height:340px;margin-top:0;font-size:12.5px}
+@media(max-width:520px){.cad-objection-edit-head{grid-template-columns:1fr}.cad-rich-editor.cad-objection-inline-editor{min-height:170px}}
 @keyframes cadObjReveal{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:translateY(0)}}
 .cad-objection-answer{margin-top:8px;padding:11px;border-radius:10px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-1);font-size:12px;line-height:1.55}
 /* 0077: collapsible objection categories. Replaces the per-row "common/
@@ -1693,7 +1703,7 @@ var normalizePhone = window.normalizePhone;
 // ═══ APP VERSION — bumped on every build. Clients compare local vs cloud version
 // ═══ (shared_app_version row in Supabase) and prompt for refresh when stale.
 // ═══ Format: YYYY.MM.DD.HHMM — lexicographic compare works because zero-padded.
-window.APP_VERSION='2026.05.13.0154';
+window.APP_VERSION='2026.05.13.0155';
 window._localPreviewMode=location.protocol==='file:'||((location.hostname==='127.0.0.1'||location.hostname==='localhost')&&(location.port==='8765'||new URLSearchParams(location.search).get('codexPreview')==='1'));
 // Phase 7 (B1): legacy ?invite=TOKEN parser removed — invitations now flow
 // through the ckgtools.com hub admin dashboard (delegations table). The
@@ -20533,7 +20543,10 @@ function App() {
     var activeObj = cadObjections.find(o => o.id === activeObjectionId) || cadObjections[0] || null;
     var selectedObjAnswer = activeObj ? safeRich(activeObj.answer || activeObj.response || activeObj.body || '') : '';
     var cadOpenObjection = id => {
-      if (!id) return;
+      if (!id) {
+        setActiveObjectionId('');
+        return;
+      }
       setActiveObjectionId(id);
       setObjectionUseCounts(p => ({ ...p, [id]: (p[id] || 0) + 1 }));
     };
@@ -20560,6 +20573,62 @@ function App() {
       });
       return keys.map(k => ({ key: k, label: k.charAt(0).toUpperCase() + k.slice(1), items: groups[k] }));
     })();
+    var cadEditableObjectionBase = () => {
+      var base = _normalizeObjections(cfg.objections || []);
+      if (base.length) return base;
+      return cadObjections.map(o => ({ id: o.id, title: o.title || 'Objection', answer: o.answer || o.response || o.body || '<div>Write the talk track here.</div>', category: o.category || 'common' }));
+    };
+    var cadCleanObjectionPatch = patch => {
+      var next = { ...(patch || {}) };
+      if (Object.prototype.hasOwnProperty.call(next, 'title')) next.title = _plainText(next.title || 'New objection', 80) || 'New objection';
+      if (Object.prototype.hasOwnProperty.call(next, 'answer')) {
+        next.answer = _coerceRichAnswerHtml(next.answer || '<div>Write the talk track here.</div>');
+        if (!_htmlToPlain(next.answer, 20)) next.answer = '<div>Write the talk track here.</div>';
+      }
+      if (Object.prototype.hasOwnProperty.call(next, 'category')) next.category = _normalizeObjectionCategory(next.category || 'common');
+      return next;
+    };
+    var cadSaveObjectionPatch = (id, patch) => {
+      if (!id) return;
+      var cleanPatch = cadCleanObjectionPatch(patch);
+      var list = cadEditableObjectionBase();
+      var found = false;
+      var next = list.map(o => {
+        if (o.id !== id) return o;
+        found = true;
+        return { ...o, ...cleanPatch, id };
+      });
+      if (!found) next.push({
+        id,
+        title: cleanPatch.title || 'New objection',
+        answer: cleanPatch.answer || '<div>Write the talk track here.</div>',
+        category: cleanPatch.category || 'common'
+      });
+      saveObjections(next);
+      setActiveObjectionId(id);
+    };
+    var cadCreateObjection = category => {
+      var cat = _normalizeObjectionCategory(category || activeObj?.category || 'common');
+      var list = cadEditableObjectionBase();
+      var title = 'New objection';
+      var n = 2;
+      while (list.some(o => String(o.title || '').toLowerCase() === title.toLowerCase())) title = 'New objection ' + n++;
+      var item = {
+        id: 'obj_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+        title,
+        answer: '<div>Write the talk track here.</div>',
+        category: cat
+      };
+      saveObjections([...list, item]);
+      setActiveObjectionId(item.id);
+      toast('Objection added');
+      setTimeout(() => {
+        try {
+          var el = document.querySelector('[data-cad-objection-title="' + item.id + '"]');
+          if (el) { el.focus(); el.select(); }
+        } catch (_e) {}
+      }, 80);
+    };
     var cadObjGroupRender = () => {
       if (!cadObjections.length) return h('span', { className: 'cad-subtle', style: { fontSize: 12 } }, 'No objection handles saved.');
       // 0079: categories are now STATIC (always visible, no toggle). Click
@@ -20572,6 +20641,7 @@ function App() {
         return h('div', { key: g.key, className: 'cad-objcat open' },
           h('div', { className: 'cad-objcat-head static' },
             h('span', { className: 'cad-objcat-label' }, g.label),
+            h('button', { className: 'cad-objcat-add', type: 'button', title: 'Add objection to ' + g.label, onClick: e => { e.stopPropagation(); cadCreateObjection(g.key); } }, icon('Plus', 12)),
             h('span', { className: 'cad-objcat-count' }, g.items.length)
           ),
           h('div', { className: 'cad-objcat-body' }, g.items.map(o => {
@@ -20586,13 +20656,32 @@ function App() {
                 h('span', { className: 'cad-objection-caret' }, isActive ? '▾' : '▸')
               ),
               isActive && h('div', { className: 'cad-objection-answer-inline' },
-                h('div', { className: 'cad-inline', style: { justifyContent: 'space-between', marginBottom: 6 } },
+                h('div', { className: 'cad-objection-edit-head' },
+                  h('input', {
+                    className: 'cad-objection-title-input',
+                    defaultValue: o.title || 'Objection',
+                    'data-cad-objection-title': o.id,
+                    onClick: e => e.stopPropagation(),
+                    onBlur: e => cadSaveObjectionPatch(o.id, { title: e.currentTarget.value }),
+                    onKeyDown: e => {
+                      if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+                      if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.value = o.title || 'Objection'; e.currentTarget.blur(); }
+                    }
+                  }),
+                  h('select', {
+                    className: 'cad-objection-category-select',
+                    value: _normalizeObjectionCategory(o.category, o.title, o.id),
+                    onClick: e => e.stopPropagation(),
+                    onChange: e => cadSaveObjectionPatch(o.id, { category: e.currentTarget.value })
+                  }, OBJECTION_CATEGORIES.map(c => h('option', { key: c.key, value: c.key }, c.label)))
+                ),
+                h('div', { className: 'cad-inline', style: { justifyContent: 'flex-end', marginBottom: 6 } },
                   h('span', { className: 'cad-objection-tools' },
-                    h('button', { className: 'cad-btn ghost', onClick: e => { e.stopPropagation(); cadEditObjection(o); } }, 'Edit'),
+                    h('button', { className: 'cad-btn ghost', onClick: e => { e.stopPropagation(); cadCreateObjection(o.category || g.key); } }, icon('Plus', 12), 'Add'),
                     h('button', { className: 'cad-btn ghost danger', onClick: e => { e.stopPropagation(); cadRemoveObjection(o); } }, 'Remove')
                   )
                 ),
-                selectedObjAnswer ? h('div', { className: 'cad-rich', dangerouslySetInnerHTML: { __html: selectedObjAnswer } }) : h('p', { className: 'cad-subtle', style: { fontSize: 12 } }, 'No talk track saved.')
+                cadObjectionEditor(o)
               )
             );
           }))
@@ -20643,6 +20732,8 @@ function App() {
         // dialogRequest.value as HTML; promptAsync resolves to that
         // HTML string when the user confirms.
         setDialogRequest(req => req ? { ...req, value: html } : req);
+      } else if (String(target || '').indexOf('objection_') === 0) {
+        cadSaveObjectionPatch(String(target).slice('objection_'.length), { answer: html });
       } else {
         setScriptContent(html);
         setScriptEditing(true);
@@ -20712,6 +20803,20 @@ function App() {
       saveObjections(next);
       setActiveObjectionId(id);
       toast('Objection saved');
+    };
+    var cadObjectionEditor = item => {
+      var target = 'objection_' + item.id;
+      return h(React.Fragment, null,
+        cadRichToolbar(target),
+        h('div', {
+          className: 'cad-rich-editor cad-objection-inline-editor small',
+          contentEditable: true,
+          suppressContentEditableWarning: true,
+          'data-cad-rich': target,
+          dangerouslySetInnerHTML: { __html: safeRich(item.answer || '<div>Write the talk track here.</div>') },
+          onBlur: e => cadApplyRichHtml(target, e.currentTarget.innerHTML)
+        })
+      );
     };
     var cadRemoveObjection = async item => {
       if (!item) return;
@@ -20947,7 +21052,7 @@ function App() {
         h('span', { className: 'cad-label' }, '🎯 Objection handles'),
         h('span', { className: 'cad-inline', style: { gap: 8 } },
           h('span', { className: 'cad-pill' }, cadObjections.length, ' total'),
-          h('button', { className: 'cad-btn', onClick: addObjection }, icon('Sparkles', 13), 'Add')
+          h('button', { className: 'cad-btn', onClick: () => cadCreateObjection(activeObj?.category || 'common') }, icon('Plus', 13), 'Add')
         )
       ),
       h('div', { className: 'cad-objection-list cad-objection-list--single' },
@@ -20955,7 +21060,7 @@ function App() {
           ? cadObjGroupRender()
           : h('div', { className: 'cad-objection-empty' },
               h('p', { className: 'cad-subtle' }, 'No objection handles saved yet.'),
-              h('button', { className: 'cad-btn primary', onClick: addObjection }, '+ Add your first objection')
+              h('button', { className: 'cad-btn primary', onClick: () => cadCreateObjection('common') }, '+ Add your first objection')
             )
       )
     );
@@ -21718,7 +21823,7 @@ function App() {
           // settings only — they were duplicating script-body real-estate
           // and the user explicitly wanted them gone from the call view.
           h('div', { className: 'cad-script-actions' },
-            h('button', { className: 'cad-btn', onClick: addObjection }, icon('Sparkles', 13), 'Add objection')
+            h('button', { className: 'cad-btn', onClick: () => cadCreateObjection(activeObj?.category || 'common') }, icon('Plus', 13), 'Add objection')
           )
         ),
         // 0079: Objections panel rebuilt. No Reference tab, no left/right
