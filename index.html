@@ -24061,7 +24061,7 @@ function App() {
       ),
       h('p', { className: 'cad-page-note', style: { marginTop: 12, fontSize: 11 } }, 'Showing ', leadJumpResults.length, ' of ', (leads || []).length, ' loaded leads', leadJumpResults.length === 30 && (leads || []).length > 30 ? ' · refine search for more' : '')
     ));
-    var mobileOutcomeDockBlocked = !!(showAppt || showCb || showWA || showPostCall || showNextPreview || showMoreMenu || showActivityDrawer || showAllLeadsModal || showLeadJump || dialogRequest);
+    var mobileOutcomeDockBlocked = !!(showAppt || showCb || showWA || showPostCall || showNextPreview || showMoreMenu || showActivityDrawer || showAllLeadsModal || showLeadJump || dialogRequest || adminDetailEmail || showCalAddApptPicker || showSlotPicker || payQRModal || tipModal || importReview || showColPicker || calDelHead);
     var showMobileOutcomeDock = !mobileOutcomeDockBlocked && running && curIdx >= 0 && ((mainMode === 'call' && tab === 'home') || tab === 'dial');
     var mobileOutcomeBtn = (cls, label, onClick, disabled) => h('button', {
       key: cls,

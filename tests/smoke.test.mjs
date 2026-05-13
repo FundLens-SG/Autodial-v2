@@ -222,6 +222,8 @@ test('mobile outcome dock hides while blocking modals are active', () => {
   assert.match(html, /var mobileOutcomeDockBlocked = !!\(/);
   assert.match(html, /showAppt \|\| showCb \|\| showWA \|\| showPostCall \|\| showNextPreview/);
   assert.match(html, /showMoreMenu \|\| showActivityDrawer \|\| showAllLeadsModal \|\| showLeadJump \|\| dialogRequest/);
+  assert.match(html, /adminDetailEmail \|\| showCalAddApptPicker \|\| showSlotPicker \|\| payQRModal \|\| tipModal/);
+  assert.match(html, /importReview \|\| showColPicker \|\| calDelHead/);
   assert.match(html, /var showMobileOutcomeDock = !mobileOutcomeDockBlocked && running && curIdx >= 0/);
 });
 
