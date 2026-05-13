@@ -128,6 +128,13 @@ test('appointment status merge protects durable follow-up outcomes', () => {
   assert.equal(/fly_kite:\s*0/.test(html), false);
 });
 
+test('appointment follow-up actions persist cloud status before sheet sync', () => {
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /await Promise\.allSettled\(_stampedTargets\.map\(a => _persistApptFollowUp\(a, _normApptFollowUp\(status\), 0\)\)\)/);
+  assert.match(html, /if \(a\.admin && a\.admin\.toLowerCase\(\) !== myEmail\.toLowerCase\(\)\) _mainWritebackAdminAppt\(a\)/);
+  assert.match(html, /await _persistApptFollowUp\(_updated, _normApptFollowUp\(k\), 0\)/);
+});
+
 test('appointment set flow pauses before dialing next lead', () => {
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /var _apptOrdinal = value =>/);

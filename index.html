@@ -28821,6 +28821,10 @@ function App() {
           }))]);
         }
       }
+      await Promise.allSettled(_stampedTargets.map(a => _persistApptFollowUp(a, _normApptFollowUp(status), 0)));
+      _stampedTargets.forEach(a => {
+        if (a.admin && a.admin.toLowerCase() !== myEmail.toLowerCase()) _mainWritebackAdminAppt(a);
+      });
       await Promise.all(_stampedTargets.map(a => syncApptSheet(a, {
         status: 'Set',
         followUp: status === 'flykite' ? 'Fly Kite' : status.charAt(0).toUpperCase() + status.slice(1),
@@ -29299,6 +29303,7 @@ function App() {
         if (a.admin && a.admin.toLowerCase() !== myEmail.toLowerCase()) {
           _mainWritebackAdminAppt(_updated);
         }
+        await _persistApptFollowUp(_updated, _normApptFollowUp(k), 0);
         await syncApptSheet(_updated, {
           apptDate: k === 'postponed' ? '' : a.apptDate || '',
           apptTime: k === 'postponed' ? '' : a.apptTime || '',
