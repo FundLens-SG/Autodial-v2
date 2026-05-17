@@ -20701,10 +20701,15 @@ function App() {
       saveObjections([...list, item]);
       setActiveObjectionId(item.id);
       toast('Objection added');
-      setTimeout(() => {
+      // Auto-open the Rename prompt so the user can name it immediately —
+      // replaces the previous focus-select on the inline input that was
+      // removed (the input duplicated the title shown in the row header).
+      setTimeout(async () => {
         try {
-          var el = document.querySelector('[data-cad-objection-title="' + item.id + '"]');
-          if (el) { el.focus(); el.select(); }
+          var next = await promptAsync('Name this objection.', '', { title: 'New objection', confirmLabel: 'Save' });
+          if (next === null) return;
+          var trimmed = String(next).trim();
+          if (trimmed) cadSaveObjectionPatch(item.id, { title: trimmed });
         } catch (_e) {}
       }, 80);
     };
@@ -20736,17 +20741,6 @@ function App() {
               ),
               isActive && h('div', { className: 'cad-objection-answer-inline' },
                 h('div', { className: 'cad-objection-edit-head' },
-                  h('input', {
-                    className: 'cad-objection-title-input',
-                    defaultValue: o.title || 'Objection',
-                    'data-cad-objection-title': o.id,
-                    onClick: e => e.stopPropagation(),
-                    onBlur: e => cadSaveObjectionPatch(o.id, { title: e.currentTarget.value }),
-                    onKeyDown: e => {
-                      if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
-                      if (e.key === 'Escape') { e.preventDefault(); e.currentTarget.value = o.title || 'Objection'; e.currentTarget.blur(); }
-                    }
-                  }),
                   h('select', {
                     className: 'cad-objection-category-select',
                     value: _normalizeObjectionCategory(o.category, o.title, o.id),
@@ -20756,6 +20750,17 @@ function App() {
                 ),
                 h('div', { className: 'cad-inline', style: { justifyContent: 'flex-end', marginBottom: 6 } },
                   h('span', { className: 'cad-objection-tools' },
+                    h('button', {
+                      className: 'cad-btn ghost',
+                      onClick: async e => {
+                        e.stopPropagation();
+                        var next = await promptAsync('Rename this objection.', o.title || 'Objection', { title: 'Rename objection', confirmLabel: 'Save' });
+                        if (next === null) return;
+                        var trimmed = String(next).trim();
+                        if (!trimmed) return toast('Title cannot be empty', 'err');
+                        cadSaveObjectionPatch(o.id, { title: trimmed });
+                      }
+                    }, '✏️ Rename'),
                     h('button', { className: 'cad-btn ghost', onClick: e => { e.stopPropagation(); cadCreateObjection(o.category || g.key); } }, icon('Plus', 12), 'Add'),
                     h('button', { className: 'cad-btn ghost danger', onClick: e => { e.stopPropagation(); cadRemoveObjection(o); } }, 'Remove')
                   )
