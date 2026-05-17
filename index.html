@@ -764,7 +764,12 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
    each objection row reads as a clean lightweight pill. */
 .cad-objection-list--single .cad-objcat-body{margin:0;padding-left:0;border-left:0}
 .cad-objection-empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:24px 12px;border:1px dashed var(--ad-line-1);border-radius:12px;background:var(--ad-bg-2)}
-.cad-objection-wrap{display:flex;flex-direction:column;border-radius:10px;transition:background .15s,border-color .15s}
+.cad-objection-wrap{display:flex;flex-direction:column;border-radius:10px;transition:background .15s,border-color .15s,opacity .15s}
+.cad-objection-wrap.dragging{opacity:.4}
+.cad-objection[draggable=true]{cursor:grab}
+.cad-objection[draggable=true]:active{cursor:grabbing}
+.cad-objcat-head.drop-target{outline:2px dashed var(--ad-brass);outline-offset:-2px;background:var(--ad-brass-dim);color:var(--ad-brass-2)}
+.cad-rich-editor.read-only{cursor:default;background:transparent;outline:none;border-color:transparent}
 /* 0095: lighter open-state — no full brass-dim flood, just a thin
    left rail in brass + tinted bg so the row reads as "expanded"
    without screaming. */
@@ -10546,6 +10551,13 @@ function App() {
   var [showScriptShareModal, setShowScriptShareModal] = useState(false);
   var [shareScriptVersionId, setShareScriptVersionId] = useState(() => cfg.scriptVersionId || (Array.isArray(cfg.scriptVersions) && cfg.scriptVersions[0]?.id) || '');
   var [activeObjectionId, setActiveObjectionId] = useState('');
+  // Edit-mode gate for the per-objection rich-text body. Empty when nothing is
+  // being edited. Tucks the B/I/U/colors toolbar away until the user explicitly
+  // taps "✏️ Edit script" — script body is read-only by default.
+  var [editingObjScript, setEditingObjScript] = useState('');
+  // Drag-and-drop state for category reassignment. Holds the id of the
+  // objection currently being dragged so the wrap can dim itself.
+  var [draggingObjId, setDraggingObjId] = useState(null);
   var [objectionUseCounts, setObjectionUseCounts] = useState(load('objUse') || {});
   // 0077: resizable Claude-shell script panel. Width persisted to
   // localStorage, clamped 360–820 so the right-most objection answer
@@ -20723,31 +20735,50 @@ function App() {
       return h(React.Fragment, null, cadObjGroups.map(g => {
         if (!g.items.length) return null;
         return h('div', { key: g.key, className: 'cad-objcat open' },
-          h('div', { className: 'cad-objcat-head static' },
+          h('div', {
+            className: 'cad-objcat-head static',
+            onDragOver: e => { if (draggingObjId) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; e.currentTarget.classList.add('drop-target'); } },
+            onDragLeave: e => e.currentTarget.classList.remove('drop-target'),
+            onDrop: e => {
+              e.preventDefault();
+              e.currentTarget.classList.remove('drop-target');
+              var src = e.dataTransfer.getData('text/plain');
+              if (src && g.key) {
+                cadSaveObjectionPatch(src, { category: g.key });
+                toast('Moved to ' + g.label);
+              }
+            }
+          },
             h('span', { className: 'cad-objcat-label' }, g.label),
             h('button', { className: 'cad-objcat-add', type: 'button', title: 'Add objection to ' + g.label, onClick: e => { e.stopPropagation(); cadCreateObjection(g.key); } }, icon('Plus', 12)),
             h('span', { className: 'cad-objcat-count' }, g.items.length)
           ),
           h('div', { className: 'cad-objcat-body' }, g.items.map(o => {
             var isActive = activeObj?.id === o.id;
-            return h('div', { className: 'cad-objection-wrap' + (isActive ? ' on' : ''), key: o.id || o.title },
+            return h('div', {
+              className: 'cad-objection-wrap' + (isActive ? ' on' : '') + (draggingObjId === o.id ? ' dragging' : ''),
+              key: o.id || o.title
+            },
               h('button', {
                 className: 'cad-objection ' + (isActive ? 'on' : ''),
                 type: 'button',
+                title: 'Click to expand · drag to a category section to recategorise',
+                draggable: true,
+                onDragStart: e => {
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', o.id);
+                  setDraggingObjId(o.id);
+                },
+                onDragEnd: () => {
+                  setDraggingObjId(null);
+                  document.querySelectorAll('.cad-objcat-head.drop-target').forEach(el => el.classList.remove('drop-target'));
+                },
                 onClick: () => cadOpenObjection(isActive ? null : o.id)
               },
                 h('span', null, o.title || 'Objection'),
                 h('span', { className: 'cad-objection-caret' }, isActive ? '▾' : '▸')
               ),
               isActive && h('div', { className: 'cad-objection-answer-inline' },
-                h('div', { className: 'cad-objection-edit-head' },
-                  h('select', {
-                    className: 'cad-objection-category-select',
-                    value: _normalizeObjectionCategory(o.category, o.title, o.id),
-                    onClick: e => e.stopPropagation(),
-                    onChange: e => cadSaveObjectionPatch(o.id, { category: e.currentTarget.value })
-                  }, OBJECTION_CATEGORIES.map(c => h('option', { key: c.key, value: c.key }, c.label)))
-                ),
                 h('div', { className: 'cad-inline', style: { justifyContent: 'flex-end', marginBottom: 6 } },
                   h('span', { className: 'cad-objection-tools' },
                     h('button', {
@@ -20890,16 +20921,22 @@ function App() {
     };
     var cadObjectionEditor = item => {
       var target = 'objection_' + item.id;
+      var inEdit = editingObjScript === item.id;
       return h(React.Fragment, null,
-        cadRichToolbar(target),
+        inEdit ? cadRichToolbar(target) : null,
         h('div', {
-          className: 'cad-rich-editor cad-objection-inline-editor small',
-          contentEditable: true,
+          className: 'cad-rich-editor cad-objection-inline-editor small' + (inEdit ? '' : ' read-only'),
+          contentEditable: inEdit,
           suppressContentEditableWarning: true,
           'data-cad-rich': target,
           dangerouslySetInnerHTML: { __html: safeRich(item.answer || '<div>Write the talk track here.</div>') },
-          onBlur: e => cadApplyRichHtml(target, e.currentTarget.innerHTML)
-        })
+          onBlur: e => { if (inEdit) cadApplyRichHtml(target, e.currentTarget.innerHTML); }
+        }),
+        h('div', { className: 'cad-inline', style: { justifyContent: 'flex-end', marginTop: 6 } },
+          inEdit
+            ? h('button', { className: 'cad-btn ghost', type: 'button', onClick: () => setEditingObjScript('') }, '✓ Done')
+            : h('button', { className: 'cad-btn ghost', type: 'button', onClick: () => setEditingObjScript(item.id) }, '✏️ Edit script')
+        )
       );
     };
     var cadRemoveObjection = async item => {
