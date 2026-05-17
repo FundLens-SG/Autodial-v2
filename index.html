@@ -16,7 +16,6 @@
 <!-- ═══ PERF: preconnect to CDNs so TLS handshakes happen in parallel with HTML parse ═══ -->
 <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
-<link rel="preconnect" href="https://urwfmmgsfunbvwngejey.supabase.co" crossorigin>
 <!-- ═══ ALL CDN scripts now load via defer in parallel during HTML parse.
      Supabase used to be synchronous which blocked the auth-gate from painting until it
      downloaded (~400-2000ms on mobile). Inline body scripts now wait for window.supabase
@@ -1641,7 +1640,7 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   </div>
 </div></div>
 <div id="root"></div>
-<div id="toast-area" class="tw"></div>
+<div id="toast-area" class="tw" aria-live="polite" aria-atomic="false" role="status"></div>
 
 <script>
 
@@ -1740,6 +1739,19 @@ function _initSupabaseClient(){
         if(resp&&resp.error){
           var e=resp.error;
           console.warn('[supa '+label+']',e.code||'',e.message||e,e.details||'',e.hint||'');
+          // Phase 8 fix: count consecutive Supabase failures so the OFFLINE
+          // badge can flip even when navigator.onLine lies (captive portals,
+          // RLS break, JWT expiry). Threshold of 3 avoids flapping on a
+          // single transient blip.
+          window._supaErrStreak=(window._supaErrStreak||0)+1;
+          if(window._supaErrStreak===3){
+            try{window.dispatchEvent(new CustomEvent('supa-degraded',{detail:{lastError:e}}))}catch(_e){}
+          }
+        }else if(resp){
+          if(window._supaErrStreak){
+            window._supaErrStreak=0;
+            try{window.dispatchEvent(new CustomEvent('supa-recovered'))}catch(_e){}
+          }
         }
         return resp;
       };
@@ -7748,11 +7760,32 @@ function App() {
       setIsOffline(true);
       toast('📴 Offline — changes saved locally', 'info');
     };
+    // Phase 8 fix: also treat sustained Supabase failures as offline. The
+    // polyfill (~line 1740) dispatches 'supa-degraded' after 3 consecutive
+    // {error} responses and 'supa-recovered' on the first success after that.
+    // Catches captive portals (navigator.onLine returns true but every request
+    // hangs/401s) and silent RLS / JWT-expiry conditions.
+    var _degradedLastToast = 0;
+    var degraded = () => {
+      setIsOffline(true);
+      var now = Date.now();
+      if (now - _degradedLastToast > 30000) {
+        _degradedLastToast = now;
+        toast('⚠️ Sync degraded — saving locally', 'err');
+      }
+    };
+    var recovered = () => {
+      if (navigator.onLine) setIsOffline(false);
+    };
     window.addEventListener('online', on);
     window.addEventListener('offline', off);
+    window.addEventListener('supa-degraded', degraded);
+    window.addEventListener('supa-recovered', recovered);
     return () => {
       window.removeEventListener('online', on);
       window.removeEventListener('offline', off);
+      window.removeEventListener('supa-degraded', degraded);
+      window.removeEventListener('supa-recovered', recovered);
     };
   }, []);
   useEffect(() => {
@@ -7828,6 +7861,13 @@ function App() {
   var autoAdvanceTimerRef = useRef(null);
   var callbackReturnIdxRef = useRef(-1);
   var _advanceAfterWARef = useRef(null);
+  // In-flight guards prevent double-tap from firing the same async handler
+  // twice before React commits state. Auto-release via setTimeout — covers
+  // the worst case where the handler throws before reaching its own cleanup.
+  var outcomeInFlightRef = useRef(false);
+  var undoInFlightRef = useRef(false);
+  var connectGInFlightRef = useRef(false);
+  var startDialInFlightRef = useRef(false);
   var _apptOrdinal = value => {
     var x = Math.max(1, Number(value) || 1);
     var mod100 = x % 100;
@@ -8550,7 +8590,9 @@ function App() {
       toast((a.name || 'appointment') + ' -> ' + label, 'info');
     }
     _persistApptFollowUp(updated, wanted, 0);
-    syncApptSheet(updated, { status: 'Set', followUp: sheetStatus, tip: 0 }).catch(() => {});
+    syncApptSheet(updated, { status: 'Set', followUp: sheetStatus, tip: 0 }).catch(function (e) {
+      toast('Sheet sync failed (Set) — appt saved locally. ' + (e?.message || ''), 'err');
+    });
     if (updated.admin && updated.admin.toLowerCase() !== (myEmail || '').toLowerCase()) {
       _mainWritebackAdminAppt(updated);
     }
@@ -10431,7 +10473,11 @@ function App() {
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'user_id'
-      }).catch(function () {});
+      }).then(function (r) {
+        if (r && r.error) toast('Gemini key sync failed — ' + (r.error.message || 'saved locally only'), 'err');
+      }, function () {
+        toast('Gemini key sync failed (network) — saved locally only', 'err');
+      });
       if (role === 'main' && mainMode === 'manage' && _SB && window._cloudReady) {
         setCfg(s => {
           if (s.sharedGeminiKey === geminiKeyVal) return s;
@@ -10463,7 +10509,11 @@ function App() {
         updated_at: new Date().toISOString()
       }, {
         onConflict: 'user_id'
-      }).catch(function () {});
+      }).then(function (r) {
+        if (r && r.error) toast('Claude key sync failed — ' + (r.error.message || 'saved locally only'), 'err');
+      }, function () {
+        toast('Claude key sync failed (network) — saved locally only', 'err');
+      });
     }
   }, [claudeKeyVal, role]);
   useEffect(() => {
@@ -11385,6 +11435,9 @@ function App() {
     }
   };
   var doUndo = async (overrideInfo, overrideUndo) => {
+    if (undoInFlightRef.current) return;
+    undoInFlightRef.current = true;
+    setTimeout(function () { undoInFlightRef.current = false; }, 2000);
     var info = overrideInfo || undoInfo;
     if (!info) return;
     var u = overrideUndo || appStateRef.current._lastUndo;
@@ -11511,7 +11564,9 @@ function App() {
       };
       try {
         var savedDelIdsNow = _writeDeletedApptIds([..._readDeletedApptIds(), ..._apptDeleteKeys(tombstoneTarget)], 1000);
-        _syncDeletedApptIdsForOwners(tombstoneTarget, savedDelIdsNow).catch(() => {});
+        _syncDeletedApptIdsForOwners(tombstoneTarget, savedDelIdsNow).catch(function (e) {
+          toast('Appt delete sync failed — other devices may still see it. ' + (e?.message || ''), 'err');
+        });
         _liveSyncRef.current.localApptsGuardUntil = Date.now() + 30000;
         appStateRef.current._undoSetGuard = {
           until: Date.now() + 30000,
@@ -16429,7 +16484,9 @@ function App() {
           var delIds = _readDeletedApptIds();
           delIds.push(..._apptDeleteKeys(la));
           var savedDelIds = _writeDeletedApptIds(delIds, 1000);
-          _syncDeletedApptIdsForOwners(la, savedDelIds).catch(() => {});
+          _syncDeletedApptIdsForOwners(la, savedDelIds).catch(function (e) {
+            toast('Appt delete sync failed — other devices may still see it. ' + (e?.message || ''), 'err');
+          });
         } catch (_e) {}
         removed++;
       }
@@ -18082,6 +18139,13 @@ function App() {
         var startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
         var r = await _SB.schema('autodial').from('sessions').select('email,sets,dialed,np,ni,start_time').gte('start_time', startOfDay.toISOString());
+        if (r && r.error) {
+          if (!window._lbErrShown) {
+            window._lbErrShown = true;
+            toast('Leaderboard fetch failed — ' + (r.error.message || 'check RLS / connection'), 'err');
+          }
+          return;
+        }
         if (!r.data) return;
         var byEmail = {};
         r.data.forEach(s => {
@@ -18095,7 +18159,13 @@ function App() {
         });
         var lb = Object.values(byEmail).sort((a, b) => b.sets - a.sets || b.dialed - a.dialed);
         setLeaderboard(lb);
-      } catch (e) {}
+      } catch (e) {
+        if (!window._lbErrShown) {
+          window._lbErrShown = true;
+          toast('Leaderboard fetch failed — ' + (e?.message || 'unknown'), 'err');
+        }
+        console.warn('[loadLB]', e);
+      }
     };
     loadLB();
     var t = setInterval(loadLB, 30000);
@@ -18891,6 +18961,9 @@ function App() {
     toast('Updated callback lead: ' + (updatedTarget?.name || target.name || target.phone) + ' -> ' + status.toUpperCase());
   }, [callbackLookupLeadIdx, callbackLookupStatus, myCfg.npMax, syncSheet, cfg.sheetId, cfg.sheetTab, myEmail, userName, role, mainMode, session, running]);
   var handleOutcome = useCallback((status, extra = {}) => {
+    if (outcomeInFlightRef.current) return;
+    outcomeInFlightRef.current = true;
+    setTimeout(function () { outcomeInFlightRef.current = false; }, 400);
     var leadIdx = curIdx;
     // 0126 fix (audit): pre-fix, clicking NP/CB/NI/Set with curIdx<0
     // (running session but no lead actively dialled — happens between
@@ -19125,6 +19198,9 @@ function App() {
     }
   }, [phase, countdown, running, cur, dial]);
   var startDial = async chosenSlot => {
+    if (startDialInFlightRef.current) return;
+    startDialInFlightRef.current = true;
+    setTimeout(function () { startDialInFlightRef.current = false; }, 1500);
     if (role === 'admin' && !adminLeadLinked) {
       toast(adminCfgVerified ? 'Manager has not linked a leads sheet for this admin' : 'Checking manager leads link...', 'err');
       setRunning(false);
@@ -19318,6 +19394,9 @@ function App() {
   }, [dialogRequest, showAppt, showCb, showWA, showPostCall, showNextPreview, running, tab, isCallMode, phase, cur, setDone, handleOutcome, skipCurrentLead, doUndo, undoInfo]);
   var connectG = () => {
     if (role === 'admin') return toast('Google workspace is managed by Main', 'info');
+    if (connectGInFlightRef.current) return;
+    connectGInFlightRef.current = true;
+    setTimeout(function () { connectGInFlightRef.current = false; }, 3000);
     window._gOkCb = setGOk;
     gConnect(() => setGOk(true));
   };
@@ -21368,7 +21447,7 @@ function App() {
       setCbDate('');
       setCbTime('');
     };
-    var outcomeButton = (status, glyph, caption, keyHint) => h('button', { className: 'cad-outcome ' + status, disabled: !running || curIdx < 0, onClick: () => status === 'cb' ? _openCbModal() : handleOutcome(status), type: 'button' }, h('span', { className: 'key' }, keyHint), h('span', { className: 'glyph' }, glyph), h('span', { className: 'caption' }, caption));
+    var outcomeButton = (status, glyph, caption, keyHint) => h('button', { className: 'cad-outcome ' + status, disabled: !running || curIdx < 0, onClick: () => status === 'cb' ? _openCbModal() : handleOutcome(status), type: 'button', 'aria-label': caption + ' (shortcut ' + keyHint + ')' }, h('span', { className: 'key' }, keyHint), h('span', { className: 'glyph' }, glyph), h('span', { className: 'caption' }, caption));
     var callView = h('div', { className: 'cad-shell' }, topbar, h('div', { className: 'cad-call-body' },
       h('main', { className: 'cad-call-main' },
         cadSessionTargetPanel(true),
@@ -24183,11 +24262,13 @@ function App() {
     ));
     var mobileOutcomeDockBlocked = !!(showAppt || showCb || showWA || showPostCall || showNextPreview || showMoreMenu || showActivityDrawer || showAllLeadsModal || showLeadJump || dialogRequest || adminDetailEmail || showCalAddApptPicker || showSlotPicker || payQRModal || tipModal || importReview || showColPicker || calDelHead);
     var showMobileOutcomeDock = !mobileOutcomeDockBlocked && running && curIdx >= 0 && ((mainMode === 'call' && tab === 'home') || tab === 'dial');
+    var _mobileOutcomeAriaMap = { ni: 'No interest', np: 'No pick', cb: 'Callback', set: 'Set appointment', skip: 'Skip', undo: 'Undo last' };
     var mobileOutcomeBtn = (cls, label, onClick, disabled) => h('button', {
       key: cls,
       className: 'cad-mobile-outcome-btn ' + cls,
       type: 'button',
       disabled: disabled,
+      'aria-label': _mobileOutcomeAriaMap[cls] || label,
       onClick
     }, label);
     var mobileOutcomeDock = h('div', {
