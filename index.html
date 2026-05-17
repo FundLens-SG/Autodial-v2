@@ -7869,7 +7869,10 @@ function App() {
   // In-flight guards prevent double-tap from firing the same async handler
   // twice before React commits state. Auto-release via setTimeout — covers
   // the worst case where the handler throws before reaching its own cleanup.
-  var outcomeInFlightRef = useRef(false);
+  // (handleOutcome's guard was reverted 2026-05-18 — it stranded the user
+  // on the same lead when the Skip / 'pending' advance button fired within
+  // 400ms of an NI/NP/CB click. Better to accept the small double-tap risk
+  // on dial outcomes than block the auto-advance path.)
   var undoInFlightRef = useRef(false);
   var connectGInFlightRef = useRef(false);
   var startDialInFlightRef = useRef(false);
@@ -18973,9 +18976,6 @@ function App() {
     toast('Updated callback lead: ' + (updatedTarget?.name || target.name || target.phone) + ' -> ' + status.toUpperCase());
   }, [callbackLookupLeadIdx, callbackLookupStatus, myCfg.npMax, syncSheet, cfg.sheetId, cfg.sheetTab, myEmail, userName, role, mainMode, session, running]);
   var handleOutcome = useCallback((status, extra = {}) => {
-    if (outcomeInFlightRef.current) return;
-    outcomeInFlightRef.current = true;
-    setTimeout(function () { outcomeInFlightRef.current = false; }, 400);
     var leadIdx = curIdx;
     // 0126 fix (audit): pre-fix, clicking NP/CB/NI/Set with curIdx<0
     // (running session but no lead actively dialled — happens between
