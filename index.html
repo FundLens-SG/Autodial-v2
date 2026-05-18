@@ -13184,9 +13184,75 @@ function App() {
     return () => clearInterval(_id);
   }, [role, tab, isManageMode, pullAdminAppts]);
   useEffect(() => {
-    if (role !== 'admin') return;
-    return;
-  }, [role]);
+    // Pay-tab fresh-device backfill (Phase 8 follow-up shipped 2026-05-18):
+    // On Main boot, query autodial.sessions for all admins' historical
+    // sessions so the Pay tab populates with cycles/payroll without needing
+    // a manual Refresh click. Previously this was an empty no-op —
+    // adminSessions only refilled from realtime when an admin ENDED a
+    // session, so a fresh phone install showed Cycles=0 and empty payroll
+    // forever. Idempotent via window flag — runs once per browser session.
+    if (role !== 'main' || !_user || !_SB) return;
+    if (window._payBackfilled_v1) return;
+    window._payBackfilled_v1 = true;
+    (async function () {
+      try {
+        var all = await DB.getAllSessions();
+        if (!all || !all.length) return;
+        var byEmail = {};
+        all.forEach(function (s) {
+          var em = (s.email || '').toLowerCase();
+          if (!em || em === myEmail) return;
+          if (!byEmail[em]) byEmail[em] = [];
+          var st = new Date(s.start_time).getTime();
+          var et = s.end_time ? new Date(s.end_time).getTime() : null;
+          var creditElapsed = Number(s.elapsed || 0);
+          var actualElapsed = et && st ? Math.max(0, Math.round((et - st) / 1000)) : creditElapsed;
+          byEmail[em].push({
+            dbSessionId: s.id,
+            startTime: st,
+            endTime: et,
+            elapsed: actualElapsed,
+            actualElapsed: actualElapsed,
+            creditHours: creditElapsed ? creditElapsed / 3600 : null,
+            dialed: s.dialed || 0,
+            np: s.np || 0,
+            cb: s.cb || 0,
+            ni: s.ni || 0,
+            sets: s.sets || 0,
+            tier: s.tier || '',
+            hourlyRate: s.hourly_rate || 0,
+            bonusMult: s.bonus_mult || 1.5,
+            fullSession: !!s.is_full_session,
+            bonus: !!s.is_bonus,
+            pay: s.pay || 0,
+            paid: !!s.paid,
+            paidDate: s.paid_date || null,
+            email: em,
+            ended: !!et
+          });
+        });
+        Object.keys(byEmail).forEach(function (em) {
+          byEmail[em].sort(function (a, b) { return (b.startTime || 0) - (a.startTime || 0); });
+        });
+        if (Object.keys(byEmail).length) {
+          setAdminSessions(function (prev) {
+            var next = Object.assign({}, prev);
+            Object.keys(byEmail).forEach(function (em) {
+              var existing = next[em] || [];
+              var existingTs = new Set(existing.map(function (s) { return s.startTime; }));
+              byEmail[em].forEach(function (s) { if (!existingTs.has(s.startTime)) existing.push(s); });
+              existing.sort(function (a, b) { return (b.startTime || 0) - (a.startTime || 0); });
+              next[em] = existing;
+            });
+            return next;
+          });
+          try { DBG && DBG('[PayBackfill] hydrated ' + Object.keys(byEmail).length + ' admin(s) from autodial.sessions'); } catch (_e) {}
+        }
+      } catch (e) {
+        console.warn('[PayBackfill]', e && e.message || e);
+      }
+    })();
+  }, [role, myEmail]);
   useEffect(() => {
     save('asess', adminSessions);
   }, [adminSessions]);
