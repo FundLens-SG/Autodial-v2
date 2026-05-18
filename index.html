@@ -283,7 +283,16 @@ button.free-slot{appearance:none;text-align:left}
    convention (Slack, Linear, GitHub) and stays well clear of every
    actionable surface. Mobile keeps a bottom-anchored variant since
    thumb reach matters more than nav real estate on phones. */
-.tw{position:fixed;top:calc(var(--ckg-strip-h,0px) + 12px);right:max(16px,env(safe-area-inset-right));z-index:1000001;pointer-events:none;display:flex;flex-direction:column;align-items:flex-end;gap:6px;max-width:min(380px,calc(100vw - 32px));box-sizing:border-box}
+/* 2026-05-19: moved toast stack from top-right to bottom-center on
+   desktop. User feedback: "kinda wonky for the UI to appear on the
+   top right when im clicking in the middle" — the toasts were
+   crowding the Reconnect Google chip + avatar area and peeking
+   over the work zone. Now anchored below the lead-card so toasts
+   appear in the natural eye-line during dial flow.
+   column-reverse so newest toasts sit at the bottom of the stack
+   (closest to viewport edge), older ones float upward. */
+.tw{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:1000001;pointer-events:none;display:flex;flex-direction:column-reverse;align-items:center;gap:6px;max-width:min(380px,calc(100vw - 32px));box-sizing:border-box}
+body[data-undo-bar="1"] .tw{bottom:80px}
 @media(max-width:900px){
   .tw{top:auto;right:auto;bottom:80px;left:50%;transform:translateX(-50%);align-items:center;max-width:calc(100vw - 32px)}
   body[data-undo-bar="1"] .tw{bottom:140px}
@@ -9650,17 +9659,12 @@ function App() {
   // click Start, which wasn't obvious. Now a one-shot toast on mount
   // tells them what to do. We deliberately do NOT auto-resume the
   // dial loop (could fire unwanted calls right after a refresh).
-  useEffect(() => {
-    var s = sessionRef.current;
-    if (s && !s.ended && s.startTime) {
-      var elapsedMin = Math.floor((Date.now() - s.startTime) / 60000);
-      var label = elapsedMin > 0 ? elapsedMin + ' min in' : 'just started';
-      try {
-        toast('▶ Session restored (' + label + ') — click Start calling to resume the dial loop', 'info');
-      } catch (_e) {}
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // 2026-05-19: session-restored toast removed per user UX revamp.
+  // Replaced by cadSessionResumeBanner (declared near other banners
+  // around line ~21436 and rendered above the lead card in the dial
+  // view) — a persistent strip is more visible than a 3-second toast
+  // and clearly indicates the resumable state until the user hits
+  // Start, then disappears.
 
   // ── ckg leave-guard: ask before navigating away with an active session ──
   // Closure refs so the guard always sees the latest endSession callable.
@@ -16925,7 +16929,8 @@ function App() {
         var fromDrive = await window.gWaTpl.load(cfg.waTplDriveFileId);
         if (fromDrive && fromDrive.length) {
           setWaTemplates(window.ensureDefaultWATemplates(fromDrive));
-          toast('Restored ' + fromDrive.length + ' WhatsApp template(s) from Drive', 'info');
+          // 2026-05-19: toast suppressed per user UX revamp — silent
+          // background sync; the templates are already loaded and usable.
         }
       } catch (e) {
         console.warn('[WA Drive auto-restore]', e?.message || e);
@@ -20113,7 +20118,9 @@ function App() {
       toast('🧠 Claude refining…', 'info');
       var processed = await claudePostProcess(parsed, headers, rows, colMap);
       var dedup = await claudeDedup(processed);
-      if (dedup.dupes.length) toast('🔍 ' + dedup.dupes.length + ' duplicate groups found & marked');
+      // 2026-05-19: toast suppressed per user UX revamp — dedup is a
+      // silent background quality improvement; user doesn't act on it.
+      // if (dedup.dupes.length) toast('🔍 ' + dedup.dupes.length + ' duplicate groups found & marked');
       if (window._lowConfCols?.length) toast('⚠️ Low confidence: ' + window._lowConfCols.join(', ') + ' — tap 🔧 Columns', 'info');
       return dedup.leads;
     } catch (e) {
@@ -21427,6 +21434,24 @@ function App() {
         h('button', { className: 'cad-btn', onClick: flushSheetQueue }, 'Flush now')
       )
     ) : null;
+    // 2026-05-19: session-resume banner — replaces the one-shot
+    // "Session restored" toast at line ~9654. Renders persistently
+    // while a paused session is waiting for the user to hit Start.
+    // Auto-hides when running starts or session ends.
+    var cadSessionResumeBanner = (session && !session.ended && session.startTime && !running) ? h('div', { className: 'cad-sync-banner', style: { borderColor: 'var(--ad-brass-line)', background: 'linear-gradient(90deg, var(--ad-brass-dim) 0%, transparent 70%)' } },
+      h('span', null,
+        h('b', null, '▶ Session paused'),
+        ' · ',
+        Math.floor((Date.now() - session.startTime) / 60000),
+        ' min in · ',
+        (session.dialed || 0),
+        ' dialed · ',
+        (session.sets || 0),
+        ' set — hit ',
+        h('b', null, 'Start session'),
+        ' to resume.'
+      )
+    ) : null;
     var cadUndoCleanupBanner = undoCleanupCount ? h('div', { className: 'cad-sync-banner warn' },
       h('span', null, h('b', null, undoCleanupCount, ' pending Undo Set cleanup', undoCleanupCount === 1 ? '' : 's'), ' - waiting to remove calendar/sheet/cloud traces'),
       h('span', { className: 'cad-inline' },
@@ -21656,6 +21681,7 @@ function App() {
         ),
         h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => setTab('leads') }, icon('Sheet', 13), 'Open sheet'))
       ),
+      cadSessionResumeBanner,
       cadSyncQueueBanner,
       // HERO CTA: target chooser + Start/Stop is the dominant element.
       heroCTA,
