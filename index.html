@@ -6247,6 +6247,16 @@ function _normalizeCfgShape(cfg, opts) {
   var partial = !!(opts && opts.partial);
   var source = cfg && typeof cfg === 'object' && !Array.isArray(cfg) ? cfg : {};
   var next = partial ? { ...source } : { ..._cfgDefaults(), ...source };
+  // Sanitize sheet/Drive ID fields — a typed name like "autodial " (literal
+  // string, trailing space) can sneak in via paste / typo and survives until
+  // a probe hits sheets.googleapis.com and 404s forever. Real Google IDs are
+  // 20+ chars of [A-Za-z0-9_-]; anything else gets reset to empty.
+  ['sheetId', 'timesheetId'].forEach(function (k) {
+    if (!partial || source[k] !== undefined) {
+      var sv = typeof source[k] === 'string' ? source[k].trim() : '';
+      next[k] = /^[A-Za-z0-9_-]{20,}$/.test(sv) ? sv : '';
+    }
+  });
   if (!partial || source.payRates !== undefined) next.payRates = _numberArray(source.payRates, DEF_PAY_RATES, 0, 1000);
   if (!partial || source.tierMins !== undefined) next.tierMins = _numberArray(source.tierMins, DEF_TIER_MINS, 0, 100000);
   if (!partial || source.starThresholds !== undefined) next.starThresholds = _numberArray(source.starThresholds, DEF_STAR_THRESHOLDS, 0, 100000);
@@ -12027,6 +12037,12 @@ function App() {
     }
     var cancelled = false;
     var sheetId = role === 'admin' ? (myCfg?.timesheetId || myCfg?.sheetId || cfg.sheetId || '') : (cfg.sheetId || myCfg?.timesheetId || '');
+    // Defensive: a typed sheet *name* (e.g. "autodial ") can land in
+    // cfg.sheetId if the user pastes/types into the Drive-search field
+    // and a downstream setCfg path doesn't validate. Reject anything that
+    // doesn't shape like a Google Sheets ID (20+ alphanumeric/_/-) so
+    // the boot probe doesn't 404 forever on a literal name.
+    if (sheetId && !/^[A-Za-z0-9_-]{20,}$/.test(String(sheetId).trim())) sheetId = '';
     setGoogleHealth(prev => prev.state === 'ok' ? { ...prev, state: 'checking' } : { state: 'checking', sheets: false, calendar: false, detail: '' });
     var t = setTimeout(async () => {
       var sheetOk = !sheetId;
