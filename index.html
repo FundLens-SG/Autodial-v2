@@ -23455,7 +23455,7 @@ function App() {
           (ac.sharedCals || []).length > 0 && cadField('🎯 Write new appointments to', h('select', { value: ac.targetCalendarId || '', onChange: e => cadUpdateAdminConfig(em, { targetCalendarId: e.target.value || undefined }) }, h('option', { value: '' }, 'Admin primary calendar'), (ac.sharedCals || []).map(c => h('option', { key: c.id, value: c.id }, c.name || c.calendar_name || c.id))))
         ),
         h('div', { className: 'cad-modal-actions' },
-          h('button', { className: 'cad-btn', onClick: () => setAdminDetailEmail(null) }, 'Done'),
+          h('button', { className: 'cad-btn', onClick: () => setAdminDetailEmail(null) }, 'Cancel'),
           h('button', { className: 'cad-btn primary', onClick: async () => {
             try {
               if (!_assertTetheredOrSelf(em)) return;
@@ -23465,7 +23465,12 @@ function App() {
                 await window.gSheets.ensureSystemTabs(oneCfg.timesheetId);
               }
               var res = await publishAdminConfigs({ [em]: oneCfg }, { throwOnError: true });
-              toast(res.written ? 'Config pushed to ' + em : 'No config written for ' + em, res.written ? undefined : 'err');
+              if (res.written) {
+                toast('Config pushed to ' + em);
+                setAdminDetailEmail(null);
+              } else {
+                toast('No config written for ' + em, 'err');
+              }
             } catch (e) {
               console.warn('[Push config]', e);
               toast('Config push failed: ' + (e?.message || e), 'err');
