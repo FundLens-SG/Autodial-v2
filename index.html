@@ -19392,7 +19392,16 @@ function App() {
       if (status === 'np') return {
         ...l,
         status: (l.npCount || 0) + 1 >= n(myCfg.npMax, 5) ? 'ni' : 'np',
-        npCount: (l.npCount || 0) + 1
+        npCount: (l.npCount || 0) + 1,
+        // 2026-05-19 fix: stamp npAt + _dialCoolMs in the SIMULATED lead
+        // too. The applyOutcome above writes them via setLeads, but
+        // setLeads is async — getNextDialable below reads from `simulated`
+        // and would see the OLD npAt (or none for a fresh NP), bypassing
+        // the cooldown filter. Result before fix: stop+start session
+        // re-cycled to the just-NP'd lead immediately, and 2nd→3rd→...
+        // NP attempts had no cooldown between them. User-reported.
+        npAt: Date.now(),
+        _dialCoolMs: (cfg.cooldownDays != null ? cfg.cooldownDays : 3) * 86400000
       };
       if (status === 'set') return {
         ...l,
