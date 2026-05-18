@@ -15452,7 +15452,13 @@ function App() {
             var ph = String(r.phone || '');
             if (ph && assignedByPhone[ph] === undefined) assignedByPhone[ph] = r.assigned_by || null;
           });
-          var stalePhones = fullSync ? [...existingPhoneSet].filter(ph => ph && !currentPhones.has(ph)) : [];
+          // Always compute stale phones (gating on fullSync was an incorrect
+          // optimisation — when sizes match but content has shifted, e.g. user
+          // deletes one lead and adds another, the deleted phone would otherwise
+          // linger in autodial.leads forever and other devices keep seeing it).
+          // existingPhoneSet is queried fresh on every push so it's always
+          // accurate; if nothing is stale, the array is empty and no DELETE fires.
+          var stalePhones = [...existingPhoneSet].filter(ph => ph && !currentPhones.has(ph));
           if (stalePhones.length) {
             var del = await _SB.schema('autodial').from('leads').delete().eq('assigned_to', _user.id).in('phone', stalePhones);
             if (del.error) throw del.error;
