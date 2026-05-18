@@ -18061,12 +18061,19 @@ function App() {
       autoAdvanceTimerRef.current = null;
     }
     clearTimeout(cdRef.current);
-    if (isAdminCallingSession) {
-      DB.saveSess(s, _user?.id, myEmail);
-      splitSessionAdjustments.forEach(adj => {
-        DB.saveSess({ ...adj.session, ...adj.updates }, _user?.id, myEmail);
-      });
-    }
+    // Persist every session to autodial.sessions — Mains AND admins.
+    // Previously gated on isAdminCallingSession which meant Main self-calls
+    // never wrote to DB (only local sessionLog). Pre-fix: cross-device
+    // history broken (phone had data, desktop didn't), Main missing from
+    // leaderboard, Star Bank DB-derivation showed 0. The README states
+    // "Main self-calls earn rank/stars and appointments" — so they
+    // SHOULD be persisted. Pay tab already filters Main's own sessions
+    // out of payroll (see the pay-backfill effect), so writing them
+    // doesn't pollute pay calculations.
+    DB.saveSess(s, _user?.id, myEmail);
+    splitSessionAdjustments.forEach(adj => {
+      DB.saveSess({ ...adj.session, ...adj.updates }, _user?.id, myEmail);
+    });
     DB.notify(null, 'session_end', 'Session ended: ' + myEmail, s.sets + ' appts | ' + rank.label, {
       email: myEmail,
       sets: s.sets,
