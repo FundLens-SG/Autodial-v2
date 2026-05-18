@@ -13328,11 +13328,52 @@ function App() {
     // Phase 7B2: prcv_ remote cache eliminated — derived from payments rows.
   }, [paymentsReceived]);
   useEffect(() => {
-    // Phase 7B2: asess_/bcyc_ remote caches eliminated. Pay-tab admin
-    // sessions come from autodial.sessions filtered by admin emails;
-    // billing cycles derive from autodial.payments. Hook is now a no-op
-    // until that source-table read is wired in.
-  }, [tab, isManageMode]);
+    // Pay-tab fresh-device payments backfill (Phase 8 follow-up shipped
+    // 2026-05-18). When the Main opens the Pay tab on a fresh device,
+    // pull historical autodial.payments rows so paymentsReceived
+    // populates without needing manual Refresh. Previously a no-op —
+    // paymentsReceived only refilled via 'payevt' realtime, so the list
+    // stayed empty for any device that hadn't been online at the time of
+    // each payment event.
+    // billingCycles are user-local (not in DB) — they're constructed by
+    // the close-cycle flow against the populated payments, so this read
+    // is enough to make the Pay tab show historical data.
+    if (role !== 'main' || tab !== 'timesheet' || !isManageMode) return;
+    if (!_user || !_SB) return;
+    if (window._payRcvdBackfilled_v1) return;
+    window._payRcvdBackfilled_v1 = true;
+    (async function () {
+      try {
+        var pr = await _SB.schema('autodial').from('payments').select('*').order('created_at', { ascending: false }).limit(500);
+        if (pr.error) throw pr.error;
+        var rows = pr.data || [];
+        if (!rows.length) return;
+        var mapped = rows.map(function (p) {
+          return {
+            id: p.id,
+            admin: (p.admin_email || '').toLowerCase(),
+            amount: Number(p.amount || 0),
+            sessions: p.session_count || 0,
+            incentives: p.incentive_count || 0,
+            hours: Number(p.hours || 0),
+            invoiceNum: p.invoice_num || '',
+            ts: p.created_at ? new Date(p.created_at).getTime() : Date.now(),
+            paidBy: p.paid_by || null
+          };
+        });
+        setPaymentsReceived(function (prev) {
+          var prevIds = new Set((prev || []).map(function (x) { return x.id; }).filter(Boolean));
+          var merged = (prev || []).slice();
+          mapped.forEach(function (p) { if (p.id && !prevIds.has(p.id)) merged.push(p); });
+          merged.sort(function (a, b) { return (b.ts || 0) - (a.ts || 0); });
+          return merged;
+        });
+        try { DBG && DBG('[PayBackfill] hydrated ' + rows.length + ' payments from autodial.payments'); } catch (_e) {}
+      } catch (e) {
+        console.warn('[PayBackfill payments]', e && e.message || e);
+      }
+    })();
+  }, [tab, isManageMode, role]);
   useEffect(() => {
     save('appts', appointments);
     cloudSave('appts', appointments);
