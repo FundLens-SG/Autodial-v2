@@ -4167,6 +4167,14 @@ window.DB={
       .on('postgres_changes',{event:'INSERT',schema:'autodial',table:'notifications'},p=>{callback('notif',p.new)})
       .on('postgres_changes',{event:'*',schema:'autodial',table:'cb_queue'},p=>{callback('cb',p.new||p.old)})
       .on('postgres_changes',{event:'*',schema:'autodial',table:'leads'},p=>{callback('lead',p.new||p.old)})
+      // 2026-05-19: cross-Main realtime channels. Before this, shared_admin_configs
+      // and shared_appointments relied solely on the 2s pullSharedAdminCfg poll
+      // which only fires when document.visibilityState === 'visible'. Background
+      // tabs (Main on another tab) silently missed updates from teammates editing
+      // admin configs or admin shared appointments until they refocused. Now the
+      // realtime event triggers _liveSyncPull immediately, regardless of tab focus.
+      .on('postgres_changes',{event:'*',schema:'autodial',table:'shared_admin_configs'},p=>{callback('sac',p.new||p.old)})
+      .on('postgres_changes',{event:'*',schema:'autodial',table:'shared_appointments'},p=>{callback('sappt',p.new||p.old)})
       .subscribe()}catch(e){console.warn('[Realtime]',e.message);return null}}
 };
 
@@ -14205,6 +14213,15 @@ function App() {
           return;
         }
         if (type === 'lead') {
+          if (typeof window._liveSyncPull === 'function') window._liveSyncPull();
+          return;
+        }
+        // 2026-05-19: cross-Main config/appts events. Triggers an
+        // immediate _liveSyncPull (which re-reads shared_admin_configs
+        // and shared_appointments) without waiting for the 2s
+        // visibilitychange-gated poll. Without this, background tabs
+        // silently missed cross-Main updates until refocus.
+        if (type === 'sac' || type === 'sappt') {
           if (typeof window._liveSyncPull === 'function') window._liveSyncPull();
           return;
         }
