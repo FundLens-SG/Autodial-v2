@@ -13279,6 +13279,31 @@ function App() {
     );
   }, [_user?.id]);
   useEffect(() => {
+    // Notifications hygiene (Phase 8 follow-up, 2026-05-19): every
+    // session_end DB.notify writes a row that nobody marks read and
+    // nothing prunes. Live smoke test 2026-05-19 found 49 unread
+    // session_end notifications in chungakwanc's account from weeks of
+    // use. Two passes, both RLS-scoped to own user:
+    //  1. Auto-mark session_end notifications as read (the toast on
+    //     session end already conveyed this; the row exists for
+    //     cross-device realtime, not for an unread badge).
+    //  2. Delete own notifications older than 30 days regardless of
+    //     type so the table doesn't grow forever.
+    // Idempotent via window flag; best-effort.
+    if (!_user || !_SB) return;
+    if (window._notifsCleaned_v1) return;
+    window._notifsCleaned_v1 = true;
+    var thirtyD = new Date(Date.now() - 30 * 86400000).toISOString();
+    _SB.schema('autodial').from('notifications').delete().eq('user_id', _user.id).lt('created_at', thirtyD).then(
+      function (r) { if (r && r.error) console.warn('[NotifsPrune]', r.error.message || r.error); },
+      function (e) { console.warn('[NotifsPrune]', e && e.message || e); }
+    );
+    _SB.schema('autodial').from('notifications').update({ read: true }).eq('user_id', _user.id).eq('type', 'session_end').eq('read', false).then(
+      function (r) { if (r && r.error) console.warn('[NotifsMarkRead]', r.error.message || r.error); },
+      function (e) { console.warn('[NotifsMarkRead]', e && e.message || e); }
+    );
+  }, [_user?.id]);
+  useEffect(() => {
     try {
       var arr = Array.from(sessSuppress);
       save('ssup', arr);
