@@ -3793,13 +3793,28 @@ function leadAgeText(lead){var raw=String(lead?.age||lead?.computed_age||'').tri
 // remained. With `wrap: true` we re-scan [0, after) after the
 // forward walk fails. Skip + outcome auto-advance set this; the
 // initial start-dial path doesn't (it already passes after=-1).
-window.getNextDialable=function(leads,after,f){f=f||{};var now=new Date();
+// 2026-05-19: added NP/skip cooldown — user feedback: "if i stop and
+// start session for today, avoid from rolling from the same NP lead
+// that i started on earlier... auto cooldown of 3 days before calling
+// the same NP/Skipped Lead again UNLESS I run out of np/blank leads
+// then no choice, ignore the cooldown."
+// Two-pass picker: first pass honors cooldown (npAt / skippedAt set
+// when the lead was last touched); if no eligible lead found, retry
+// ignoring cooldown so the queue never deadlocks when fresh leads
+// run out. Default cooldown is 3 days; callers can override via
+// f.cooldownMs (set to 0 to disable per-call).
+window.getNextDialable=function(leads,after,f){f=f||{};var now=new Date();var nowMs=Date.now();
   var priority=f.queuePriority||['blank','cb_due','np_retry'];
-  function isEligible(l){
+  var cooldownMs=f.cooldownMs!=null?f.cooldownMs:3*86400000;
+  function isEligible(l,applyCooldown){
     if(l.status==='ni'||l.status==='set')return false;
     if(l.notes){var _rl=l.notes.toLowerCase().trim();if(/^ni$/i.test(l.notes.trim()))return false;if(/not interested/i.test(_rl))return false}
     if(l.status==='np'&&l.npCount>=(f.npMax||5))return false;
     if(f.skipAllNP&&l.status==='np')return false;
+    if(applyCooldown&&cooldownMs>0){
+      if(l.status==='np'&&l.npAt&&(nowMs-l.npAt<cooldownMs))return false;
+      if(l.status==='pending'&&l.skippedAt&&(nowMs-l.skippedAt<cooldownMs))return false;
+    }
     if(f.genderFilter&&f.genderFilter!=='all'){var g=detectGender(l);if(g&&g!==f.genderFilter)return false}
     if(f.ageFilter&&f.ageMin){var ar=parseAgeRange(l.age);if(ar&&(ar.max<(+f.ageMin)||ar.min>(+f.ageMax||999)))return false}
     return true}
@@ -3811,21 +3826,23 @@ window.getNextDialable=function(leads,after,f){f=f||{};var now=new Date();
     if(bucket==='np_retry'&&l.status==='np')return true;
     if(bucket==='cb_all'&&l.status==='cb')return true;
     return false}
-  // Forward walk: priority order × [after+1, end)
-  for(var p=0;p<priority.length;p++){var bucket=priority[p];
-    for(var i=(after>=0?after+1:0);i<leads.length;i++){var l=leads[i];if(!isEligible(l))continue;
-      if(_bucketHit(bucket,l))return i}}
-  // Forward fallback walk (no priority filter)
-  for(var i=(after>=0?after+1:0);i<leads.length;i++){var l=leads[i];if(!isEligible(l))continue;
-    if(l.status==='cb'&&!isCBDue(l)&&!f.includeCB)continue;return i}
-  // Wrap walk: priority order × [0, after) — same logic, lower
-  // indexes only, skip the anchor itself.
-  if(f.wrap&&after>0){
-    for(var p2=0;p2<priority.length;p2++){var bucket2=priority[p2];
-      for(var j=0;j<after;j++){var l2=leads[j];if(!isEligible(l2))continue;
-        if(_bucketHit(bucket2,l2))return j}}
-    for(var j=0;j<after;j++){var l2=leads[j];if(!isEligible(l2))continue;
-      if(l2.status==='cb'&&!isCBDue(l2)&&!f.includeCB)continue;return j}}
+  for(var coolPass=0;coolPass<=1;coolPass++){var applyCool=coolPass===0;
+    // Forward walk: priority order × [after+1, end)
+    for(var p=0;p<priority.length;p++){var bucket=priority[p];
+      for(var i=(after>=0?after+1:0);i<leads.length;i++){var l=leads[i];if(!isEligible(l,applyCool))continue;
+        if(_bucketHit(bucket,l))return i}}
+    // Forward fallback walk (no priority filter)
+    for(var i2=(after>=0?after+1:0);i2<leads.length;i2++){var l2=leads[i2];if(!isEligible(l2,applyCool))continue;
+      if(l2.status==='cb'&&!isCBDue(l2)&&!f.includeCB)continue;return i2}
+    // Wrap walk: priority order × [0, after) — same logic, lower
+    // indexes only, skip the anchor itself.
+    if(f.wrap&&after>0){
+      for(var p2=0;p2<priority.length;p2++){var bucket2=priority[p2];
+        for(var j=0;j<after;j++){var l3=leads[j];if(!isEligible(l3,applyCool))continue;
+          if(_bucketHit(bucket2,l3))return j}}
+      for(var j2=0;j2<after;j2++){var l4=leads[j2];if(!isEligible(l4,applyCool))continue;
+        if(l4.status==='cb'&&!isCBDue(l4)&&!f.includeCB)continue;return j2}}
+  }
   return-1};
 
 // ══════ TIMESHEET GOOGLE SHEET ══════
@@ -18437,6 +18454,12 @@ function App() {
       if (status === 'np') {
         var nc = (prevLead.npCount || 0) + 1;
         u.npCount = nc;
+        // 2026-05-19: stamp npAt for the 3-day cooldown logic in
+        // getNextDialable. Stop+restart of a session today won't re-cycle
+        // through the same NPd leads — the picker's first pass filters
+        // anything within cooldownMs. Falls back to dialing them if no
+        // fresh leads remain.
+        u.npAt = Date.now();
         // 0126 fix (audit): pre-fix the LOCAL flip used myCfg.npMax (so
         // a Main configured 3 NP-then-NI behaved correctly on screen)
         // but the SHEET writeback was hardcoded `nc >= 5`. Result:
@@ -18897,6 +18920,10 @@ function App() {
       proceedToLead(firstDialable);
       return;
     }
+    // 2026-05-19: stamp skippedAt for the 3-day cooldown logic in
+    // getNextDialable. Restarting a session today won't re-cycle the
+    // just-skipped lead unless every fresh lead is exhausted.
+    setLeads(function (prev) { return (prev || []).map(function (l, i) { return i === skippedIdx ? Object.assign({}, l, { skippedAt: Date.now() }) : l; }); });
     // Same defensive timer clear when we DO have a lead to skip —
     // proceedToLead below kicks off a fresh dial, so any stale
     // pending advance must die first.
