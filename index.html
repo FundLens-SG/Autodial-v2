@@ -16988,9 +16988,14 @@ function App() {
         // This prevents quiet clobbers.
         var diff = await compareScriptsWithDrive();
         if (diff && !diff.inSync && diff.driveOnly.length) {
-          var now = Date.now();
-          if (now - _scriptsDivergenceWarnedAt.current > 5 * 60 * 1000) {
-            _scriptsDivergenceWarnedAt.current = now;
+          // 2026-05-19: was 5-min cooldown — fired every ~5 min if user
+          // ignored it, causing visible friction. Now once-per-browser-
+          // session via window flag. User sees the warning at most once
+          // per tab lifetime; subsequent auto-backup attempts still
+          // correctly bail out (preventing clobber) but silently.
+          if (!window._scriptsDivergenceWarnedThisSession) {
+            window._scriptsDivergenceWarnedThisSession = true;
+            _scriptsDivergenceWarnedAt.current = Date.now();
             toast('⚠ Drive has scripts not on this device — open Settings → Check Drive sync', 'err');
           }
           return;
@@ -17218,6 +17223,14 @@ function App() {
         pullSessionsFromSheet({ quiet: true }).catch(e => { console.warn('[Auto sessions reconcile]', e?.message || e); return null; })
       ]).then(([apptR, sessR]) => {
         try { localStorage.setItem(lastKey, String(Date.now())); } catch (_e) {}
+        // 2026-05-19: only surface a toast when something meaningful
+        // changed (rows added or removed). Pure updates (a session row
+        // getting its end_time / dialed-count reconciled against the
+        // sheet) are background sync — the user gets a confusing
+        // "+0/1u" toast every 24h confirming routine reconciliation
+        // that doesn't require their attention.
+        var materialChange = (apptR && (apptR.added || apptR.removed)) || (sessR && sessR.added);
+        if (!materialChange) return;
         var msgs = [];
         if (apptR && (apptR.added || apptR.updated || apptR.removed)) {
           msgs.push('appts +' + apptR.added + '/' + apptR.updated + 'u/' + apptR.removed + 'd');
