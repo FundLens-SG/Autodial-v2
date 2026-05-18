@@ -6430,6 +6430,18 @@ function fuzzyStatusMatch(text) {
   return bestMatch;
 }
 window.fuzzyStatusMatch = fuzzyStatusMatch;
+// 2026-05-19 fix: the entire script block at line ~4533 is wrapped in an
+// IIFE — function declarations inside (including canonicalLeadStatus,
+// isCanonicalLeadStatus, sanitizeImportedLead) are IIFE-scoped, NOT
+// global. Cross-block callers like window.claudePostProcess (defined in
+// the earlier <script> at line ~3598) reference canonicalLeadStatus as a
+// bare identifier, which resolved to undefined and emitted
+// "[Claude PostProcess] canonicalLeadStatus is not defined" on every
+// lead import via Claude AI. Fix: expose all three to window so the
+// scope-chain lookup outside the IIFE finds them.
+window.canonicalLeadStatus = canonicalLeadStatus;
+window.isCanonicalLeadStatus = isCanonicalLeadStatus;
+window.sanitizeImportedLead = sanitizeImportedLead;
 function a1Col(idx) {
   var col = '';
   var n = Number(idx);
