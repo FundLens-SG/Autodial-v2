@@ -13257,6 +13257,28 @@ function App() {
     save('asess', adminSessions);
   }, [adminSessions]);
   useEffect(() => {
+    // Lead-claim hygiene (Phase 8 follow-up, 2026-05-19): delete the
+    // signed-in user's own lead_claims rows older than 10 minutes on
+    // boot. The CAS-takeover at claimLead (line ~18613) already handles
+    // the runtime case where another caller's stale claim should be
+    // overrideable, so this DELETE is purely table-bloat cleanup —
+    // releaseClaim was added later in the lifecycle, so pre-fix
+    // sessions left orphan rows that survive forever even though the
+    // 10-minute client-side filter makes them invisible to the dial
+    // flow. Idempotent via window flag; only touches own rows (RLS).
+    if (!_user || !_SB) return;
+    if (window._claimsCleaned_v1) return;
+    window._claimsCleaned_v1 = true;
+    var cutoff = new Date(Date.now() - 600000).toISOString();
+    _SB.schema('autodial').from('lead_claims').delete().eq('claimed_by', _user.id).lt('claimed_at', cutoff).then(
+      function (r) {
+        if (r && r.error) console.warn('[ClaimsCleanup]', r.error.message || r.error);
+        else try { DBG && DBG('[ClaimsCleanup] purged stale own claims'); } catch (_e) {}
+      },
+      function (e) { console.warn('[ClaimsCleanup]', e && e.message || e); }
+    );
+  }, [_user?.id]);
+  useEffect(() => {
     try {
       var arr = Array.from(sessSuppress);
       save('ssup', arr);
