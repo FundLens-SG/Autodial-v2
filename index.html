@@ -491,6 +491,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 .cad-btn.ghost{background:transparent;border-color:transparent;color:var(--ad-t-2)}
 .cad-btn.ghost.danger:hover{color:var(--ad-red)}
 .cad-main{flex:1;min-height:0;overflow:auto;padding:26px 32px;display:flex;flex-direction:column;gap:22px}
+/* 0125: cad-main + cad-call-main are flex columns inside a height-pinned cad-shell.
+   Direct children inherit flex-shrink:1, so on shorter laptop viewports they get
+   squished and any child with overflow:hidden (.cad-hero-cta, .cad-card, etc.)
+   clips its bottom content. Pin flex-shrink:0 so children keep natural heights
+   and the parent scrolls instead. */
+.cad-main > *, .cad-call-main > *{flex-shrink:0;min-height:0}
 .cad-cal-main{gap:10px;padding-top:18px}
 .cad-cal-main .cad-dashboard-head{margin-bottom:0}
 .cad-cal-main .cad-calendar-controls{margin-bottom:6px!important}
@@ -531,7 +537,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
    bunched against the session info on the far left. */
 .cad-session-strip{display:flex;align-items:center;gap:20px}
 .cad-session-info{flex:0 0 auto;min-width:160px}
-.cad-session-stats{display:flex;align-items:stretch;gap:10px;flex-wrap:wrap}
+.cad-session-stats{display:flex;align-items:stretch;gap:10px;flex-wrap:nowrap;overflow-x:auto;min-width:0;scrollbar-width:thin}
+.cad-session-stats::-webkit-scrollbar{height:4px}
+.cad-session-stats::-webkit-scrollbar-thumb{background:var(--ad-line-2);border-radius:4px}
+.cad-session-stats > *{flex-shrink:0}
 .cad-session-stats--center{flex:1;justify-content:center}
 /* Stop button: vivid red CTA so it reads as "session control" instead of
    the legacy ghost-in-the-corner. Same prominence as Start session. */
