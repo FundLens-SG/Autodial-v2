@@ -9835,11 +9835,48 @@ function App() {
     var snapshot = makeLiveSessionSnapshot(session);
     var hash = hashLiveSessionSnapshot(snapshot);
     if (hash === ref.lastPushed) return;
+    // 2026-05-19: if the session just ended, push IMMEDIATELY (skip
+    // the 1500ms debounce). Fast mobile tab-close (swipe-out) otherwise
+    // eats the timer and the cross-device pull on the OTHER device
+    // treats the session as still live for up to 20 minutes (the
+    // staleness threshold in the pull useEffect below). Mid-session
+    // updates can keep their debounce.
+    if (snapshot && snapshot.ended) {
+      pushLiveSessionSnapshotNow(snapshot).catch(function () {});
+      return;
+    }
     ref.timer = setTimeout(async () => {
       await pushLiveSessionSnapshotNow(snapshot);
     }, 1500);
     return () => clearTimeout(ref.timer);
   }, [session?.id, session?.startTime, session?.dialed, session?.np, session?.cb, session?.ni, session?.sets, session?.ended, running, phase, sessionTarget?.type, sessionTarget?.count, JSON.stringify(sessionTarget?.selected || []), JSON.stringify(sessionTarget?.counts || {}), JSON.stringify(cfg.queuePriority || []), curIdx, myEmail]);
+  // 2026-05-19: pagehide / visibilitychange flush. If the user closes
+  // the tab (mobile swipe-out, refresh, navigation) while a debounced
+  // liveSession push is still pending, flush it immediately so the
+  // other device doesn't end up on a stale "session live" state. Most
+  // modern browsers honor a brief network grace period on pagehide,
+  // so the in-flight fetch often completes.
+  useEffect(() => {
+    if (!_SB || !_user || !myEmail) return;
+    var ref = liveSessionPushRef.current;
+    var flush = function () {
+      if (!ref || !ref.timer) return;
+      clearTimeout(ref.timer);
+      ref.timer = null;
+      var snap = makeLiveSessionSnapshot(sessionRef.current);
+      if (!snap) return;
+      var h = hashLiveSessionSnapshot(snap);
+      if (h === ref.lastPushed) return;
+      pushLiveSessionSnapshotNow(snap).catch(function () {});
+    };
+    var onVis = function () { if (document.visibilityState === 'hidden') flush(); };
+    window.addEventListener('pagehide', flush);
+    document.addEventListener('visibilitychange', onVis);
+    return function () {
+      window.removeEventListener('pagehide', flush);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [_SB, _user, myEmail]);
   // 0107: cross-device session PULL. Runs on ALL devices (desktop +
   // mobile) — separate from the mobile-only phone_dialer poll
   // because session mirroring needs to flow both ways. Polls the
@@ -29509,7 +29546,17 @@ function App() {
           _d.push(..._apptDeleteKeys(a));
         });
         var _savedBulkDelIds = _writeDeletedApptIds(_d, 1000);
-        await Promise.all(_sheetDeletes.map(a => _syncDeletedApptIdsForOwners(a, _savedBulkDelIds).catch(() => {})));
+        // 2026-05-19: aggregate-toast on bulk delete sync failure. Per-
+        // appointment toast would spam on a wide failure; one summary
+        // toast with the count + sample names is enough to flag that
+        // cross-device sync didn't land for some entries (other devices
+        // may still see them). Same surfacing pattern as the 6 other
+        // _syncDeletedApptIdsForOwners callsites fixed earlier.
+        var _bulkDelSyncFails = [];
+        await Promise.all(_sheetDeletes.map(a => _syncDeletedApptIdsForOwners(a, _savedBulkDelIds).catch(function () { _bulkDelSyncFails.push(a.name || a.phone || a.id || 'appt'); })));
+        if (_bulkDelSyncFails.length) {
+          toast('⚠ ' + _bulkDelSyncFails.length + ' delete-sync failure' + (_bulkDelSyncFails.length === 1 ? '' : 's') + ' — other devices may still see ' + _bulkDelSyncFails.slice(0, 3).join(', ') + (_bulkDelSyncFails.length > 3 ? ' (+' + (_bulkDelSyncFails.length - 3) + ' more)' : ''), 'err');
+        }
         await Promise.all(_sheetDeletes.map(a => _purgeCloudAppointment(a).catch(() => false)));
         setAppointments(p => p.filter(a => !selectedAppts.has(a.id)));
         setSelectedAppts(new Set());
