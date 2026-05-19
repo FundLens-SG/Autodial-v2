@@ -535,13 +535,32 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 /* 0079: session strip is a 3-cell flex — info on left, stats centred, CTA
    on right. Stats land in the visual middle of the strip instead of being
    bunched against the session info on the far left. */
-.cad-session-strip{display:flex;align-items:center;gap:20px}
+.cad-session-strip{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
 .cad-session-info{flex:0 0 auto;min-width:160px}
 .cad-session-stats{display:flex;align-items:stretch;gap:10px;flex-wrap:nowrap;overflow-x:auto;min-width:0;scrollbar-width:thin}
 .cad-session-stats::-webkit-scrollbar{height:4px}
 .cad-session-stats::-webkit-scrollbar-thumb{background:var(--ad-line-2);border-radius:4px}
 .cad-session-stats > *{flex-shrink:0}
-.cad-session-stats--center{flex:1;justify-content:center}
+/* 0126: laptop scaling fix. `justify-content:center` was pushing the leftmost
+   DIALED/NP cards off-screen on narrow CALL-view widths (the desktop grid
+   reserves 320–420px for the script panel, leaving the main pane cramped on
+   1280–1440px laptops). `safe center` keeps the visual centering when cards
+   fit but falls back to flex-start when they overflow — so the leftmost
+   card stays reachable. */
+.cad-session-stats--center{flex:1 1 100%;justify-content:safe center}
+/* Compact stat cards at narrow CALL-view widths so 5–6 cards fit one row. */
+@media(min-width:960px) and (max-width:1440px){
+  .cad-call-main{padding:18px 18px}
+  .cad-call-main .cad-session-strip{gap:12px}
+  .cad-call-main .cad-session-stat--card{min-width:64px;padding:8px 10px;gap:2px}
+  .cad-call-main .cad-session-stat--card b{font-size:18px}
+  .cad-call-main .cad-session-stat--card .cad-session-stat__glyph{font-size:10.5px;gap:4px;letter-spacing:.02em}
+  .cad-call-main .cad-session-stat--card .cad-session-stat__dot{width:5px;height:5px}
+  .cad-call-main .cad-session-stat--card small{font-size:9px}
+  .cad-call-main .cad-session-info{min-width:0}
+  .cad-call-main .cad-session-info .cad-label{font-size:10px}
+  .cad-call-main .cad-session-cta{min-height:46px;padding:0 16px;font-size:13px}
+}
 /* Stop button: vivid red CTA so it reads as "session control" instead of
    the legacy ghost-in-the-corner. Same prominence as Start session. */
 .cad-session-stop{background:linear-gradient(180deg,oklch(0.68 0.18 25),oklch(0.58 0.20 25));border-color:oklch(0.58 0.20 25);color:#fff;font-weight:700;box-shadow:0 8px 22px -10px oklch(0.68 0.18 25 / .6)}
