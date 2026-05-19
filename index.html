@@ -541,14 +541,36 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 .cad-session-stats::-webkit-scrollbar{height:4px}
 .cad-session-stats::-webkit-scrollbar-thumb{background:var(--ad-line-2);border-radius:4px}
 .cad-session-stats > *{flex-shrink:0}
-/* 0126: laptop scaling fix. `justify-content:center` was pushing the leftmost
-   DIALED/NP cards off-screen on narrow CALL-view widths (the desktop grid
-   reserves 320–420px for the script panel, leaving the main pane cramped on
-   1280–1440px laptops). `safe center` keeps the visual centering when cards
-   fit but falls back to flex-start when they overflow — so the leftmost
-   card stays reachable. */
-.cad-session-stats--center{flex:1 1 100%;justify-content:safe center}
-/* Compact stat cards at narrow CALL-view widths so 5–6 cards fit one row. */
+/* 0126/0127: laptop scaling deep-fix.
+
+   PROBLEM: On 1280–1440px laptops, the desktop grid reserves 320–420px for
+   the script panel + a second column for objection reference notes. The
+   left main pane is left with ~800–940px to fit:
+     [session-info] [5–6 stat cards] [Stop session]
+   which was clipping DIALED off-screen on the LEFT (with `safe center`,
+   browsers still center the overflow under some conditions).
+
+   FIX has 3 layers:
+
+   (a) Use `flex-start` instead of `safe center` — guarantees the first
+       card (DIALED) is always at scroll position 0, fully visible.
+
+   (b) Hide the secondary script-panel column (`.sp-ref-col` — the
+       objection reference notes panel) at laptop widths up to 1500px.
+       This makes the script body readable in single-column mode AND
+       lets the script-panel grid track stay narrow (320–360px instead
+       of 420px) — giving the main pane another ~60–100px to breathe.
+
+   (c) Tighten stat cards, session-info, and the Stop session CTA at
+       <1440px so 5–6 cards + session-info + Stop fit one row inside
+       the ~900px main pane comfortably. */
+.cad-session-stats--center{flex:1;justify-content:flex-start}
+.cad-session-stats--center.cad-session-stats--fits{justify-content:center}
+@media(min-width:960px) and (max-width:1500px){
+  .script-panel .sp-ref-col{display:none}
+  .script-panel .sp-col{width:100%;max-width:760px;margin:0 auto}
+  .desktop-wrap .app-shell.is-call-mode{grid-template-columns:minmax(420px,1fr) minmax(300px,360px)!important}
+}
 @media(min-width:960px) and (max-width:1440px){
   .cad-call-main{padding:18px 18px}
   .cad-call-main .cad-session-strip{gap:12px}
@@ -560,6 +582,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
   .cad-call-main .cad-session-info{min-width:0}
   .cad-call-main .cad-session-info .cad-label{font-size:10px}
   .cad-call-main .cad-session-cta{min-height:46px;padding:0 16px;font-size:13px}
+  /* Lead card heading row: shrink the lead name a touch so the phone+dial
+     button doesn't push the name into wrapping at narrow widths. */
+  .cad-call-main .cad-lead-name{font-size:32px}
 }
 /* Stop button: vivid red CTA so it reads as "session control" instead of
    the legacy ghost-in-the-corner. Same prominence as Start session. */
