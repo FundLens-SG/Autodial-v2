@@ -910,6 +910,17 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-appt-bulk-bar .cad-btn.danger{background:linear-gradient(135deg,#ef4444 0%,#dc2626 50%,#b91c1c 100%);color:#fff;border-color:transparent}
 .cad-appt-bulk-bar .cad-btn.danger:hover{filter:brightness(1.08)}
 .cad-appt-bulk-bar .cad-btn.danger:disabled{opacity:.55;cursor:not-allowed}
+/* 0133: filter chips for the Appts tab. Sits between the header and the
+   bulk-action-bar. Active chip uses brass + bold; inactive chips are
+   muted. Counts render as a small mono pill on the right of each chip
+   label. */
+.cad-appt-filter-chips{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding-bottom:2px}
+.cad-appt-filter-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;min-height:30px;border-radius:999px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);color:var(--ad-t-2);font-size:12px;font-weight:600;cursor:pointer;transition:background-color .12s,border-color .12s,color .12s,filter .12s;white-space:nowrap}
+.cad-appt-filter-chip:hover{background:var(--ad-bg-3);border-color:var(--ad-line-2);color:var(--ad-t-1)}
+.cad-appt-filter-chip.is-active{background:var(--ad-brass-dim);border-color:var(--ad-brass-line);color:var(--ad-brass-2);font-weight:800;box-shadow:var(--ad-shadow-1)}
+.cad-appt-filter-chip__count{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:10.5px;padding:1px 6px;border-radius:8px;background:rgba(0,0,0,.22);color:currentColor;font-weight:700;min-width:18px;text-align:center}
+.cad-appt-filter-chip.is-active .cad-appt-filter-chip__count{background:rgba(214,168,122,.18)}
+.cad-appt-filter-chip:disabled,.cad-appt-filter-chip[aria-disabled="true"]{opacity:.45;cursor:not-allowed}
 .cad-settings{display:flex;flex:1;min-height:0}.cad-rail{width:240px;border-right:1px solid var(--ad-line-1);padding:22px 16px;display:flex;flex-direction:column;gap:4px}.cad-settings-main{flex:1;padding:26px 32px;display:flex;flex-direction:column;gap:22px;overflow:auto}
 .cad-settings-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}.cad-settings-card{padding:18px;display:flex;align-items:center;justify-content:space-between;color:var(--ad-t-0)}.cad-settings-card b{color:var(--ad-t-0)}.cad-settings-card .cad-subtle{color:var(--ad-t-2)}.cad-input-like{min-height:42px;padding:0 12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-1);color:var(--ad-t-3);display:flex;align-items:center;gap:10px}
 .cad-editor-card{padding:18px;display:flex;flex-direction:column;gap:12px}.cad-editor-card textarea{width:100%;min-height:150px;resize:vertical;padding:12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font:13px/1.55 'Inter',system-ui,sans-serif}.cad-editor-card textarea.small{min-height:92px}.cad-settings-grid{display:grid;grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:14px}.cad-kv-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0;border-top:1px solid var(--ad-line-1);font-size:13px}.cad-kv-row:first-of-type{border-top:0}.cad-appt-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
@@ -11028,6 +11039,13 @@ function App() {
   // to the source Google Sheet so the audit trail survives.
   var [selectedApptIds, setSelectedApptIds] = useState(() => new Set());
   var [bulkDeletingAppts, setBulkDeletingAppts] = useState(false);
+  // 0133: filter chip state. Default 'all' shows everything. Changing the
+  // filter ALSO clears bulk-selection — keeping selections visible across
+  // filter switches led to "ghost selection" confusion (the bulk bar said
+  // "5 selected" but the user saw 0 rows). Chips compute their counts off
+  // the full appointments list (not the filtered subset) so the counts
+  // stay accurate as you switch chips.
+  var [apptFilter, setApptFilter] = useState('all');
   var [incentives, setIncentives] = useState(load('incv') || []);
   var [apptSearch, setApptSearch] = useState('');
   var [tipModal, setTipModal] = useState(null);
@@ -22569,7 +22587,61 @@ function App() {
     // appointment rows when the user had many SETs (e.g. 30+). Multi-select
     // delete (below) makes high counts realistic to manage in a single
     // session. >200 still gets virtualised by browser scroll.
-    var apptRows = (appointments || []).filter(a => !a._deleted).slice(0, 200);
+    // 0133: filter chip predicates. Each chip slices the visible list by
+    // a single distinct criteria. Counts (apptFilterCounts below) are
+    // computed off the unfiltered list so the chips stay accurate.
+    var _allLiveAppts = (appointments || []).filter(a => !a._deleted);
+    var _nowMs = Date.now();
+    var _apptDateMs = a => {
+      // Resolve a comparable millisecond timestamp for an appointment.
+      // Priority: explicit apptDate+apptTime → dateTime → date → null.
+      // Returns null for placeholders (no date at all).
+      if (a.apptDate) {
+        return new Date(a.apptDate + 'T' + (a.apptTime || '00:00')).getTime();
+      }
+      if (a.dateTime) {
+        var t = new Date(a.dateTime).getTime();
+        return isFinite(t) ? t : null;
+      }
+      return null;
+    };
+    var _apptFilterPredicates = {
+      all: () => true,
+      needs_details: a => !a.apptDate && !a.apptTime,
+      past_due: a => {
+        var fu = _normApptFollowUp(a.followUp);
+        if (fu !== 'pending' && fu !== 'postponed') return false;
+        var ms = _apptDateMs(a);
+        return ms != null && ms < _nowMs;
+      },
+      upcoming: a => {
+        var fu = _normApptFollowUp(a.followUp);
+        if (fu !== 'pending' && fu !== 'postponed') return false;
+        var ms = _apptDateMs(a);
+        return ms != null && ms >= _nowMs;
+      },
+      met: a => _normApptFollowUp(a.followUp) === 'met',
+      closed: a => _normApptFollowUp(a.followUp) === 'closed',
+      fly_kite: a => _normApptFollowUp(a.followUp) === 'fly_kite'
+    };
+    var apptFilterCounts = {
+      all: _allLiveAppts.length,
+      needs_details: _allLiveAppts.filter(_apptFilterPredicates.needs_details).length,
+      past_due: _allLiveAppts.filter(_apptFilterPredicates.past_due).length,
+      upcoming: _allLiveAppts.filter(_apptFilterPredicates.upcoming).length,
+      met: _allLiveAppts.filter(_apptFilterPredicates.met).length,
+      closed: _allLiveAppts.filter(_apptFilterPredicates.closed).length,
+      fly_kite: _allLiveAppts.filter(_apptFilterPredicates.fly_kite).length
+    };
+    var _activeApptPredicate = _apptFilterPredicates[apptFilter] || _apptFilterPredicates.all;
+    var apptRows = _allLiveAppts.filter(_activeApptPredicate).slice(0, 200);
+    var _setApptFilter = next => {
+      if (next === apptFilter) return;
+      setApptFilter(next);
+      // Clear bulk selection on filter change to avoid invisible-selection
+      // confusion (user sees "5 selected" but 0 visible rows match).
+      if (selectedApptIds.size > 0) setSelectedApptIds(new Set());
+    };
     if (demo && !apptRows.length) apptRows = [
       { date: 'May 5 · 10:30', name: 'Marcus Holloway', caller: 'Jordan M.', location: '1402 Wilshire', followUp: 'Tomorrow' },
       { date: 'May 4 · 16:00', name: 'Linda Tao', caller: 'Priya S.', location: 'Coffee · Buena Vista', followUp: 'Today · soon' },
@@ -22739,17 +22811,70 @@ function App() {
         h('div', null, h('h2', { style: { fontSize: 24 } }, 'Appointments'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, apptRows.length, ' in view - ', apptsToday, " today's set - ", closedToday, ' closed')),
         h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => setTab('cal') }, icon('Calendar', 13), 'Week'), h('button', { className: 'cad-btn', onClick: () => setTab('leads') }, icon('Sheet', 13), 'Open in Sheets'))
       ),
+      // 0133: filter chips. Always shown when there are ANY appointments
+      // (even if the current filter has zero matches — user might want to
+      // switch back). Each chip's count comes from apptFilterCounts which
+      // looks at the full unfiltered list. Disabled chips (count===0)
+      // still render but are unclickable, so the layout doesn't reflow
+      // as outcomes change.
+      _allLiveAppts.length > 0 && h('div', { className: 'cad-appt-filter-chips', role: 'tablist', 'aria-label': 'Filter appointments by status' },
+        [
+          ['all', 'All', '📋'],
+          ['needs_details', 'Needs details', '⚠️'],
+          ['past_due', 'Past due', '⏰'],
+          ['upcoming', 'Upcoming', '📅'],
+          ['met', 'Met', '✓'],
+          ['closed', 'Closed', '🏁'],
+          ['fly_kite', 'Fly Kite', '🪁']
+        ].map(([key, label, glyph]) => {
+          var count = apptFilterCounts[key] || 0;
+          var isActive = apptFilter === key;
+          var isDisabled = !isActive && count === 0;
+          return h('button', {
+            key,
+            type: 'button',
+            role: 'tab',
+            'aria-selected': isActive,
+            'aria-disabled': isDisabled,
+            disabled: isDisabled,
+            className: 'cad-appt-filter-chip' + (isActive ? ' is-active' : ''),
+            onClick: () => _setApptFilter(key),
+            title: isDisabled ? 'No appointments match "' + label + '" right now' : 'Show ' + label + ' (' + count + ')'
+          },
+            h('span', { 'aria-hidden': 'true' }, glyph),
+            h('span', null, label),
+            h('span', { className: 'cad-appt-filter-chip__count' }, count)
+          );
+        })
+      ),
       // 0130: empty-state UI for when no appointments exist. Pre-fix the
       // Appts tab rendered a blank table with just headers — looked broken
       // when 0 rows. Now shows a friendly empty card with guidance.
-      apptRows.length === 0 ? h('div', { className: 'cad-empty', style: { padding: '60px 20px', textAlign: 'center', borderRadius: 18, background: 'var(--ad-bg-1)', border: '1px dashed var(--ad-line-2)' } },
-        h('div', { style: { fontSize: 48, marginBottom: 12 } }, '📅'),
-        h('h3', { style: { fontSize: 20, fontWeight: 700, marginBottom: 8 } }, 'No appointments yet'),
-        h('p', { className: 'cad-muted', style: { fontSize: 14, marginBottom: 16, maxWidth: 480, margin: '0 auto 16px' } }, 'Appointments appear here when you mark a call outcome as Set. Open a calling session and tap Set after booking with a lead.'),
-        h('div', { className: 'cad-inline', style: { justifyContent: 'center', gap: 10 } },
-          h('button', { className: 'cad-btn primary', onClick: () => { setMainMode('call'); setTab('home'); }, type: 'button' }, icon('PhoneOutgoing', 14), 'Open call view'),
-          h('button', { className: 'cad-btn', onClick: () => setTab('cal'), type: 'button' }, icon('Calendar', 13), 'Open calendar')
-        )
+      // 0133: empty state ALSO fires when the active filter has 0 matches.
+      // Copy adapts to mention the filter so the user knows it's filtered,
+      // not "no appointments at all". When _allLiveAppts is non-empty but
+      // the filter excludes all of them, we offer a "Show all" button to
+      // reset the filter quickly.
+      apptRows.length === 0 ? (
+        _allLiveAppts.length === 0
+          ? h('div', { className: 'cad-empty', style: { padding: '60px 20px', textAlign: 'center', borderRadius: 18, background: 'var(--ad-bg-1)', border: '1px dashed var(--ad-line-2)' } },
+              h('div', { style: { fontSize: 48, marginBottom: 12 } }, '📅'),
+              h('h3', { style: { fontSize: 20, fontWeight: 700, marginBottom: 8 } }, 'No appointments yet'),
+              h('p', { className: 'cad-muted', style: { fontSize: 14, marginBottom: 16, maxWidth: 480, margin: '0 auto 16px' } }, 'Appointments appear here when you mark a call outcome as Set. Open a calling session and tap Set after booking with a lead.'),
+              h('div', { className: 'cad-inline', style: { justifyContent: 'center', gap: 10 } },
+                h('button', { className: 'cad-btn primary', onClick: () => { setMainMode('call'); setTab('home'); }, type: 'button' }, icon('PhoneOutgoing', 14), 'Open call view'),
+                h('button', { className: 'cad-btn', onClick: () => setTab('cal'), type: 'button' }, icon('Calendar', 13), 'Open calendar')
+              )
+            )
+          : (() => {
+              var filterLabel = ({ needs_details: 'Needs details', past_due: 'Past due', upcoming: 'Upcoming', met: 'Met', closed: 'Closed', fly_kite: 'Fly Kite' })[apptFilter] || apptFilter;
+              return h('div', { className: 'cad-empty', style: { padding: '48px 20px', textAlign: 'center', borderRadius: 18, background: 'var(--ad-bg-1)', border: '1px dashed var(--ad-line-2)' } },
+                h('div', { style: { fontSize: 40, marginBottom: 10 } }, '🔍'),
+                h('h3', { style: { fontSize: 18, fontWeight: 700, marginBottom: 6 } }, 'No appointments match "' + filterLabel + '"'),
+                h('p', { className: 'cad-muted', style: { fontSize: 13, marginBottom: 14 } }, _allLiveAppts.length, ' total appointment' + (_allLiveAppts.length === 1 ? '' : 's') + ' in view — try a different filter.'),
+                h('button', { className: 'cad-btn primary', onClick: () => _setApptFilter('all'), type: 'button' }, 'Show all (', _allLiveAppts.length, ')')
+              );
+            })()
       ) :
       h(React.Fragment, null,
       // 0131: bulk-action bar — appears when 1+ appointments are selected.
