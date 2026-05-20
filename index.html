@@ -22658,6 +22658,82 @@ function App() {
     };
     var _allApptsSelected = apptRows.length > 0 && selectedApptIds.size === apptRows.length;
     var _someApptsSelected = selectedApptIds.size > 0 && selectedApptIds.size < apptRows.length;
+
+    // 0132: bulk outcome dispositions (Met / Fly Kite / Postpone). Mirrors
+    // the per-row resolvePastApptStatus path but applies to all selected
+    // appointments in a single confirm + single summary toast (vs N noisy
+    // per-row toasts if we just called the helper N times).
+    //
+    // 'closed' is intentionally NOT in this set — it requires per-row
+    // EFYC + tip entry via tipModal, which doesn't bulk cleanly. User
+    // should use the per-row Closed button for that.
+    //
+    // 'met' fires the metIncentive for each row; 'fly_kite' and
+    // 'postponed' clear payout incentives. All three sync to the source
+    // Google Sheet via syncApptSheet (sets the followUp column).
+    var _bulkApplyOutcome = async (key) => {
+      if (bulkDeletingAppts || !selectedApptIds.size) return;
+      var picked = apptRows.filter(a => selectedApptIds.has(a.id) && _canEditAppt(a));
+      if (!picked.length) { toast('No editable appointments in selection', 'warn'); return; }
+      var labelMap = { met: 'Met', fly_kite: 'Fly Kite', postponed: 'Postponed' };
+      var sheetStatusMap = { met: 'Met', fly_kite: 'Fly Kite', postponed: 'Postponed' };
+      var label = labelMap[key] || key;
+      var sheetStatus = sheetStatusMap[key] || 'Pending';
+      var confirmCopy = 'Mark ' + picked.length + ' appointment' + (picked.length === 1 ? '' : 's') + ' as "' + label + '"?\n\n' +
+        (key === 'met' ? '• Records the met incentive for each (per your Pay config)\n• Pushes "Met" to the source Google Sheet\n' :
+         key === 'fly_kite' ? '• Keeps the SET count, no incentive payout\n• Pushes "Fly Kite" to the source Google Sheet\n' :
+         '• Marks as postponed (no incentive), no date pick required now\n• Pushes "Postponed" to the source Google Sheet\n') +
+        '\nYou can re-disposition individual rows later if needed.';
+      if (!(await confirmAsync(confirmCopy, { title: 'Bulk ' + label, confirmLabel: label + ' ' + picked.length, danger: false }))) return;
+      setBulkDeletingAppts(true);
+      try {
+        var ts = new Date().toISOString();
+        var updates = picked.map(a => ({ orig: a, stamped: _stampApptStatus(a, key, { followUpDate: ts, tip: 0, efyc: 0 }) }));
+        // Batch local-state update (one setAppointments call vs N).
+        setAppointments(prev => (prev || []).map(x => {
+          var hit = updates.find(u => _matchAppt(x, u.orig));
+          return hit ? { ...x, ...hit.stamped } : x;
+        }));
+        try { _liveSyncRef.current.localApptsGuardUntil = Date.now() + 8000; } catch (_e) {}
+        // Apply payout side-effects per row (incentives + dedup).
+        var metPaidCount = 0;
+        updates.forEach(({ stamped }) => {
+          if (key === 'met') {
+            var metAmt = _ensureMetIncentive(stamped, ts);
+            if (metAmt > 0) metPaidCount++;
+            _removeApptPayoutIncentives(stamped, ['tip', 'efyc']);
+          } else {
+            _removeApptPayoutIncentives(stamped, ['met', 'tip', 'efyc']);
+          }
+        });
+        // Sync each to Google Sheets in parallel + collect failures.
+        var syncResults = await Promise.allSettled(updates.map(({ stamped }) =>
+          syncApptSheet(stamped, { status: 'Set', followUp: sheetStatus, tip: 0 })
+            .catch(e => { console.warn('[bulk-outcome syncSheet]', e?.message || e); throw e; })
+        ));
+        var failed = syncResults.filter(r => r.status === 'rejected').length;
+        // Persist follow-up to DB (autodial.appointments.follow_up).
+        updates.forEach(({ stamped }) => {
+          try { _persistApptFollowUp(stamped, key, 0); } catch (_pe) { console.warn('[bulk-outcome persist]', _pe?.message); }
+        });
+        // For Mains editing admin-owned appts, write back through the
+        // shared snapshot so the admin sees the disposition.
+        updates.forEach(({ stamped }) => {
+          if (stamped.admin && (stamped.admin || '').toLowerCase() !== (myEmail || '').toLowerCase()) {
+            try { _mainWritebackAdminAppt(stamped); } catch (_we) { console.warn('[bulk-outcome writeback]', _we?.message); }
+          }
+        });
+        setSelectedApptIds(new Set());
+        var bonusBit = (key === 'met' && metPaidCount > 0) ? ' · +$ incentive on ' + metPaidCount : '';
+        if (failed > 0) {
+          toast('✓ ' + label + ' applied locally to ' + picked.length + ' · sheet sync failed on ' + failed + bonusBit, failed === picked.length ? 'err' : 'warn');
+        } else {
+          toast('✓ ' + label + ': ' + picked.length + ' appointment' + (picked.length === 1 ? '' : 's') + bonusBit, 'info');
+        }
+      } finally {
+        setBulkDeletingAppts(false);
+      }
+    };
     var apptsView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
       h('div', { className: 'cad-dashboard-head' },
         h('div', null, h('h2', { style: { fontSize: 24 } }, 'Appointments'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, apptRows.length, ' in view - ', apptsToday, " today's set - ", closedToday, ' closed')),
@@ -22684,10 +22760,17 @@ function App() {
           h('span', { className: 'cad-appt-bulk-count' }, selectedApptIds.size),
           ' of ', apptRows.length, ' selected'
         ),
-        h('div', { className: 'cad-inline', style: { gap: 8 } },
+        // 0132: full disposition menu — Met, Fly Kite, Postpone, Delete.
+        // Closed is per-row only (needs tip modal). Clear and Delete sit at
+        // the ends for emphasis; Met/Fly/Postpone in the middle as the
+        // common bulk dispositions.
+        h('div', { className: 'cad-inline cad-appt-bulk-actions', style: { gap: 6, flexWrap: 'wrap' } },
           h('button', { className: 'cad-btn', type: 'button', onClick: () => setSelectedApptIds(new Set()) }, 'Clear'),
-          h('button', { className: 'cad-btn danger', type: 'button', disabled: bulkDeletingAppts, onClick: _bulkDeleteApptsWithMarker },
-            bulkDeletingAppts ? 'Deleting…' : ('🗑 Delete ' + selectedApptIds.size + ' & mark "Set (deleted)"')
+          h('button', { className: 'cad-btn', type: 'button', disabled: bulkDeletingAppts, onClick: () => _bulkApplyOutcome('met'), title: 'Mark all selected as Met — records met incentive' }, '✓ Met'),
+          h('button', { className: 'cad-btn', type: 'button', disabled: bulkDeletingAppts, onClick: () => _bulkApplyOutcome('fly_kite'), title: 'Mark all selected as Fly Kite — no incentive' }, '🪁 Fly Kite'),
+          h('button', { className: 'cad-btn', type: 'button', disabled: bulkDeletingAppts, onClick: () => _bulkApplyOutcome('postponed'), title: 'Mark all selected as Postponed — no date pick' }, '⏰ Postpone'),
+          h('button', { className: 'cad-btn danger', type: 'button', disabled: bulkDeletingAppts, onClick: _bulkDeleteApptsWithMarker, title: 'Remove appointment row + flip lead to "Set (deleted)" on the source sheet' },
+            bulkDeletingAppts ? 'Working…' : ('🗑 Delete & mark "Set (deleted)"')
           )
         )
       ),
