@@ -897,6 +897,19 @@ body.cad-script-resizing,body.cad-script-resizing *{cursor:col-resize !important
 .cad-objcat-body{display:flex;flex-direction:column;gap:5px;margin:2px 0 6px 10px;padding-left:10px;border-left:2px solid var(--ad-line-1)}
 .cad-objcat.open .cad-objcat-body{border-left-color:var(--ad-brass-line)}
 .cad-table{border:1px solid var(--ad-line-1);border-radius:12px;overflow:hidden}.cad-tr{display:grid;grid-template-columns:135px minmax(150px,1.05fr) minmax(150px,.9fr) minmax(160px,1fr) minmax(220px,1.35fr) 115px minmax(300px,1.2fr);gap:16px;align-items:center;padding:14px 18px;border-bottom:1px solid var(--ad-line-1);font-size:12px}.cad-tr.head{background:var(--ad-bg-2);color:var(--ad-t-3);text-transform:uppercase;letter-spacing:.08em;font-size:10px;font-weight:800}.cad-appt-detail{display:block;max-width:420px;color:var(--ad-t-2);line-height:1.45}.cad-appt-detail b{color:var(--ad-t-0)}
+/* 0131: Appts multi-select. A wider table variant with a leading 36px
+   checkbox column. The .cad-tr--selectable modifier adds the column at
+   index 1 (pushing the existing 7 columns to indices 2-8). Selected rows
+   highlight with a brass-tinted background so the bulk action stays
+   discoverable. */
+.cad-table--appts .cad-tr{grid-template-columns:36px 135px minmax(150px,1.05fr) minmax(150px,.9fr) minmax(160px,1fr) minmax(220px,1.35fr) 115px minmax(280px,1.2fr)}
+.cad-tr--selected{background:rgba(214,168,122,.10) !important;box-shadow:inset 3px 0 0 var(--ad-brass-2)}
+.cad-appt-checkbox{width:18px;height:18px;cursor:pointer;accent-color:var(--ad-brass-2)}
+.cad-appt-bulk-bar{position:sticky;top:0;z-index:6;display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 14px;margin-bottom:10px;border-radius:12px;background:linear-gradient(180deg,var(--ad-brass-dim),var(--ad-bg-2));border:1px solid var(--ad-brass-line);box-shadow:var(--ad-shadow-1);font-size:13px;font-weight:700}
+.cad-appt-bulk-bar .cad-appt-bulk-count{color:var(--ad-brass-2)}
+.cad-appt-bulk-bar .cad-btn.danger{background:linear-gradient(135deg,#ef4444 0%,#dc2626 50%,#b91c1c 100%);color:#fff;border-color:transparent}
+.cad-appt-bulk-bar .cad-btn.danger:hover{filter:brightness(1.08)}
+.cad-appt-bulk-bar .cad-btn.danger:disabled{opacity:.55;cursor:not-allowed}
 .cad-settings{display:flex;flex:1;min-height:0}.cad-rail{width:240px;border-right:1px solid var(--ad-line-1);padding:22px 16px;display:flex;flex-direction:column;gap:4px}.cad-settings-main{flex:1;padding:26px 32px;display:flex;flex-direction:column;gap:22px;overflow:auto}
 .cad-settings-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px}.cad-settings-card{padding:18px;display:flex;align-items:center;justify-content:space-between;color:var(--ad-t-0)}.cad-settings-card b{color:var(--ad-t-0)}.cad-settings-card .cad-subtle{color:var(--ad-t-2)}.cad-input-like{min-height:42px;padding:0 12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-1);color:var(--ad-t-3);display:flex;align-items:center;gap:10px}
 .cad-editor-card{padding:18px;display:flex;flex-direction:column;gap:12px}.cad-editor-card textarea{width:100%;min-height:150px;resize:vertical;padding:12px;border-radius:11px;border:1px solid var(--ad-line-2);background:var(--ad-bg-2);color:var(--ad-t-0);font:13px/1.55 'Inter',system-ui,sans-serif}.cad-editor-card textarea.small{min-height:92px}.cad-settings-grid{display:grid;grid-template-columns:minmax(280px,1fr) minmax(280px,1fr);gap:14px}.cad-kv-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0;border-top:1px solid var(--ad-line-1);font-size:13px}.cad-kv-row:first-of-type{border-top:0}.cad-appt-actions{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap}
@@ -3942,7 +3955,9 @@ window.getNextDialable=function(leads,after,f){f=f||{};var now=new Date();var no
   var priority=f.queuePriority||['blank','cb_due','np_retry'];
   var cooldownMs=f.cooldownMs!=null?f.cooldownMs:3*86400000;
   function isEligible(l,applyCooldown){
-    if(l.status==='ni'||l.status==='set')return false;
+    // 0131: 'set_deleted' is a user-deleted appointment marker. The lead
+    // status is "still booked once + cancelled" — never re-dial.
+    if(l.status==='ni'||l.status==='set'||l.status==='set_deleted')return false;
     if(l.notes){var _rl=l.notes.toLowerCase().trim();if(/^ni$/i.test(l.notes.trim()))return false;if(/not interested/i.test(_rl))return false}
     if(l.status==='np'&&l.npCount>=(f.npMax||5))return false;
     if(f.skipAllNP&&l.status==='np')return false;
@@ -11006,6 +11021,13 @@ function App() {
     return Array.from(map.values());
   };
   var [appointments, setAppointments] = useState(_dedupAppts(load('appts') || []));
+  // 0131: multi-select state for the Appts tab. Holds ids of selected
+  // appointment rows. When the user picks multiple + clicks "Delete N",
+  // _bulkDeleteApptsWithMarker runs — it removes the appt row, flips the
+  // matching lead's status to 'set_deleted', and pushes "Set (deleted)"
+  // to the source Google Sheet so the audit trail survives.
+  var [selectedApptIds, setSelectedApptIds] = useState(() => new Set());
+  var [bulkDeletingAppts, setBulkDeletingAppts] = useState(false);
   var [incentives, setIncentives] = useState(load('incv') || []);
   var [apptSearch, setApptSearch] = useState('');
   var [tipModal, setTipModal] = useState(null);
@@ -17723,6 +17745,11 @@ function App() {
     if (st === 'set') v = 'appt set';
     if (st === 'ni') v = 'NI';
     if (st === 'pending') v = '';
+    // 0131: 'set_deleted' — user explicitly deleted the SET appointment
+    // (via bulk-delete on Appts tab). Mark in Sheet as "Set (deleted)" so
+    // there's an audit trail visible to anyone reading the sheet, and so
+    // the lead doesn't sneak back into the dialable queue.
+    if (st === 'set_deleted') v = 'Set (deleted)';
     return queueSheetValue(lead, v);
   }, [cfg.sheetId, queueSheetValue]);
   useEffect(() => {
@@ -22538,13 +22565,99 @@ function App() {
         )
       )
     ));
-    var apptRows = (appointments || []).filter(a => !a._deleted).slice(0, 8);
+    // 0131: bumped slice from 8 → 200. The old cap silently hid most
+    // appointment rows when the user had many SETs (e.g. 30+). Multi-select
+    // delete (below) makes high counts realistic to manage in a single
+    // session. >200 still gets virtualised by browser scroll.
+    var apptRows = (appointments || []).filter(a => !a._deleted).slice(0, 200);
     if (demo && !apptRows.length) apptRows = [
       { date: 'May 5 · 10:30', name: 'Marcus Holloway', caller: 'Jordan M.', location: '1402 Wilshire', followUp: 'Tomorrow' },
       { date: 'May 4 · 16:00', name: 'Linda Tao', caller: 'Priya S.', location: 'Coffee · Buena Vista', followUp: 'Today · soon' },
       { date: 'May 3 · 11:15', name: 'Earl Briggs', caller: 'Carlos R.', location: 'Phone follow-up', followUp: 'Met · paid' },
       { date: 'May 2 · 14:30', name: 'Sarah Lin', caller: 'Jordan M.', location: 'Office', followUp: 'Fly kite' }
     ];
+    // 0131: bulk-delete handler with "set (deleted)" marker.
+    //   1. Resolve appointments to delete (those whose id is in selectedApptIds).
+    //   2. For each: delete from autodial.appointments via DB.deleteApptUndo.
+    //   3. Find the matching lead by phone (or leadId) and flip its status
+    //      to 'set_deleted'. The picker (getNextDialable) already excludes
+    //      this status, and leadImportStats.callable too.
+    //   4. Push "Set (deleted)" to the Google Sheet via syncSheet (which
+    //      now handles the 'set_deleted' case at line ~17732).
+    //   5. Decrement session.sets counter so daily stats don't double-count.
+    //   6. Clear from local appointments state + clear selection.
+    var _bulkDeleteApptsWithMarker = async () => {
+      if (bulkDeletingAppts || !selectedApptIds.size) return;
+      var picked = apptRows.filter(a => selectedApptIds.has(a.id));
+      if (!picked.length) return;
+      var confirmMsg = 'Delete ' + picked.length + ' appointment' + (picked.length === 1 ? '' : 's') + '?\n\n' +
+        'This will:\n' +
+        '• Remove the appointment row\n' +
+        '• Mark the lead status as "Set (deleted)" on the source Google Sheet\n' +
+        '• Stop the lead from being re-dialed\n\n' +
+        'The lead remains in your queue with the audit marker — you can re-mark it later if needed.';
+      if (!(await confirmAsync(confirmMsg, { title: 'Delete ' + picked.length + ' appointment' + (picked.length === 1 ? '' : 's') + '?', confirmLabel: 'Delete ' + picked.length, cancelLabel: 'Keep', danger: true }))) return;
+      setBulkDeletingAppts(true);
+      try {
+        // Build phone → lead-index map ONCE for O(1) lookup.
+        var _phoneToIdx = new Map();
+        (leads || []).forEach((l, i) => { if (l && l.phone) _phoneToIdx.set(String(l.phone), i); });
+        var _markedPhones = [];
+        var _failed = 0;
+        for (var i = 0; i < picked.length; i++) {
+          var a = picked[i];
+          try {
+            await DB.deleteApptUndo({ rowId: a.dbApptId || a.id, calEventId: a.calEventId || '', phone: a.phone, apptDate: a.apptDate || '' });
+          } catch (_e) { _failed++; console.warn('[bulk-delete-appt]', _e?.message || _e); }
+          if (a.phone) _markedPhones.push(String(a.phone));
+        }
+        // Flip lead statuses to 'set_deleted' + push to sheet.
+        setLeads(prev => {
+          var next = prev.slice();
+          _markedPhones.forEach(ph => {
+            var idx = _phoneToIdx.get(ph);
+            if (idx == null) return;
+            var l = next[idx];
+            if (!l) return;
+            var newL = { ...l, status: 'set_deleted', updatedAt: Date.now() };
+            next[idx] = newL;
+            try { syncSheet(newL, 'set_deleted'); } catch (_se) { console.warn('[bulk-delete-appt syncSheet]', _se?.message || _se); }
+          });
+          return next;
+        });
+        // Decrement session counter for deletes from today's session.
+        var _todayStart = new Date(); _todayStart.setHours(0,0,0,0);
+        var _deletedToday = picked.filter(a => a.createdAt && new Date(a.createdAt) >= _todayStart).length;
+        if (_deletedToday > 0 && session && !session.ended) {
+          setSession(p => ({ ...p, sets: Math.max(0, (p.sets || 0) - _deletedToday) }));
+        }
+        // Remove from local appointments.
+        setAppointments(prev => prev.filter(a => !selectedApptIds.has(a.id)));
+        setSelectedApptIds(new Set());
+        if (_failed > 0) {
+          toast('Deleted ' + (picked.length - _failed) + ' · ' + _failed + ' failed (see console)', _failed === picked.length ? 'err' : 'warn');
+        } else {
+          toast('🗑 Deleted ' + picked.length + ' appointment' + (picked.length === 1 ? '' : 's') + ' · marked "Set (deleted)" on sheet');
+        }
+      } finally {
+        setBulkDeletingAppts(false);
+      }
+    };
+    var _toggleApptSelected = id => {
+      setSelectedApptIds(prev => {
+        var next = new Set(prev);
+        if (next.has(id)) next.delete(id); else next.add(id);
+        return next;
+      });
+    };
+    var _toggleAllAppts = () => {
+      setSelectedApptIds(prev => {
+        if (prev.size === apptRows.length) return new Set();
+        return new Set(apptRows.map(a => a.id).filter(Boolean));
+      });
+    };
+    var _allApptsSelected = apptRows.length > 0 && selectedApptIds.size === apptRows.length;
+    var _someApptsSelected = selectedApptIds.size > 0 && selectedApptIds.size < apptRows.length;
     var apptsView = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
       h('div', { className: 'cad-dashboard-head' },
         h('div', null, h('h2', { style: { fontSize: 24 } }, 'Appointments'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, apptRows.length, ' in view - ', apptsToday, " today's set - ", closedToday, ' closed')),
@@ -22562,8 +22675,36 @@ function App() {
           h('button', { className: 'cad-btn', onClick: () => setTab('cal'), type: 'button' }, icon('Calendar', 13), 'Open calendar')
         )
       ) :
-      h('div', { className: 'cad-table' },
-        h('div', { className: 'cad-tr head' }, ['Date', 'Lead', 'Caller', 'Location', 'Details / Notes', 'Status', ''].map(x => h('span', { key: x }, x))),
+      h(React.Fragment, null,
+      // 0131: bulk-action bar — appears when 1+ appointments are selected.
+      // Sticky at top of scrolling main area so it stays in reach while the
+      // user picks rows. Brass-tinted to read as "action mode active".
+      selectedApptIds.size > 0 && h('div', { className: 'cad-appt-bulk-bar' },
+        h('span', null,
+          h('span', { className: 'cad-appt-bulk-count' }, selectedApptIds.size),
+          ' of ', apptRows.length, ' selected'
+        ),
+        h('div', { className: 'cad-inline', style: { gap: 8 } },
+          h('button', { className: 'cad-btn', type: 'button', onClick: () => setSelectedApptIds(new Set()) }, 'Clear'),
+          h('button', { className: 'cad-btn danger', type: 'button', disabled: bulkDeletingAppts, onClick: _bulkDeleteApptsWithMarker },
+            bulkDeletingAppts ? 'Deleting…' : ('🗑 Delete ' + selectedApptIds.size + ' & mark "Set (deleted)"')
+          )
+        )
+      ),
+      h('div', { className: 'cad-table cad-table--appts' },
+        h('div', { className: 'cad-tr head' },
+          h('span', null,
+            h('input', {
+              type: 'checkbox', className: 'cad-appt-checkbox',
+              checked: _allApptsSelected,
+              ref: el => { if (el) el.indeterminate = _someApptsSelected; },
+              onChange: _toggleAllAppts,
+              title: _allApptsSelected ? 'Clear selection' : 'Select all appointments in view',
+              'aria-label': 'Select all appointments'
+            })
+          ),
+          ...['Date', 'Lead', 'Caller', 'Location', 'Details / Notes', 'Status', ''].map(x => h('span', { key: x }, x))
+        ),
         apptRows.map((a, i) => {
           var status = a.followUp || a.status || 'pending';
           var tone = /fly|cancel|no/i.test(status) ? 'red' : /today|soon/i.test(status) ? 'blue' : /tomorrow|pending/i.test(status) ? 'amber' : 'green';
@@ -22575,7 +22716,19 @@ function App() {
           if (role === 'main' && Number(a.efyc || 0) > 0) apptDetailBits.push('EFYC: $' + Number(a.efyc || 0).toFixed(0));
           if (Number(a.tip || 0) > 0) apptDetailBits.push('Tip: $' + Number(a.tip || 0).toFixed(0));
           var apptDetails = apptDetailBits.filter(Boolean).join(' | ');
-          return h('div', { className: 'cad-tr', key: a.id || a.calEventId || i },
+          // 0131: row checkbox for multi-select. Disabled when bulk-delete
+          // is in flight so the user can't change selection mid-network.
+          var _isSelected = a.id && selectedApptIds.has(a.id);
+          return h('div', { className: 'cad-tr' + (_isSelected ? ' cad-tr--selected' : ''), key: a.id || a.calEventId || i },
+            h('span', null,
+              a.id ? h('input', {
+                type: 'checkbox', className: 'cad-appt-checkbox',
+                checked: !!_isSelected,
+                disabled: bulkDeletingAppts,
+                onChange: () => _toggleApptSelected(a.id),
+                'aria-label': 'Select appointment for ' + (a.name || 'lead')
+              }) : null
+            ),
             h('span', { className: 'cad-mono cad-muted' }, apptDateText),
             h('b', null, a.name || a.leadName || a.lead_name || 'Lead'),
             h('span', null, a.caller || a.adminName || a.admin || 'AutoDial'),
@@ -22615,6 +22768,7 @@ function App() {
           );
         })
       )
+      ) // close React.Fragment opened for the bulk-action-bar + table wrapper (0131)
     ));
     var keyRows = [
       ['Anthropic Claude', localClaudeKey ? maskKey(localClaudeKey) : (claudeConnected ? 'proxy' : '-'), claudeConnected || !!localClaudeKey],
@@ -22956,7 +23110,9 @@ function App() {
       if (k) leadPhoneCounts[k] = (leadPhoneCounts[k] || 0) + 1;
     });
     var leadImportStats = {
-      callable: (leads || []).filter(l => hasCallablePhone(l.phone) && !['ni', 'set'].includes(l.status || 'pending')).length,
+      // 0131: 'set_deleted' joins the exclusion list (user explicitly
+      // marked the SET as cancelled — should not be counted as reachable).
+      callable: (leads || []).filter(l => hasCallablePhone(l.phone) && !['ni', 'set', 'set_deleted'].includes(l.status || 'pending')).length,
       missingPhone: (leads || []).filter(l => !hasCallablePhone(l.phone)).length,
       duplicatePhones: Object.values(leadPhoneCounts).filter(c => c > 1).reduce((a, c) => a + c, 0),
       review: (leads || []).filter(l => l.needsReview || l._fuzzyMatched || !l.name).length
