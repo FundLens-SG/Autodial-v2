@@ -1536,15 +1536,61 @@ body[data-tier="mythic"]::before{background:radial-gradient(ellipse at 18% 10%,r
   .cad-hero-quickref__card .cad-pill{width:38px!important;height:38px!important;font-size:17px!important}
   .cad-hero-quickref__card b{font-size:15px!important}
   .cad-hero-quickref__card .cad-subtle{font-size:12px!important;white-space:normal}
-  .cad-session-info{min-width:0}
-  .cad-session-stats{display:flex!important;flex-wrap:nowrap!important;gap:8px;overflow-x:auto;scroll-snap-type:x proximity;padding-bottom:2px;scrollbar-width:none}
+  /* 0128: mobile CALL-view friction fix.
+     PROBLEM: User reports they have to "scroll down for 2 seconds to see
+     the lead" after starting a session, and the stat cards overflow
+     horizontally requiring swipe. Source DOM order is:
+       [session-target-panel] [session-strip] [LEAD CARD] [outcomes]
+     so the lead — the primary focus during a call — is buried below
+     the target panel + session strip.
+
+     FIX has 4 parts:
+     (a) CSS `order` reorders cad-call-main children visually so
+         LEAD CARD renders first, then session-strip, then outcomes,
+         then target panel at the bottom.
+     (b) Stats laid out as a 5-column grid that always fits the
+         viewport — no horizontal scroll, no swipe required.
+     (c) Session-strip becomes a compact 2-row grid:
+           [timer-info] [Stop-session-button]
+           [— 5 mini stat cards spanning both columns —]
+         instead of the prior 3-block vertical stack.
+     (d) Big chunky labels (e.g. "Dialed total", "No pickup") on each
+         stat card are hidden — just the dot + number + 2-char label
+         (NP/CB/NI/Set/etc) so 5 cards fit in 360px viewport. */
+  .cad-call-main{display:flex;flex-direction:column}
+  .cad-call-main > *{order:5}  /* default — append */
+  .cad-call-main > .cad-card.cad-lead-card{order:1}  /* LEAD FIRST */
+  .cad-call-main > .cad-session-strip{order:2}
+  .cad-call-main > .cad-call-actions-sticky{order:3}
+  .cad-call-main > .cad-card.cad-session-target--rich{order:4}
+  .cad-call-main > .cad-script-resize{display:none!important}
+
+  /* Compact session-strip — 2-row grid */
+  .cad-session-strip{display:grid!important;grid-template-columns:1fr auto;grid-template-areas:"info stop" "stats stats"!important;gap:8px 12px!important;padding:10px 12px;border-radius:14px;background:var(--ad-bg-1);border:1px solid var(--ad-line-1);flex-direction:row!important;align-items:center!important}
+  .cad-session-info{grid-area:info;flex-direction:row!important;align-items:center;gap:8px!important;min-width:0;display:flex;flex-wrap:wrap}
+  .cad-session-info > .cad-label{display:none!important}
+  .cad-session-info > div{display:flex;flex-direction:row;align-items:baseline;gap:6px;margin:0!important}
+  .cad-session-info > div > .cad-mono{font-size:18px!important;line-height:1!important;font-weight:800;color:var(--ad-brass-2)}
+  .cad-session-info > div > .cad-subtle{font-size:10px!important;margin:0!important;color:var(--ad-t-3)}
+  .cad-session-info > p{margin:0!important;font-size:12px}
+  .cad-session-info .cad-rank-chip{padding:3px 8px!important;font-size:10px!important;margin-top:0!important}
+  .cad-session-info .cad-rank-chip__progress{display:none}
+
+  .cad-session-cta{grid-area:stop;width:auto!important;min-height:38px!important;padding:0 14px!important;font-size:13px!important;border-radius:10px!important;justify-self:end;justify-content:center}
+
+  /* Stat cards: 5-col grid, tiny compact pills */
+  .cad-session-stats{grid-area:stats;display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;gap:5px!important;overflow:visible!important;padding-bottom:0!important;scroll-snap-type:none!important;flex-wrap:nowrap!important}
   .cad-session-stats::-webkit-scrollbar{display:none}
-  .cad-session-stats>:nth-child(5){grid-column:auto}
-  .cad-session-stat--card{flex:0 0 116px;scroll-snap-align:start;min-height:72px;padding:10px 11px!important;border-radius:15px}
-  .cad-session-stat--card b{font-size:22px!important;line-height:1}
-  .cad-session-stat--card .cad-session-stat__glyph{font-size:13px!important;letter-spacing:.03em}
-  .cad-session-stat--card small{font-size:10px!important}
-  .cad-session-cta{min-height:52px!important;border-radius:16px;font-size:16px!important;width:100%;justify-content:center}
+  .cad-session-stat--card{flex:none!important;min-width:0!important;scroll-snap-align:none!important;min-height:46px!important;padding:5px 4px!important;border-radius:9px!important;align-items:center!important;justify-content:center;text-align:center;gap:1px!important}
+  .cad-session-stat--card:before{display:none!important}  /* hide the colored left-stripe — too much in tight space */
+  .cad-session-stat--card .cad-session-stat__glyph{display:none!important}
+  .cad-session-stat--card b{font-size:16px!important;line-height:1!important;width:100%;text-align:center}
+  .cad-session-stat--card small{font-size:9px!important;width:100%;text-align:center;color:currentColor!important;opacity:.85;font-weight:800}
+  /* Pay tile (admin-only, 6th column) — wraps under the 5 because we
+     forced 5 columns. Acceptable: admin Pay is least-critical. */
+  .cad-session-stat--card.tone-brass{grid-column:1 / -1;min-height:34px!important;display:flex;flex-direction:row!important;justify-content:center;gap:8px!important}
+  .cad-session-stat--card.tone-brass b{font-size:13px!important;width:auto}
+  .cad-session-stat--card.tone-brass small{font-size:9px!important;width:auto;opacity:.7}
   .cad-session-target--rich{padding:10px 11px 11px!important;box-shadow:0 14px 30px -24px var(--ad-brass-dim),0 0 0 1px var(--ad-brass-dim) inset}
   .cad-session-target--rich:before{height:2px}
   .cad-session-target__head{margin-bottom:6px;gap:8px;flex-wrap:nowrap}
@@ -21941,7 +21987,19 @@ function App() {
           // and a clear hint points up to this button instead.
           currentSession
             ? h('button', { className: 'cad-btn cad-session-cta cad-session-cta--stop', onClick: endSessionConfirm, type: 'button' }, icon('Square', 16), 'Stop session')
-            : h('button', { className: 'cad-btn cad-session-cta cad-session-cta--start', onClick: () => startDial(), type: 'button' }, icon('PhoneOutgoing', 16), 'Start session')
+            : h('button', { className: 'cad-btn cad-session-cta cad-session-cta--start', onClick: () => {
+                startDial();
+                // 0128: on mobile, the call-view is scroll-container .cad-call-body and
+                // .cad-call-main is reordered via CSS `order` so the lead-card lands at
+                // the top. If the user tapped Start from the bottom (after configuring
+                // session-target panel), scroll snaps back to the top so they see the
+                // lead immediately — no 2-second-scroll-down friction.
+                setTimeout(function(){
+                  var body = document.querySelector('.cad-call-body');
+                  if (body && typeof body.scrollTo === 'function') body.scrollTo({top:0, behavior:'smooth'});
+                  else if (body) body.scrollTop = 0;
+                }, 120);
+              }, type: 'button' }, icon('PhoneOutgoing', 16), 'Start session')
         ),
         h('div', { className: 'cad-card cad-lead-card' },
           // 0120: queue priority is now drag-and-drop — grab any pill by
