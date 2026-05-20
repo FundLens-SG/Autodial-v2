@@ -766,10 +766,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
 /* 0129: inline Start session button (replaces the "↑ Tap Start session above"
    hint when pre-session). Inherits the brand green gradient from
    .cad-session-cta--start, but sized to fit inline next to chips. On mobile
-   it stretches full-width below the chips for thumb-friendly reach. */
-.cad-lead-card__inline-start{align-self:flex-end;min-height:46px;padding:0 22px;border-radius:12px;font-size:14px;font-weight:850;white-space:nowrap}
+   it stretches full-width below the chips for thumb-friendly reach.
+   0130: HIDDEN on desktop (>640px) — the session-strip already has a
+   prominent Start session button at the top of the call view, so the
+   inline one would be a duplicate. Mobile keeps it because the
+   session-strip is reordered (order:2) BELOW the lead-card. */
+.cad-lead-card__inline-start{display:none;align-self:flex-end;min-height:46px;padding:0 22px;border-radius:12px;font-size:14px;font-weight:850;white-space:nowrap}
 @media(max-width:640px){
-  .cad-lead-card__inline-start{align-self:stretch;width:100%;min-height:50px;font-size:15px;margin-top:8px;border-radius:14px}
+  .cad-lead-card__inline-start{display:inline-flex;align-self:stretch;width:100%;min-height:50px;font-size:15px;margin-top:8px;border-radius:14px}
   /* Hide the BIG after-call grid pre-session on mobile — it's already
      dimmed/disabled (.cad-outcomes--idle), and the floating outcome dock
      at the bottom of the viewport handles in-session outcome input.
@@ -2147,6 +2151,13 @@ function authGrant(){
 // the user in. The legacy email/password authLogin/authSignup flow is gone.
 async function authCheck(){try{
   if(!_SB){window.location.href='/';return}
+  // 0130: dedupe — boot path can race (defer'd script + onAuthStateChange
+  // listener + React mount), firing authCheck multiple times in the same
+  // tick. Each ran its own profile lookup + initSync, doubling the log
+  // output AND the on-boot network burst. Guard via timestamp ref.
+  var _now=Date.now();
+  if(window._lastAuthCheckTs && _now - window._lastAuthCheckTs < 2000){return}
+  window._lastAuthCheckTs=_now;
   var s=await _SB.auth.getSession();
   if(!s.data?.session){window.location.href='/';return}
   _user=s.data.session.user;
@@ -2216,6 +2227,11 @@ var _channel=null,_syncCbs=[],_channelStatus='idle',_reconnectTimer=null,_pendin
 function _sendSyncPayload(payload){try{if(_channel&&_channelStatus==='SUBSCRIBED')_channel.send({type:'broadcast',event:'sync',payload:payload})}catch(e){console.warn('[sync send]',e?.message||e)}}
 function _flushPendingSync(){if(!_pendingSync.length||!_channel||_channelStatus!=='SUBSCRIBED')return;var now=Date.now();var q=_pendingSync.splice(0,_pendingSync.length).filter(p=>!p._ts||now-p._ts<5*60000);q.forEach(_sendSyncPayload)}
 function initSync(){try{if(!_SB||!_user?.id)return;
+  // 0130: dedupe — multiple boot paths can call initSync in rapid
+  // succession. Each builds a fresh channel and subscribes, leaving
+  // the old one orphaned. Skip if already SUBSCRIBED (or actively
+  // connecting) for the same user.
+  if(_channelStatus==='SUBSCRIBED'||_channelStatus==='connecting'){return}
   if(_channel){try{_SB.removeChannel(_channel)}catch(e){}_channel=null}
   _channelStatus='connecting';
   _channel=_SB.channel('ad-'+_user.id,{config:{broadcast:{self:false,ack:false}}});
@@ -4298,7 +4314,11 @@ window.DB={
   async getMyShares(uid){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('calendar_shares').select('*').eq('owner_id',uid);return r.data||[]}catch(e){return[]}},
 
   // Lead rows
-  async getLeads(uid){if(!_SB||!uid)return[];try{var r=await _SB.schema('autodial').from('leads').select('data,phone,status,assigned_by,updated_at').eq('assigned_to',uid);return r.data||[]}catch(e){console.warn('[DB.getLeads]',e?.message||e);return[]}},
+  // 0130: explicit .range(0,49999) overrides PostgREST default max-rows
+  // (1000). Pre-fix users with >1000 leads silently lost the rest —
+  // observed 1524 in DB, only 1000 loading into UI. Cap at 50k which
+  // handles realistic lead-list sizes; >50k would need real pagination.
+  async getLeads(uid){if(!_SB||!uid)return[];try{var r=await _SB.schema('autodial').from('leads').select('data,phone,status,assigned_by,updated_at').eq('assigned_to',uid).range(0,49999);return r.data||[]}catch(e){console.warn('[DB.getLeads]',e?.message||e);return[]}},
 
 
   // Config sync — save/load settings to Supabase for cross-device persistence
@@ -4546,25 +4566,57 @@ function _preferredAppointmentFit(dateKey,timeStr,durationMin,calendarEvents,lea
 // ══════════════════════════════════════════════════════
 window.CloudSync={
   _timers:{},_loaded:false,_userId:null,
-  
+  // 0130: batched-write queue. Pre-fix, each bucket save fired its own
+  // upsert — boot triggered 15+ POSTs to user_config in rapid succession
+  // (one per bucket: cfg, adminConfigs, leads, sessions, appointments,
+  // incentives, payments, userState, etc.). All small payloads now
+  // collapse into a single multi-row upsert; chunked large payloads
+  // still run sequentially through _writeOne.
+  _pendingBatch:{},_batchTimer:null,
+
   init(userId){this._userId=userId;this._loaded=false},
-  
-  // Debounced save: waits 1.5s after last call before writing to Supabase
+
+  // Debounced save: buffers into a batch and flushes within 1.5s of the
+  // LAST save() call across ANY bucket. Multiple bucket saves in the
+  // same window collapse into one multi-row HTTP POST.
   save(bucket,data){
     if(!_SB||!this._userId)return;
-    clearTimeout(this._timers[bucket]);
-    this._timers[bucket]=setTimeout(()=>{
-      this._write(bucket,data).catch(function(e){console.warn('[CloudSync] save '+bucket+':',e.message)});
-    },1500);
+    this._pendingBatch[bucket]=data;
+    clearTimeout(this._batchTimer);
+    this._batchTimer=setTimeout(()=>{this._flushBatch().catch(function(e){console.warn('[CloudSync] flushBatch:',e.message)});},1500);
   },
-  
-  // Immediate save (for critical data like session end)
+
+  // Immediate save — bypasses the batch (used for critical writes like
+  // session end where we can't wait for the debounce).
   saveNow(bucket,data){
     if(!_SB||!this._userId)return Promise.resolve();
-    return this._write(bucket,data).catch(function(e){console.warn('[CloudSync] saveNow '+bucket+':',e.message)});
+    // Also evict from any pending batch so we don't double-write.
+    delete this._pendingBatch[bucket];
+    return this._writeOne(bucket,data).catch(function(e){console.warn('[CloudSync] saveNow '+bucket+':',e.message)});
   },
-  
-  async _write(bucket,data){
+
+  async _flushBatch(){
+    if(!_SB||!this._userId)return;
+    var batch=this._pendingBatch;this._pendingBatch={};
+    var keys=Object.keys(batch);if(!keys.length)return;
+    var smallRows=[];var bigJobs=[];var ts=new Date().toISOString();
+    keys.forEach(bucket=>{
+      var data=batch[bucket];
+      var payload=JSON.stringify(data);
+      if(payload.length>500000)bigJobs.push({bucket,data});
+      else smallRows.push({user_id:this._userId,key:'sync_'+bucket,value:data,updated_at:ts});
+    });
+    if(smallRows.length){
+      await _SB.schema('autodial').from('user_config').upsert(smallRows,{onConflict:'user_id,key'});
+    }
+    for(var i=0;i<bigJobs.length;i++){
+      await this._writeOne(bigJobs[i].bucket,bigJobs[i].data);
+    }
+  },
+
+  // Single-bucket write (used by saveNow and large-payload flushes).
+  // Backward-compatible alias `_write` retained below.
+  async _writeOne(bucket,data){
     if(!_SB||!this._userId)return;
     var key='sync_'+bucket;
     var payload=JSON.stringify(data);
@@ -15814,7 +15866,10 @@ function App() {
         // admin-assigned). Strategy: update changed phones only, insert new
         // phones, and remove stale phones only when the local queue shape changed.
         try {
-          var er = await _SB.schema('autodial').from('leads').select('phone,assigned_by').eq('assigned_to', _user.id);
+          // 0130: .range(0,49999) overrides PostgREST 1000-row default —
+          // without it, large lead lists falsely look like "missing" rows
+          // here and stale-phone detection over-deletes.
+          var er = await _SB.schema('autodial').from('leads').select('phone,assigned_by').eq('assigned_to', _user.id).range(0,49999);
           if (er.error) throw er.error;
           var existingRows = er.data || [];
           var existingPhoneSet = new Set(existingRows.map(r => String(r.phone || '')).filter(Boolean));
@@ -18660,6 +18715,22 @@ function App() {
     if (u && sheetStatus) syncSheet(u, sheetStatus);
     if (u && status === 'set') {
       var _delSet = _getDelIds();
+        // 0130: persist a PLACEHOLDER row to autodial.appointments at SET time.
+        // Pre-fix the placeholder lived only in React state — if the user
+        // dismissed the apptModal without filling details (very common in
+        // testing) the appointment was lost on reload. Observed result:
+        // 21 leads marked status='set' but 0 rows in autodial.appointments.
+        // The placeholder has admin_id + lead_phone + lead_name but null
+        // appt_date/appt_time. When the user later fills the modal, the
+        // modal Save inserts a second row WITH appt_date — the placeholder
+        // can be safely cleaned up by sql/35 ("delete placeholders that
+        // have a sibling complete row for the same admin + phone"). This
+        // fire-and-forget save runs in parallel with the modal opening,
+        // so it doesn't block the UI.
+        try {
+          DB.saveAppt({ admin: myEmail, name: u.name, phone: u.phone, apptDate: '', apptTime: '', duration: 60, calEventId: '', inviteEmails: '', location: '', shaky: false }, _user?.id)
+            .catch(function(e){ console.warn('[set-outcome placeholder]', e?.message || e); });
+        } catch (_eSaveAppt) { console.warn('[set-outcome placeholder]', _eSaveAppt?.message || _eSaveAppt); }
         var _undoForPendingAppt = {
           ...(appStateRef.current._pendingSetUndoBase || {}),
           leadId: u.id,
@@ -20060,7 +20131,7 @@ function App() {
       publishedBy: myEmail
     };
     var existingRows = [];
-    var existingRes = await _SB.schema('autodial').from('leads').select('data,phone,status').eq('assigned_to', aid).eq('assigned_by', _user.id);
+    var existingRes = await _SB.schema('autodial').from('leads').select('data,phone,status').eq('assigned_to', aid).eq('assigned_by', _user.id).range(0,49999);
     if (existingRes.error) throw existingRes.error;
     existingRows = existingRes.data || [];
     var existingByPhone = new Map(existingRows.map(function (row) {
@@ -20216,7 +20287,7 @@ function App() {
       // Phase 7B2: assigned_leads_<email> + leads_<email> blobs replaced
       // by autodial.leads rows where assigned_to=current uid. Reconstruct
       // the legacy payload shape so downstream logic stays unchanged.
-      var lr = await _SB.schema('autodial').from('leads').select('data,phone,status,assigned_by').eq('assigned_to', _user.id);
+      var lr = await _SB.schema('autodial').from('leads').select('data,phone,status,assigned_by').eq('assigned_to', _user.id).range(0,49999);
       var rows = (lr && lr.data) || [];
       if (!rows.length) return false;
       rows = rows.slice().sort((a, b) => {
@@ -21879,8 +21950,13 @@ function App() {
             // Plural-aware copy + a fire emoji once the streak is real (≥2 days).
             h('span', { className: 'cad-pill amber', title: loginStreak === 1 ? 'First day back — open AutoDial again tomorrow to start a streak' : loginStreak + ' consecutive days using AutoDial' },
               loginStreak >= 2 && h('span', { style: { marginRight: 4 } }, '🔥'),
-              h('span', { className: 'cad-mono' }, loginStreak),
-              loginStreak === 1 ? '-day' : '-day streak'
+              // 0130: streak pill formatting. Old format rendered the mono "1"
+              // adjacent to "-day" which read as "1-day" with weird kerning
+              // between the JetBrains-Mono "1" and the Inter "-day" suffix.
+              // New format: "Day 1" for streak=1, "X-day streak" for >=2.
+              loginStreak === 1
+                ? h('span', null, 'Day ', h('span', { className: 'cad-mono' }, loginStreak))
+                : h('span', null, h('span', { className: 'cad-mono' }, loginStreak), '-day streak')
             )
           ),
           h('h1', { className: 'cad-title' }, (new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 18 ? 'Good afternoon' : 'Good evening'), ', ', (userName || 'Joel').split(' ')[0], '.'),
@@ -22474,6 +22550,18 @@ function App() {
         h('div', null, h('h2', { style: { fontSize: 24 } }, 'Appointments'), h('p', { className: 'cad-muted', style: { fontSize: 13, marginTop: 4 } }, apptRows.length, ' in view - ', apptsToday, " today's set - ", closedToday, ' closed')),
         h('div', { className: 'cad-inline' }, h('button', { className: 'cad-btn', onClick: () => setTab('cal') }, icon('Calendar', 13), 'Week'), h('button', { className: 'cad-btn', onClick: () => setTab('leads') }, icon('Sheet', 13), 'Open in Sheets'))
       ),
+      // 0130: empty-state UI for when no appointments exist. Pre-fix the
+      // Appts tab rendered a blank table with just headers — looked broken
+      // when 0 rows. Now shows a friendly empty card with guidance.
+      apptRows.length === 0 ? h('div', { className: 'cad-empty', style: { padding: '60px 20px', textAlign: 'center', borderRadius: 18, background: 'var(--ad-bg-1)', border: '1px dashed var(--ad-line-2)' } },
+        h('div', { style: { fontSize: 48, marginBottom: 12 } }, '📅'),
+        h('h3', { style: { fontSize: 20, fontWeight: 700, marginBottom: 8 } }, 'No appointments yet'),
+        h('p', { className: 'cad-muted', style: { fontSize: 14, marginBottom: 16, maxWidth: 480, margin: '0 auto 16px' } }, 'Appointments appear here when you mark a call outcome as Set. Open a calling session and tap Set after booking with a lead.'),
+        h('div', { className: 'cad-inline', style: { justifyContent: 'center', gap: 10 } },
+          h('button', { className: 'cad-btn primary', onClick: () => { setMainMode('call'); setTab('home'); }, type: 'button' }, icon('PhoneOutgoing', 14), 'Open call view'),
+          h('button', { className: 'cad-btn', onClick: () => setTab('cal'), type: 'button' }, icon('Calendar', 13), 'Open calendar')
+        )
+      ) :
       h('div', { className: 'cad-table' },
         h('div', { className: 'cad-tr head' }, ['Date', 'Lead', 'Caller', 'Location', 'Details / Notes', 'Status', ''].map(x => h('span', { key: x }, x))),
         apptRows.map((a, i) => {
@@ -22896,7 +22984,12 @@ function App() {
         });
     };
     var cadLeadDiagnostics = leads.length ? h('div', { className: 'cad-stat-grid cad-import-stats' },
-      stat('Callable', leadImportStats.callable, 'ready for queue', 'var(--ad-green)'),
+      // 0130: relabeled from "Callable / ready for queue" to "Reachable /
+      // still in scope" to reconcile with the HOME hero's "X callable leads
+      // waiting" which counts only pending+cb (the actual queue). This stat
+      // counts pending+np+cb (everything except declined/booked) — distinct
+      // concept worth a distinct label.
+      stat('Reachable', leadImportStats.callable, 'still in scope', 'var(--ad-green)'),
       stat('Missing phone', leadImportStats.missingPhone, 'cannot call', leadImportStats.missingPhone ? 'var(--ad-red)' : null),
       leadImportStats.duplicatePhones
         ? h('button', { className: 'cad-card cad-stat', onClick: cadRemoveDuplicatePhones, type: 'button', style: { textAlign: 'left', cursor: 'pointer', borderColor: 'oklch(0.80 0.13 75 / .42)' }, title: 'Click to remove duplicate phone rows (keeps first occurrence)' },
