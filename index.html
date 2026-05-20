@@ -750,13 +750,33 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
    Each chip is text-overflow:ellipsis so a long email doesn't blow
    out the row width. */
 .cad-lead-context{align-items:center}
-.cad-lead-context__chip{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:8px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);font-size:12px;font-weight:500;color:var(--ad-t-1);max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cad-lead-context__chip{display:inline-flex;align-items:center;gap:4px;padding:4px 9px;border-radius:8px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);font-size:12px;font-weight:500;color:var(--ad-t-1);max-width:100%;white-space:nowrap;overflow:hidden;min-width:0}
+/* 0129: chip is display:inline-flex — text-overflow:ellipsis on text nodes
+   inside an inline-flex container doesn't truncate. Wrap value in inner
+   span (.cad-lead-context__chip-text) and truncate the span instead. */
+.cad-lead-context__chip-icon{flex:0 0 auto;display:inline-flex;align-items:center}
+.cad-lead-context__chip-text{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cad-lead-context__chip--email{color:var(--ad-amber);border-color:oklch(0.80 0.13 75 / .26);background:linear-gradient(135deg,var(--ad-amber-dim),var(--ad-bg-2) 60%);max-width:240px}
 .cad-lead-context__chip--money{color:var(--ad-green);border-color:oklch(0.74 0.16 150 / .26);background:linear-gradient(135deg,var(--ad-green-dim),var(--ad-bg-2) 60%)}
 .cad-lead-context__chip--id{font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--ad-t-2)}
 @media(max-width:560px){
   .cad-lead-context__chip{padding:3px 7px;font-size:11px}
-  .cad-lead-context__chip--email{max-width:180px}
+  .cad-lead-context__chip--email{max-width:calc(100vw - 60px)}
+}
+/* 0129: inline Start session button (replaces the "↑ Tap Start session above"
+   hint when pre-session). Inherits the brand green gradient from
+   .cad-session-cta--start, but sized to fit inline next to chips. On mobile
+   it stretches full-width below the chips for thumb-friendly reach. */
+.cad-lead-card__inline-start{align-self:flex-end;min-height:46px;padding:0 22px;border-radius:12px;font-size:14px;font-weight:850;white-space:nowrap}
+@media(max-width:640px){
+  .cad-lead-card__inline-start{align-self:stretch;width:100%;min-height:50px;font-size:15px;margin-top:8px;border-radius:14px}
+  /* Hide the BIG after-call grid pre-session on mobile — it's already
+     dimmed/disabled (.cad-outcomes--idle), and the floating outcome dock
+     at the bottom of the viewport handles in-session outcome input.
+     Saves ~250px of vertical space pre-session. Uses :has() which is
+     supported on iOS 15.4+ / Chrome Android 105+ — older browsers just
+     see the dimmed pre-session grid (current behaviour). */
+  .cad-call-actions-sticky:has(.cad-outcomes--idle){display:none}
 }
 .cad-note{padding:12px 14px;background:var(--ad-bg-2);border:1px solid var(--ad-line-1);border-radius:10px;color:var(--ad-t-1);font-size:13px;line-height:1.6}
 .cad-outcomes{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
@@ -22232,7 +22252,10 @@ function App() {
               h('div', { className: 'cad-inline cad-lead-context', style: { marginTop: 10, flexWrap: 'wrap', gap: 8 } },
                 h('span', { className: 'cad-phone-chip' }, icon('PhoneOutgoing', 14), leadPhone || 'No phone'),
                 leadAge && h('span', { className: 'cad-lead-context__chip' }, '🎂 ', leadAge),
-                activeLead?.email && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--email', title: activeLead.email }, '✉ ', activeLead.email),
+                activeLead?.email && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--email', title: activeLead.email },
+                  h('span', { className: 'cad-lead-context__chip-icon', 'aria-hidden': 'true' }, '✉'),
+                  h('span', { className: 'cad-lead-context__chip-text' }, activeLead.email)
+                ),
                 activeLead?.gender && h('span', { className: 'cad-lead-context__chip' }, (String(activeLead.gender).toLowerCase().startsWith('m') ? '♂ ' : '♀ '), activeLead.gender),
                 activeLead?.race && h('span', { className: 'cad-lead-context__chip' }, '🌐 ', activeLead.race),
                 activeLead?.company && h('span', { className: 'cad-lead-context__chip' }, '🏢 ', activeLead.company),
@@ -22253,7 +22276,19 @@ function App() {
                   icon('PhoneOutgoing', 16),
                   leadPhone ? ('📞 Dial ' + (String(leadName || 'lead').split(/\s+/)[0] || 'lead')) : 'No phone'
                 )
-              : h('span', { className: 'cad-muted', style: { fontSize: 12, fontStyle: 'italic', alignSelf: 'flex-end', paddingBottom: 4 } }, '↑ Tap "Start session" above to begin')
+              // 0129: pre-session, replace the "↑ Tap Start session above" hint
+              // with an inline Start session button — eliminates the post-reorder
+              // direction confusion AND removes a scroll step. Tapping it triggers
+              // the same startDial() path as the session-strip CTA + scrolls
+              // cad-call-body to top so the lead-card stays in view.
+              : h('button', { className: 'cad-btn cad-session-cta cad-session-cta--start cad-lead-card__inline-start', onClick: () => {
+                  startDial();
+                  setTimeout(function(){
+                    var body = document.querySelector('.cad-call-body');
+                    if (body && typeof body.scrollTo === 'function') body.scrollTo({top:0, behavior:'smooth'});
+                    else if (body) body.scrollTop = 0;
+                  }, 120);
+                }, type: 'button' }, icon('PhoneOutgoing', 16), 'Start session')
           ),
           h('p', { className: 'cad-note' }, h('span', { className: 'cad-label', style: { marginRight: 8 } }, 'Notes'), leadNotes)
         ),
