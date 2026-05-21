@@ -22425,22 +22425,37 @@ function App() {
               // before the call. Each field renders as a small chip with
               // a leading emoji, and only renders if the value is present
               // (no empty placeholders cluttering the line).
-              h('div', { className: 'cad-inline cad-lead-context', style: { marginTop: 10, flexWrap: 'wrap', gap: 8 } },
-                h('span', { className: 'cad-phone-chip' }, icon('PhoneOutgoing', 14), leadPhone || 'No phone'),
-                leadAge && h('span', { className: 'cad-lead-context__chip' }, '🎂 ', leadAge),
-                activeLead?.email && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--email', title: activeLead.email },
-                  h('span', { className: 'cad-lead-context__chip-icon', 'aria-hidden': 'true' }, '✉'),
-                  h('span', { className: 'cad-lead-context__chip-text' }, activeLead.email)
-                ),
-                activeLead?.gender && h('span', { className: 'cad-lead-context__chip' }, (String(activeLead.gender).toLowerCase().startsWith('m') ? '♂ ' : '♀ '), activeLead.gender),
-                activeLead?.race && h('span', { className: 'cad-lead-context__chip' }, '🌐 ', activeLead.race),
-                activeLead?.company && h('span', { className: 'cad-lead-context__chip' }, '🏢 ', activeLead.company),
-                activeLead?.income && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--money' }, '💰 ', activeLead.income),
-                activeLead?.savings && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--money' }, '🏦 ', activeLead.savings),
-                activeLead?.nric && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--id', title: 'NRIC' }, '🪪 ', String(activeLead.nric).slice(0, 4) + '…' + String(activeLead.nric).slice(-1)),
-                activeLead?.birthday && h('span', { className: 'cad-lead-context__chip' }, '🎉 ', activeLead.birthday),
-                demo && h('span', { className: 'cad-muted', style: { fontSize: 12 } }, '· last contacted 2d ago')
-              )
+              // 0135: heuristic display-time correction for misplaced fields.
+              // Observed (deep-test) that many leads have INCOME values in
+              // the email column (e.g. "$5000 and above", "$3000-4999",
+              // "More than $1000") — a sheet-import column-mapping mistake.
+              // At display time we detect non-email-looking values in the
+              // email field and re-route them to the income chip. Lossless:
+              // doesn't touch the DB, just shows the right chip. sql/36
+              // (separate task) will write the corrections back permanently.
+              (() => {
+                var _emailRaw = String(activeLead?.email || '').trim();
+                var _looksLikeMoney = _emailRaw && !_emailRaw.includes('@') && /^\$|^more than|^less than|^over |^under |\bk\b|\d+\s*-\s*\d+|\d+\s*to\s*\d+/i.test(_emailRaw);
+                var _emailToShow = _looksLikeMoney ? '' : activeLead?.email;
+                var _incomeFromEmail = _looksLikeMoney && !activeLead?.income ? _emailRaw : null;
+                var _incomeToShow = activeLead?.income || _incomeFromEmail;
+                return h('div', { className: 'cad-inline cad-lead-context', style: { marginTop: 10, flexWrap: 'wrap', gap: 8 } },
+                  h('span', { className: 'cad-phone-chip' }, icon('PhoneOutgoing', 14), leadPhone || 'No phone'),
+                  leadAge && h('span', { className: 'cad-lead-context__chip' }, '🎂 ', leadAge),
+                  _emailToShow && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--email', title: _emailToShow },
+                    h('span', { className: 'cad-lead-context__chip-icon', 'aria-hidden': 'true' }, '✉'),
+                    h('span', { className: 'cad-lead-context__chip-text' }, _emailToShow)
+                  ),
+                  activeLead?.gender && h('span', { className: 'cad-lead-context__chip' }, (String(activeLead.gender).toLowerCase().startsWith('m') ? '♂ ' : '♀ '), activeLead.gender),
+                  activeLead?.race && h('span', { className: 'cad-lead-context__chip' }, '🌐 ', activeLead.race),
+                  activeLead?.company && h('span', { className: 'cad-lead-context__chip' }, '🏢 ', activeLead.company),
+                  _incomeToShow && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--money', title: _incomeFromEmail ? 'Detected income value in email field — display-side fix' : 'Income' }, '💰 ', _incomeToShow),
+                  activeLead?.savings && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--money' }, '🏦 ', activeLead.savings),
+                  activeLead?.nric && h('span', { className: 'cad-lead-context__chip cad-lead-context__chip--id', title: 'NRIC' }, '🪪 ', String(activeLead.nric).slice(0, 4) + '…' + String(activeLead.nric).slice(-1)),
+                  activeLead?.birthday && h('span', { className: 'cad-lead-context__chip' }, '🎉 ', activeLead.birthday),
+                  demo && h('span', { className: 'cad-muted', style: { fontSize: 12 } }, '· last contacted 2d ago')
+                );
+              })()
             ),
             // 0103: lead-card button only shows when a session is RUNNING —
             // pre-fix it doubled as a session starter ("Start calling")
