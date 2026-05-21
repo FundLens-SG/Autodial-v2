@@ -13616,6 +13616,28 @@ function App() {
     );
   }, [_user?.id]);
   useEffect(() => {
+    // 0138: fetch DB appointments into local state when Appts tab opens
+    // with empty local list. Bridges HardSync timing gap.
+    if (tab !== 'appts' || !_user || !_SB) return;
+    if ((appointments || []).length > 0) return;
+    if (window._apptsTabFetchInFlight) return;
+    window._apptsTabFetchInFlight = true;
+    (async () => {
+      try {
+        var fn = role === 'main' ? DB.getAllAppts : DB.getAppts;
+        var rows = await fn(myEmail);
+        if (rows && rows.length) {
+          var mapped = rows.map(_mapDbApptRow);
+          setAppointments(prev => {
+            if (prev && prev.length) return prev;
+            return _dedupAppts(mapped);
+          });
+        }
+      } catch (e) { console.warn('[ApptsTabFetch]', e?.message || e); }
+      finally { window._apptsTabFetchInFlight = false; }
+    })();
+  }, [tab, _user?.id, role, myEmail]);
+  useEffect(() => {
     // 0138: count DB placeholder appointments on boot for the HOME
     // triage banner. Single HEAD-style query, fast, returns count only.
     if (!_user || !_SB) return;
