@@ -4358,11 +4358,24 @@ window.DB={
   async getMyShares(uid){if(!_SB)return[];try{var r=await _SB.schema('autodial').from('calendar_shares').select('*').eq('owner_id',uid);return r.data||[]}catch(e){return[]}},
 
   // Lead rows
-  // 0130: explicit .range(0,49999) overrides PostgREST default max-rows
-  // (1000). Pre-fix users with >1000 leads silently lost the rest —
-  // observed 1524 in DB, only 1000 loading into UI. Cap at 50k which
-  // handles realistic lead-list sizes; >50k would need real pagination.
-  async getLeads(uid){if(!_SB||!uid)return[];try{var r=await _SB.schema('autodial').from('leads').select('data,phone,status,assigned_by,updated_at').eq('assigned_to',uid).range(0,49999);return r.data||[]}catch(e){console.warn('[DB.getLeads]',e?.message||e);return[]}},
+  // 0130/0134: pagination loop. Earlier .range(0,49999) didn't help —
+  // Supabase's PostgREST enforces server-side max-rows=1000, so a single
+  // request still capped at 1000 even with a wider range. Loop in 1000-
+  // row chunks until a short page comes back. Caps at 50k total (50
+  // iterations) as a safety belt; realistic lead-lists fit well under.
+  async getLeads(uid){if(!_SB||!uid)return[];try{
+    var all=[];var page=0;var pageSize=1000;
+    while(page<50){
+      var r=await _SB.schema('autodial').from('leads').select('data,phone,status,assigned_by,updated_at').eq('assigned_to',uid).range(page*pageSize,(page+1)*pageSize-1);
+      if(r.error)throw r.error;
+      var rows=r.data||[];
+      if(!rows.length)break;
+      all=all.concat(rows);
+      if(rows.length<pageSize)break;
+      page++;
+    }
+    return all;
+  }catch(e){console.warn('[DB.getLeads]',e?.message||e);return[]}},
 
 
   // Config sync — save/load settings to Supabase for cross-device persistence
@@ -15924,10 +15937,22 @@ function App() {
         // admin-assigned). Strategy: update changed phones only, insert new
         // phones, and remove stale phones only when the local queue shape changed.
         try {
-          // 0130: .range(0,49999) overrides PostgREST 1000-row default —
-          // without it, large lead lists falsely look like "missing" rows
-          // here and stale-phone detection over-deletes.
-          var er = await _SB.schema('autodial').from('leads').select('phone,assigned_by').eq('assigned_to', _user.id).range(0,49999);
+          // 0130/0134: pagination loop. Single .range() request hits
+          // Supabase's server-side max-rows=1000 cap; need to iterate.
+          // Without this, stale-phone detection over-deletes when the
+          // queue has >1000 leads (anything past row 1000 looks "stale").
+          var _erRows = [];
+          var _erPage = 0;
+          while (_erPage < 50) {
+            var _erR = await _SB.schema('autodial').from('leads').select('phone,assigned_by').eq('assigned_to', _user.id).range(_erPage*1000, (_erPage+1)*1000 - 1);
+            if (_erR.error) throw _erR.error;
+            var _erBatch = _erR.data || [];
+            if (!_erBatch.length) break;
+            _erRows = _erRows.concat(_erBatch);
+            if (_erBatch.length < 1000) break;
+            _erPage++;
+          }
+          var er = { data: _erRows, error: null };
           if (er.error) throw er.error;
           var existingRows = er.data || [];
           var existingPhoneSet = new Set(existingRows.map(r => String(r.phone || '')).filter(Boolean));
@@ -20350,7 +20375,19 @@ function App() {
       // Phase 7B2: assigned_leads_<email> + leads_<email> blobs replaced
       // by autodial.leads rows where assigned_to=current uid. Reconstruct
       // the legacy payload shape so downstream logic stays unchanged.
-      var lr = await _SB.schema('autodial').from('leads').select('data,phone,status,assigned_by').eq('assigned_to', _user.id).range(0,49999);
+      // 0134: pagination loop over 1000-row Supabase pages.
+      var _lrRows = [];
+      var _lrPage = 0;
+      while (_lrPage < 50) {
+        var _lrChunk = await _SB.schema('autodial').from('leads').select('data,phone,status,assigned_by').eq('assigned_to', _user.id).range(_lrPage*1000, (_lrPage+1)*1000 - 1);
+        if (_lrChunk.error) throw _lrChunk.error;
+        var _lrBatch = _lrChunk.data || [];
+        if (!_lrBatch.length) break;
+        _lrRows = _lrRows.concat(_lrBatch);
+        if (_lrBatch.length < 1000) break;
+        _lrPage++;
+      }
+      var lr = { data: _lrRows };
       var rows = (lr && lr.data) || [];
       if (!rows.length) return false;
       rows = rows.slice().sort((a, b) => {
