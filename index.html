@@ -770,10 +770,28 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
    0130: HIDDEN on desktop (>640px) — the session-strip already has a
    prominent Start session button at the top of the call view, so the
    inline one would be a duplicate. Mobile keeps it because the
-   session-strip is reordered (order:2) BELOW the lead-card. */
-.cad-lead-card__inline-start{display:none;align-self:flex-end;min-height:46px;padding:0 22px;border-radius:12px;font-size:14px;font-weight:850;white-space:nowrap}
+   session-strip is reordered (order:2) BELOW the lead-card.
+   0134: also hide .cad-lead-card__inline-stop on desktop (mobile-only)
+   and force flex-basis:100% on mobile so they break to their own line
+   instead of sitting next to the chips on the same row. */
+.cad-lead-card__inline-start,
+.cad-lead-card__inline-stop{display:none}
+.cad-lead-card__inline-start{align-self:flex-end;min-height:46px;padding:0 22px;border-radius:12px;font-size:14px;font-weight:850;white-space:nowrap}
 @media(max-width:640px){
-  .cad-lead-card__inline-start{display:inline-flex;align-self:stretch;width:100%;min-height:50px;font-size:15px;margin-top:8px;border-radius:14px}
+  .cad-lead-card__inline-start{display:inline-flex;flex:1 1 100%;align-self:stretch;width:100%;min-height:50px;font-size:15px;margin-top:8px;border-radius:14px}
+  /* Dial button forced to its own row on mobile so the chips don't
+     squeeze next to it. Reuses .cad-btn.primary's amber gradient. */
+  .cad-lead-card__inline-dial{flex:1 1 100% !important;align-self:stretch !important;width:100% !important;min-height:54px !important;font-size:16px !important;margin-top:6px !important;border-radius:14px !important;justify-content:center !important;height:auto !important;padding:0 22px !important}
+  /* Inline Stop button (mobile only). Sits directly below Dial in the
+     lead-card so user can stop without scrolling. Red gradient matches
+     the session-strip's --stop variant. */
+  .cad-lead-card__inline-stop{display:inline-flex;flex:1 1 100%;align-self:stretch;width:100%;min-height:42px;font-size:14px;font-weight:800;margin-top:6px;border-radius:12px;background:linear-gradient(135deg,#ef4444 0%,#dc2626 50%,#b91c1c 100%);color:#fff;border:none;justify-content:center;align-items:center;gap:8px;letter-spacing:.01em;text-shadow:0 1px 2px rgba(0,0,0,.18);box-shadow:0 12px 28px -10px rgba(248,113,113,.45),0 0 0 1px rgba(255,255,255,.16) inset}
+  .cad-lead-card__inline-stop:hover{filter:brightness(1.08)}
+  .cad-lead-card__inline-stop:active{transform:translateY(1px) scale(.99)}
+  /* Hide the session-strip's Start/Stop button on mobile — the inline
+     Start/Dial/Stop buttons inside the lead-card now cover both states,
+     and showing both yielded two visible Start buttons (user-reported). */
+  .cad-call-main .cad-session-cta{display:none !important}
   /* Hide the BIG after-call grid pre-session on mobile — it's already
      dimmed/disabled (.cad-outcomes--idle), and the floating outcome dock
      at the bottom of the viewport handles in-session outcome input.
@@ -22393,9 +22411,21 @@ function App() {
             // confused the user. Now it's strictly "Dial Lead Name" with
             // a clear single purpose. When idle, a hint replaces it.
             running
-              ? h('button', { className: 'cad-btn primary', style: { height: 52, padding: '0 22px', fontSize: 14 }, onClick: () => leadPhone && dial(leadPhone), disabled: !leadPhone, type: 'button' },
-                  icon('PhoneOutgoing', 16),
-                  leadPhone ? ('📞 Dial ' + (String(leadName || 'lead').split(/\s+/)[0] || 'lead')) : 'No phone'
+              // 0134: during a session show Dial + inline Stop. On mobile the
+              // session-strip's Stop button is HIDDEN (CSS below), so we
+              // surface Stop directly inside the lead-card — user can stop
+              // without scrolling past chips/Notes/After-call to reach it.
+              // Desktop still relies on the session-strip Stop and CSS hides
+              // .cad-lead-card__inline-stop above 640px.
+              ? h(React.Fragment, null,
+                  h('button', { className: 'cad-btn primary cad-lead-card__inline-dial', style: { height: 52, padding: '0 22px', fontSize: 14 }, onClick: () => leadPhone && dial(leadPhone), disabled: !leadPhone, type: 'button' },
+                    icon('PhoneOutgoing', 16),
+                    leadPhone ? ('📞 Dial ' + (String(leadName || 'lead').split(/\s+/)[0] || 'lead')) : 'No phone'
+                  ),
+                  h('button', { className: 'cad-btn cad-lead-card__inline-stop', onClick: endSessionConfirm, type: 'button' },
+                    icon('Square', 14),
+                    'Stop session'
+                  )
                 )
               // 0129: pre-session, replace the "↑ Tap Start session above" hint
               // with an inline Start session button — eliminates the post-reorder
