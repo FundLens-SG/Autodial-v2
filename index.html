@@ -11080,6 +11080,9 @@ function App() {
   // 0138: placeholder-triage banner dismissal state (per-page-load).
   // Sticky for the duration of the React tree; resets on full reload.
   var [apptTriageDismissed, setApptTriageDismissed] = useState(false);
+  // 0138: DB count of placeholder appointments — direct DB query so
+  // the banner fires before HardSync populates the local state.
+  var [dbPlaceholderApptCount, setDbPlaceholderApptCount] = useState(0);
   var [incentives, setIncentives] = useState(load('incv') || []);
   var [apptSearch, setApptSearch] = useState('');
   var [tipModal, setTipModal] = useState(null);
@@ -13611,6 +13614,22 @@ function App() {
       },
       function (e) { console.warn('[ClaimsCleanup]', e && e.message || e); }
     );
+  }, [_user?.id]);
+  useEffect(() => {
+    // 0138: count DB placeholder appointments on boot for the HOME
+    // triage banner. Single HEAD-style query, fast, returns count only.
+    if (!_user || !_SB) return;
+    if (window._dbPlaceholderCountRan_v1) return;
+    window._dbPlaceholderCountRan_v1 = true;
+    (async () => {
+      try {
+        var r = await _SB.schema('autodial').from('appointments')
+          .select('id', { count: 'exact', head: true })
+          .eq('admin_id', _user.id)
+          .is('appt_date', null);
+        if (typeof r.count === 'number') setDbPlaceholderApptCount(r.count);
+      } catch (e) { console.warn('[DbPlaceholderCount]', e?.message || e); }
+    })();
   }, [_user?.id]);
   useEffect(() => {
     // Auto-Fly-Kite for past-due placeholder appointments (0137).
@@ -22085,7 +22104,10 @@ function App() {
     // pre-applied. Dismissible for the page-lifetime via state — survives
     // tab switches, resets on full reload so the user gets re-prompted
     // tomorrow if there are still zombies.
-    var _placeholderApptCount = (appointments || []).filter(a => !a._deleted && !a.apptDate && !a.apptTime).length;
+    // Counts from BOTH local state (instant) AND DB-count fallback so
+    // the banner fires even before the HardSync populates local state.
+    var _localPhCount = (appointments || []).filter(a => !a._deleted && !a.apptDate && !a.apptTime).length;
+    var _placeholderApptCount = Math.max(_localPhCount, dbPlaceholderApptCount || 0);
     var placeholderTriageBanner = (!apptTriageDismissed && _placeholderApptCount >= 3) ? h('div', { className: 'cad-sync-banner', style: { borderColor: 'var(--ad-amber-line)', background: 'linear-gradient(90deg, var(--ad-amber-dim) 0%, transparent 65%)' } },
       h('span', null,
         h('b', null, '⚠ ', _placeholderApptCount, ' appointment', _placeholderApptCount === 1 ? '' : 's', ' need', _placeholderApptCount === 1 ? 's' : '', ' details'),
