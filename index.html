@@ -8110,6 +8110,27 @@ function App() {
   // change.
   var curIdxRef = useRef(curIdx);
   useEffect(() => { curIdxRef.current = curIdx; }, [curIdx]);
+  // 0141: "jump back to previous lead" fix. Multiple sync paths can
+  // call setCurIdx with a remote value that's stale relative to this
+  // device's just-completed local advance. Track local advance ts;
+  // sync paths consult it and reject incoming within 8s window.
+  var _lastLocalAdvanceRef = useRef(0);
+  var _stampLocalAdvance = (whence) => {
+    _lastLocalAdvanceRef.current = Date.now();
+    if (whence) try { DBG && DBG('[LocalAdvance] ' + whence + ' @ ' + _lastLocalAdvanceRef.current); } catch (_e) {}
+  };
+  var _shouldRejectRemoteCurIdx = (remoteTs) => {
+    var localTs = _lastLocalAdvanceRef.current || 0;
+    if (!localTs) return false;
+    var ageMs = Date.now() - localTs;
+    if (ageMs < 2000) return true;
+    if (ageMs < 8000) {
+      if (remoteTs == null) return true;
+      if (Number(remoteTs) < localTs - 500) return true;
+    }
+    return false;
+  };
+  window._lastLocalAdvanceRef = _lastLocalAdvanceRef;
   var [countdown, setCountdown] = useState(0);
   // Tracks the phone being dialed RIGHT NOW so the operator UI can show an
   // inline "Dialing…" pill during the 1–2s gap between dial() being invoked
@@ -10217,7 +10238,11 @@ function App() {
                 setCfg(p => ({ ...p, queuePriority: remoteSess.queuePriority }));
               }
               if (typeof remoteSess.curIdx === 'number' && remoteSess.curIdx >= 0) {
-                setCurIdx(remoteSess.curIdx);
+                if (_shouldRejectRemoteCurIdx(remoteSess.ts || remoteSess.updatedAt)) {
+                  try { DBG && DBG('[LiveSession/restore] reject stale curIdx ' + remoteSess.curIdx); } catch (_e) {}
+                } else {
+                  setCurIdx(remoteSess.curIdx);
+                }
               }
               if (typeof remoteSess.running === 'boolean') {
                 setRunning(remoteSess.running);
@@ -15384,7 +15409,13 @@ function App() {
             return;
           }
           setSession(remote.session);
-          if (typeof remote.curIdx === 'number') setCurIdx(remote.curIdx);
+          if (typeof remote.curIdx === 'number') {
+            if (_shouldRejectRemoteCurIdx(remote.ts)) {
+              try { DBG && DBG('[LiveSync] reject stale curIdx ' + remote.curIdx); } catch (_e) {}
+            } else {
+              setCurIdx(remote.curIdx);
+            }
+          }
           if (typeof remote.phase === 'string') setPhase(remote.phase);
           if (typeof remote.running === 'boolean') setRunning(remote.running);
           save('activeSession', remote.session);
@@ -16457,7 +16488,13 @@ function App() {
     var clean = phoneDigits(d.phone || '');
     if (idx >= 0 && clean && leadsRef.current[idx] && phoneDigits(leadsRef.current[idx].phone) !== clean) idx = -1;
     if (idx < 0 && clean) idx = leadsRef.current.findIndex(l => phoneDigits(l.phone) === clean);
-    if (idx >= 0) setCurIdx(idx);
+    if (idx >= 0) {
+      if (_shouldRejectRemoteCurIdx(d.ts || d._ts)) {
+        try { DBG && DBG('[applyDialState] reject stale curIdx ' + idx); } catch (_e) {}
+      } else {
+        setCurIdx(idx);
+      }
+    }
     if (d.session) setSession(d.session);
     setRunning(d.running === false ? false : true);
     setPhase(d.phase || 'calling');
@@ -16696,7 +16733,13 @@ function App() {
           source: 'realtime'
         });else {
           if (d.session) setSession(d.session);
-          if (typeof d.curIdx === 'number') setCurIdx(d.curIdx);
+          if (typeof d.curIdx === 'number') {
+            if (_shouldRejectRemoteCurIdx(d.ts || d._ts)) {
+              try { DBG && DBG('[onSync/dial_ready] reject stale curIdx ' + d.curIdx); } catch (_e) {}
+            } else {
+              setCurIdx(d.curIdx);
+            }
+          }
         }
         return;
       }
@@ -19248,6 +19291,7 @@ function App() {
     // trip — and the loser's claim attempt fails so they
     // auto-advance.
     setCurIdx(idx);
+    _stampLocalAdvance('adhoc-dial');
     setRunning(true);
     setPhase('calling');
     setShowNextPreview(false);
@@ -19683,6 +19727,7 @@ function App() {
         return;
       }
       setCurIdx(nextIdx);
+      _stampLocalAdvance('skip-advance');
       setPhase('calling');
       setTimeout(() => {
         var l = leadsRef.current[nextIdx];
@@ -19854,9 +19899,11 @@ function App() {
         setRunning(false);
         setPhase('idle');
         setCurIdx(-1);
+        _stampLocalAdvance('outcome-no-more');
         toast('All leads done!', 'info');
       } else {
         setCurIdx(_nextIdx);
+        _stampLocalAdvance('outcome-advance');
         setPhase('calling');
         // Atomically claim the next lead too — if it gets snatched
         // by another caller in the gap between outcome and dial,
@@ -19993,6 +20040,7 @@ function App() {
       return;
     }
     setCurIdx(f);
+    _stampLocalAdvance('startDial');
     setRunning(true);
     setPhase('calling');
     setTab('home');
@@ -22463,9 +22511,10 @@ function App() {
                           var needsStart = !running || !session || session.ended;
                           if (needsStart) {
                             try { startDial(); } catch (_e) {}
-                            setTimeout(() => { setCurIdx(jumpIdx); setRunning(true); setPhase('calling'); if (l.phone) dial(l.phone); }, 120);
+                            setTimeout(() => { setCurIdx(jumpIdx); _stampLocalAdvance('lead-jump-start'); setRunning(true); setPhase('calling'); if (l.phone) dial(l.phone); }, 120);
                           } else {
                             setCurIdx(jumpIdx);
+                            _stampLocalAdvance('lead-jump');
                             setPhase('calling');
                             if (l.phone) dial(l.phone);
                           }
