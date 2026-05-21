@@ -22778,9 +22778,15 @@ function App() {
     // computed off the unfiltered list so the chips stay accurate.
     // 0139: merge local state with DB fallback so the Appts tab shows
     // rows even when the lazy-fetch's setAppointments didn't take.
-    if (tab === 'appts') console.info('[ApptsView/render]', { localCount: (appointments || []).length, fallbackCount: (dbApptsFallback || []).length });
+    if (tab === 'appts') {
+      try { window._debugApptsState = { tab, localCount: (appointments || []).length, fallbackCount: (dbApptsFallback || []).length, ts: Date.now() }; } catch(_e) {}
+      console.info('[ApptsView/render]', { tab, localCount: (appointments || []).length, fallbackCount: (dbApptsFallback || []).length });
+    }
     var _allLiveAppts = _dedupAppts([...(appointments || []), ...(dbApptsFallback || [])]).filter(a => !a._deleted);
-    if (tab === 'appts') console.info('[ApptsView/render] _allLiveAppts after dedup:', _allLiveAppts.length);
+    if (tab === 'appts') {
+      try { window._debugApptsState.allLiveCount = _allLiveAppts.length; } catch(_e) {}
+      console.info('[ApptsView/render] _allLiveAppts:', _allLiveAppts.length);
+    }
     var _nowMs = Date.now();
     var _apptDateMs = a => {
       // Resolve a comparable millisecond timestamp for an appointment.
