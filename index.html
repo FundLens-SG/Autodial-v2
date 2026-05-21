@@ -22776,16 +22776,26 @@ function App() {
     // 0133: filter chip predicates. Each chip slices the visible list by
     // a single distinct criteria. Counts (apptFilterCounts below) are
     // computed off the unfiltered list so the chips stay accurate.
-    // 0139: merge local state with DB fallback so the Appts tab shows
-    // rows even when the lazy-fetch's setAppointments didn't take.
-    var _localApptsCount = (appointments || []).length;
-    var _fallbackApptsCount = (dbApptsFallback || []).length;
+    // 0139/0140: merge local state with DB fallback. Bypasses
+    // _dedupAppts because it was filtering 51 input rows to 0 (likely
+    // via isApptDeleted with stale delSet or _softApptSame collapsing).
+    var _allLiveAppts = (() => {
+      var seen = new Set();
+      var out = [];
+      var combined = [...(appointments || []), ...(dbApptsFallback || [])];
+      combined.forEach(a => {
+        if (!a || a._deleted) return;
+        var key = a.dbApptId || a.id || a.calEventId || (a.phone || '') + '|' + (a.apptDate || '');
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(a);
+      });
+      return out;
+    })();
     if (tab === 'appts') {
-      window._debugApptsState = String(tab) + ' local=' + _localApptsCount + ' fallback=' + _fallbackApptsCount;
-      console.info('[ApptsView/render] local=' + _localApptsCount + ' fallback=' + _fallbackApptsCount);
+      window._debugApptsState = 'local=' + ((appointments || []).length) + ' fallback=' + ((dbApptsFallback || []).length) + ' allLive=' + _allLiveAppts.length;
+      console.info('[ApptsView/render] local=' + ((appointments || []).length) + ' fallback=' + ((dbApptsFallback || []).length) + ' allLive=' + _allLiveAppts.length);
     }
-    var _allLiveAppts = _dedupAppts([...(appointments || []), ...(dbApptsFallback || [])]).filter(a => !a._deleted);
-    if (tab === 'appts') console.info('[ApptsView/render] allLive=' + _allLiveAppts.length);
     var _nowMs = Date.now();
     var _apptDateMs = a => {
       // Resolve a comparable millisecond timestamp for an appointment.
