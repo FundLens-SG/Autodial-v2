@@ -11083,6 +11083,9 @@ function App() {
   // 0138: DB count of placeholder appointments — direct DB query so
   // the banner fires before HardSync populates the local state.
   var [dbPlaceholderApptCount, setDbPlaceholderApptCount] = useState(0);
+  // 0139: dedicated state for DB-loaded appointment rows. apptsView
+  // merges with local `appointments` at render time.
+  var [dbApptsFallback, setDbApptsFallback] = useState([]);
   var [incentives, setIncentives] = useState(load('incv') || []);
   var [apptSearch, setApptSearch] = useState('');
   var [tipModal, setTipModal] = useState(null);
@@ -13616,23 +13619,25 @@ function App() {
     );
   }, [_user?.id]);
   useEffect(() => {
-    // 0138: fetch DB appointments into local state when Appts tab opens.
-    // Bridges HardSync timing gap. Merges via _dedupAppts so re-runs
-    // don't double-up.
+    // 0139: dedicated dbApptsFallback state — apptsView merges with
+    // local appointments at render time. Sidesteps the state-overwrite
+    // race that was blocking the previous lazy-fetch.
+    console.info('[ApptsView/Effect]', { tab, hasUser: !!_user, hasSB: !!_SB, role });
     if (tab !== 'appts' || !_user || !_SB) return;
-    if (window._apptsTabFetchInFlight) return;
-    window._apptsTabFetchInFlight = true;
+    if (window._apptsFallbackLoaded_v1) { console.info('[ApptsView/Effect] already loaded'); return; }
+    window._apptsFallbackLoaded_v1 = true;
     (async () => {
       try {
+        console.info('[ApptsView/Effect] calling DB');
         var fn = role === 'main' ? DB.getAllAppts : DB.getAppts;
         var rows = await fn(myEmail);
-        console.info('[ApptsTabFetch] DB rows:', rows?.length || 0);
+        console.info('[ApptsView/Effect] DB rows:', rows?.length || 0);
         if (rows && rows.length) {
           var mapped = rows.map(_mapDbApptRow);
-          setAppointments(prev => _dedupAppts([...(prev || []), ...mapped]));
+          setDbApptsFallback(mapped);
+          console.info('[ApptsView/Effect] setDbApptsFallback', mapped.length);
         }
-      } catch (e) { console.warn('[ApptsTabFetch]', e?.message || e); }
-      finally { window._apptsTabFetchInFlight = false; }
+      } catch (e) { console.warn('[ApptsView/Effect]', e?.message || e); window._apptsFallbackLoaded_v1 = false; }
     })();
   }, [tab, _user?.id, role, myEmail]);
   useEffect(() => {
@@ -22771,7 +22776,9 @@ function App() {
     // 0133: filter chip predicates. Each chip slices the visible list by
     // a single distinct criteria. Counts (apptFilterCounts below) are
     // computed off the unfiltered list so the chips stay accurate.
-    var _allLiveAppts = (appointments || []).filter(a => !a._deleted);
+    // 0139: merge local state with DB fallback so the Appts tab shows
+    // rows even when the lazy-fetch's setAppointments didn't take.
+    var _allLiveAppts = _dedupAppts([...(appointments || []), ...(dbApptsFallback || [])]).filter(a => !a._deleted);
     var _nowMs = Date.now();
     var _apptDateMs = a => {
       // Resolve a comparable millisecond timestamp for an appointment.
