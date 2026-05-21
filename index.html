@@ -786,10 +786,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
   .cad-lead-card__inline-stop{display:inline-flex;flex:1 1 100%;align-self:stretch;width:100%;min-height:42px;font-size:14px;font-weight:800;margin-top:6px;border-radius:12px;background:linear-gradient(135deg,#ef4444 0%,#dc2626 50%,#b91c1c 100%);color:#fff;border:none;justify-content:center;align-items:center;gap:8px;letter-spacing:.01em;text-shadow:0 1px 2px rgba(0,0,0,.18);box-shadow:0 12px 28px -10px rgba(248,113,113,.45),0 0 0 1px rgba(255,255,255,.16) inset}
   .cad-lead-card__inline-stop:hover{filter:brightness(1.08)}
   .cad-lead-card__inline-stop:active{transform:translateY(1px) scale(.99)}
-  /* Hide the session-strip's Start/Stop button on mobile — the inline
-     Start/Dial/Stop buttons inside the lead-card now cover both states,
-     and showing both yielded two visible Start buttons (user-reported). */
-  .cad-call-main .cad-session-cta{display:none !important}
+  /* 0142: KEEP session-strip Start/Stop visible on mobile as fallback.
+     Previously hidden, but user reported the inline-start sometimes
+     doesn't render, leaving no way to start. Both visible = annoying
+     duplicate but functional; vs hiding both if inline fails. */
+  .cad-call-main .cad-session-cta{min-height:46px !important;padding:0 18px !important;font-size:13px !important}
   /* Hide the BIG after-call grid pre-session on mobile — it's already
      dimmed/disabled (.cad-outcomes--idle), and the floating outcome dock
      at the bottom of the viewport handles in-session outcome input.
@@ -17439,15 +17440,15 @@ function App() {
         // This prevents quiet clobbers.
         var diff = await compareScriptsWithDrive();
         if (diff && !diff.inSync && diff.driveOnly.length) {
-          // 2026-05-19: was 5-min cooldown — fired every ~5 min if user
-          // ignored it, causing visible friction. Now once-per-browser-
-          // session via window flag. User sees the warning at most once
-          // per tab lifetime; subsequent auto-backup attempts still
-          // correctly bail out (preventing clobber) but silently.
-          if (!window._scriptsDivergenceWarnedThisSession) {
+          // 0143: localStorage-persistent 24h cooldown + info tone (was err).
+          var _divLastShownTs = parseInt(localStorage.getItem('_scriptsDivergenceLastShownAt') || '0', 10);
+          var _showAgainAfterMs = 24 * 60 * 60 * 1000;
+          var _enoughTimePassed = !_divLastShownTs || (Date.now() - _divLastShownTs) > _showAgainAfterMs;
+          if (!window._scriptsDivergenceWarnedThisSession && _enoughTimePassed) {
             window._scriptsDivergenceWarnedThisSession = true;
             _scriptsDivergenceWarnedAt.current = Date.now();
-            toast('⚠ Drive has scripts not on this device — open Settings → Check Drive sync', 'err');
+            try { localStorage.setItem('_scriptsDivergenceLastShownAt', String(Date.now())); } catch (_e) {}
+            toast('Drive has newer script versions — open Settings → Check Drive sync to reconcile', 'info');
           }
           return;
         }
