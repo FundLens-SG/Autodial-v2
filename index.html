@@ -763,22 +763,20 @@ input:focus,select:focus,textarea:focus{border-color:var(--ad-brass-line)!import
   .cad-lead-context__chip{padding:3px 7px;font-size:11px}
   .cad-lead-context__chip--email{max-width:calc(100vw - 60px)}
 }
-/* 0129: inline Start session button (replaces the "↑ Tap Start session above"
-   hint when pre-session). Inherits the brand green gradient from
-   .cad-session-cta--start, but sized to fit inline next to chips. On mobile
-   it stretches full-width below the chips for thumb-friendly reach.
-   0130: HIDDEN on desktop (>640px) — the session-strip already has a
-   prominent Start session button at the top of the call view, so the
-   inline one would be a duplicate. Mobile keeps it because the
-   session-strip is reordered (order:2) BELOW the lead-card.
-   0134: also hide .cad-lead-card__inline-stop on desktop (mobile-only)
-   and force flex-basis:100% on mobile so they break to their own line
-   instead of sitting next to the chips on the same row. */
-.cad-lead-card__inline-start,
+/* 0142: MOBILE-FIRST inline Start/Stop session buttons. The previous
+   version had `display:none` as default with `@media(max-width:640px)`
+   overriding to `display:inline-flex`. On some Android browsers the
+   @media override was failing to apply (likely cascade-order bug after
+   Babel + Cloudflare transform), leaving Start invisible — user-reported.
+   Mobile-first inverts: default is VISIBLE, desktop hides via
+   @media(min-width:641px). Failure mode is now duplicate on desktop
+   rather than missing on mobile. */
+.cad-lead-card__inline-start{display:inline-flex;flex:1 1 100%;align-self:stretch;width:100%;min-height:50px;font-size:15px;font-weight:850;margin-top:8px;border-radius:14px;justify-content:center;white-space:nowrap}
 .cad-lead-card__inline-stop{display:none}
-.cad-lead-card__inline-start{align-self:flex-end;min-height:46px;padding:0 22px;border-radius:12px;font-size:14px;font-weight:850;white-space:nowrap}
+@media(min-width:641px){
+  .cad-lead-card__inline-start{display:none}
+}
 @media(max-width:640px){
-  .cad-lead-card__inline-start{display:inline-flex;flex:1 1 100%;align-self:stretch;width:100%;min-height:50px;font-size:15px;margin-top:8px;border-radius:14px}
   /* Dial button forced to its own row on mobile so the chips don't
      squeeze next to it. Reuses .cad-btn.primary's amber gradient. */
   .cad-lead-card__inline-dial{flex:1 1 100% !important;align-self:stretch !important;width:100% !important;min-height:54px !important;font-size:16px !important;margin-top:6px !important;border-radius:14px !important;justify-content:center !important;height:auto !important;padding:0 22px !important}
