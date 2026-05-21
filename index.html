@@ -11077,6 +11077,9 @@ function App() {
   // the full appointments list (not the filtered subset) so the counts
   // stay accurate as you switch chips.
   var [apptFilter, setApptFilter] = useState('all');
+  // 0138: placeholder-triage banner dismissal state (per-page-load).
+  // Sticky for the duration of the React tree; resets on full reload.
+  var [apptTriageDismissed, setApptTriageDismissed] = useState(false);
   var [incentives, setIncentives] = useState(load('incv') || []);
   var [apptSearch, setApptSearch] = useState('');
   var [tipModal, setTipModal] = useState(null);
@@ -13608,6 +13611,42 @@ function App() {
       },
       function (e) { console.warn('[ClaimsCleanup]', e && e.message || e); }
     );
+  }, [_user?.id]);
+  useEffect(() => {
+    // Auto-Fly-Kite for past-due placeholder appointments (0137).
+    // Runs once on boot. Targets autodial.appointments rows where:
+    //   - admin_id = signed-in user (RLS scopes this anyway)
+    //   - appt_date IS NOT NULL  (skip placeholders — those need user triage)
+    //   - appt_date <= today - 14 days  (grace period)
+    //   - follow_up IS NULL or 'pending'  (not yet dispositioned)
+    // Flips them to 'fly_kite' with follow_up_date=now. Idempotent via
+    // window flag.
+    if (!_user || !_SB) return;
+    if (window._autoFlyKiteRan_v1) return;
+    window._autoFlyKiteRan_v1 = true;
+    (async () => {
+      try {
+        var graceDays = 14;
+        var cutoff = new Date(Date.now() - graceDays * 86400000);
+        var cutoffDate = cutoff.toISOString().slice(0, 10);
+        var r = await _SB.schema('autodial').from('appointments')
+          .select('id, lead_phone, lead_name, appt_date, follow_up')
+          .eq('admin_id', _user.id)
+          .lte('appt_date', cutoffDate)
+          .or('follow_up.is.null,follow_up.eq.pending')
+          .not('appt_date', 'is', null);
+        if (r.error) throw r.error;
+        var stale = r.data || [];
+        if (!stale.length) return;
+        var ids = stale.map(x => x.id);
+        var nowIso = new Date().toISOString();
+        var upd = await _SB.schema('autodial').from('appointments')
+          .update({ follow_up: 'fly_kite', follow_up_date: nowIso })
+          .in('id', ids);
+        if (upd.error) throw upd.error;
+        try { toast('🪁 Auto-Fly-Kited ' + stale.length + ' past-due appointment' + (stale.length === 1 ? '' : 's') + ' (>' + graceDays + ' days, no disposition)', 'info'); } catch (_te) {}
+      } catch (e) { console.warn('[AutoFlyKite]', e?.message || e); }
+    })();
   }, [_user?.id]);
   useEffect(() => {
     // Notifications hygiene (Phase 8 follow-up, 2026-05-19): every
@@ -22040,8 +22079,26 @@ function App() {
         h('span', { className: 'cad-hero-quickref__chev' }, '›')
       )
     );
+    // 0138: placeholder-appointments triage banner. Renders on HOME when
+    // there are SET leads with no appt_date filled in (the "needs details"
+    // zombies). One-tap jump to Appts tab with the 'needs_details' filter
+    // pre-applied. Dismissible for the page-lifetime via state — survives
+    // tab switches, resets on full reload so the user gets re-prompted
+    // tomorrow if there are still zombies.
+    var _placeholderApptCount = (appointments || []).filter(a => !a._deleted && !a.apptDate && !a.apptTime).length;
+    var placeholderTriageBanner = (!apptTriageDismissed && _placeholderApptCount >= 3) ? h('div', { className: 'cad-sync-banner', style: { borderColor: 'var(--ad-amber-line)', background: 'linear-gradient(90deg, var(--ad-amber-dim) 0%, transparent 65%)' } },
+      h('span', null,
+        h('b', null, '⚠ ', _placeholderApptCount, ' appointment', _placeholderApptCount === 1 ? '' : 's', ' need', _placeholderApptCount === 1 ? 's' : '', ' details'),
+        ' — SET without date/time. Triage now to keep your pipeline clean.'
+      ),
+      h('span', { className: 'cad-inline', style: { gap: 8 } },
+        h('button', { className: 'cad-btn primary', onClick: () => { setApptFilter('needs_details'); setTab('appts'); }, type: 'button' }, 'Triage now →'),
+        h('button', { className: 'cad-btn ghost', onClick: () => setApptTriageDismissed(true), type: 'button', title: 'Hide for this session — returns on next reload if still unresolved' }, '✕')
+      )
+    ) : null;
     var dashboard = h('div', { className: 'cad-shell' }, topbar, h('main', { className: 'cad-main' },
       pastApptBanner,
+      placeholderTriageBanner,
       h('div', { className: 'cad-dashboard-head' },
         h('div', null,
           h('div', { className: 'cad-inline' },
